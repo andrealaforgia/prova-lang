@@ -169,7 +169,7 @@ invalid variants, in a terminal.
 - Given the unmodified reservation source, when the Owner runs the check
   operation against it, then the tool reports the whole program as accepted
   with no errors.
-- Given a hand-built variant with a structural or type error placed inside
+- Given a hand-built variant with a type error placed inside
   one of `step`'s two branches, in a spot none of the four declared examples
   reaches, when the Owner runs the check operation against it, then the
   tool rejects the program.
