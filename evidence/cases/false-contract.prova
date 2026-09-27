@@ -1,0 +1,1 @@
+(defn wrong (sig ((amount Int)) -> Int ! pure) (ensures (>= result 0)) (examples (example (wrong 1) => 1)) amount) (wrong 1)

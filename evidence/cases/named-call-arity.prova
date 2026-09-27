@@ -1,0 +1,1 @@
+(defn identity (sig ((amount Int)) -> Int ! pure) (examples (example (identity 1) => 1)) amount) (defn choose (sig ((flag Bool)) -> Int ! pure) (examples (example (choose true) => 1)) (if flag 1 (identity 2 3))) (choose true)

@@ -1,0 +1,1 @@
+(defn wrong (sig ((amount Int)) -> Int ! pure) (ensures (>= result 0)) (examples (example (wrong 1) => 1)) amount) (defn unrelated (sig ((amount Int)) -> Int ! pure) (ensures (let ((copy result)) (= copy amount))) (examples (example (unrelated 1) => 1)) amount) (wrong 1)

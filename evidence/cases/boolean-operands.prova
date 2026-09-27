@@ -1,0 +1,1 @@
+(defn choose (sig ((flag Bool)) -> Bool ! pure) (examples (example (choose true) => true)) (if flag true (and 1 2))) (choose true)

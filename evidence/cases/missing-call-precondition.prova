@@ -1,0 +1,1 @@
+(defspec positive (sig ((amount Int)) -> Int ! pure) (requires (> amount 0)) (ensures (= result amount)) (examples (example (positive 1) => 1)) amount) (defn caller (sig ((amount Int)) -> Int ! pure) (ensures true) (examples (example (caller 1) => 1)) (positive amount)) (caller 1)

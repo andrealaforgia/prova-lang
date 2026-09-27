@@ -1,0 +1,1 @@
+(defn third (sig ((amount Decimal)) -> Decimal ! pure) (examples (example (third 3.0) => 1.0)) (/ amount 3.0)) (third 3.0)

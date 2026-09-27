@@ -1,0 +1,11 @@
+# Local agent state and generated verification environments are not requirements.
+.relay/
+.claude/
+.nwave/
+.venv/
+.venv-evidence/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.DS_Store
