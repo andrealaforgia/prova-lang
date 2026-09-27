@@ -141,7 +141,7 @@ reservation source as the positive control, in a terminal.
   have rejected, then the tool reports a postcondition violation, not a
   successful result.
 - Given a variant of `step` with the `accepted` flag flipped, when the Owner
-  runs the same operation with any input, then the tool reports a
+  runs the same operation with any valid input, then the tool reports a
   postcondition violation, not a successful result.
 - Given a variant of `step` that rejects every event, when the Owner runs
   the same operation with an input the table marks accepted, then the tool
