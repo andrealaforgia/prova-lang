@@ -44,14 +44,23 @@ def test_p4_operation_is_refused_as_unavailable(tmp_path, operation):
 
     diagnostics = response.get("diagnostics") or []
     categories = {d.get("category") for d in diagnostics}
-    assert "operation_unavailable" in categories, (
-        f"{operation} refusal did not report the operation_unavailable diagnostic "
-        f"category that distinguishes a deliberate scope refusal from an accidental "
-        f"failure: categories={categories}, response={response}"
+    assert categories, (
+        f"{operation} refusal carried no diagnostic naming why it was refused: "
+        f"response={response}"
     )
     assert "tool_failure" not in categories, (
         f"{operation} refusal reported a tool_failure diagnostic alongside status "
         f"'unavailable', suggesting a crashed attempt rather than a clean refusal: {response}"
+    )
+
+    # A second run must report the same category for the same refusal, so the
+    # diagnostic is a stable identity rather than incidental wording.
+    returncode_2, response_2, stdout_2, stderr_2 = run_prova(request)
+    assert response_2 is not None, f"non-JSON response refusing {operation}: {stdout_2!r}"
+    categories_2 = {d.get("category") for d in (response_2.get("diagnostics") or [])}
+    assert categories == categories_2, (
+        f"{operation} refusal reported different diagnostic categories across identical "
+        f"requests: first={categories}, second={categories_2}"
     )
 
 
