@@ -4,6 +4,14 @@ These 14 small source files preserve useful failure cases and positive controls.
 They are not executable tests, new-run receipts or evidence of a working compiler.
 No compiler exists in this restart yet. No fixture has been run during preparation.
 
+Compatibility note for restart draft 0.2: `core-0` intentionally has no top-level
+trailing expression, `defspec`, text builtins or decimal arithmetic. Preserve these
+historical files unchanged as provenance. Derive new checks for the selected profile:
+move trailing calls into the runtime test request, use ordinary functions to exercise
+call-precondition checking, and defer decimal/text-specific checks until their profiles
+exist. A profile's unsupported-feature diagnostic does not validate a deeper semantic
+property. Record every adaptation and retain a positive control.
+
 Sources were copied byte-for-byte from the previous repository at
 `093fb86443c057c1d3abb4f1c033d1a6bf601d38`. The original paths are
 `docs/investigations/compiler-review-<date>/<filename>.prova`, with dates below.

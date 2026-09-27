@@ -18,11 +18,24 @@ old work. Use a fresh, unused engagement identity, for example
 `prova-lang-restart`, after checking it is unused. Do not import the old queue,
 deadlines, story IDs, completion credit, approval records or security waivers.
 
-Begin with [the retained semantics](../SPEC.md),
+Begin with [specification draft 0.2](../SPEC.md),
 [expectations and questions](EXPECTATIONS.md), and
 [historical fixtures](../evidence/README.md). The archived implementation is not
 the new implementation template. No compiler architecture or first iteration has
 been approved by the preparation alone.
+
+The owner subsequently requested a functional language aligned with formal
+verification and TLA+ principles and authorised updating the specification accordingly.
+Draft 0.2 supplies the small `core-0`, `verify-0` and `machine-0` semantic targets.
+Treat those written rules as the current draft, not unresolved questions for each
+builder. A semantic change must be recorded explicitly with revised expectations.
+The reservation example is the recommended first conformance target; decide its
+delivery scope through the normal roadmap process, without importing old iterations.
+
+Do not interpret alignment with TLA+, Dafny, F* or Lean as an instruction to build
+all their features. Follow the specification's profile boundaries. Formal obligations,
+finite model exploration, compiler tests and Relay execution receipts establish
+different claims. An analyst answer must identify which kind of evidence it cites.
 
 ## Required delivery shape
 

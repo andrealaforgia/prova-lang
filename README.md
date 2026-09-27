@@ -1,7 +1,8 @@
 # Prova: compiler restart
 
-Prova is a programming language intended for LLMs to generate and change software.
-Its central idea is that a program carries explicit claims and checkable evidence.
+Prova is a functional programming language intended for LLMs to generate and change
+software. Its core combines immutable values, explicit claims, checkable evidence
+and state-transition semantics compatible with TLA+ principles.
 The goal is independently correct software within a measured token and compute
 budget. Whether a new language improves that outcome remains an open hypothesis.
 
@@ -13,10 +14,11 @@ Read these documents in order:
 
 | Document | Purpose |
 |---|---|
-| [SPEC.md](SPEC.md) | Compact retained semantic requirements and explicit scope boundaries |
+| [SPEC.md](SPEC.md) | Restart draft 0.2: functional core, proof obligations, state-machine semantics and reference alignment |
 | [docs/EXPECTATIONS.md](docs/EXPECTATIONS.md) | Proposed first outcome, evidence questions and unresolved decisions |
 | [evidence/README.md](evidence/README.md) | Small historical counterexamples to turn into independently reviewed checks |
 | [docs/RELAY.md](docs/RELAY.md) | Handoff for Relay delivery protocol 2 |
+| [Design review](docs/spec-review-2026-09-27.md) | Assessment of the earlier baseline that motivated draft 0.2 |
 
 The owner's restart instruction on 2026-09-27 was:
 
@@ -26,6 +28,11 @@ The owner specified the second Relay protocol, based on expectations, evidence a
 questions to be validated. The documents here are a prepared starting brief, not an
 approved roadmap or fabricated execution evidence. Proposed scope and open decisions
 are labelled accordingly.
+
+Draft 0.2 defines three incremental targets: `core-0` for total pure functions,
+`verify-0` for explicit verification, and `machine-0` for state invariants. It includes
+a reservation example with exact expected behaviour. Full temporal proof automation,
+concurrency and broad libraries remain later work. None of these targets is implemented.
 
 The previous working tree was archived outside this repository, including its full
 v0.9.1 specification, reviews, samples, untracked files and local agent state. The
