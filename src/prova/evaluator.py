@@ -35,6 +35,22 @@ def values_equal(left: object, right: object) -> bool:
     return False
 
 
+def _fields_of(constructor: str, program: syntax.Program) -> tuple[tuple[str, str], ...]:
+    """Field declarations for a constructor's owning type: either a record
+    type of the same name, or the variant of that name inside some union
+    type (a union variant's constructor name is the variant's own name,
+    not the union type's name it is keyed under in `program.types`)."""
+    type_decl = program.types.get(constructor)
+    if isinstance(type_decl, syntax.RecordType):
+        return type_decl.fields
+    for type_decl in program.types.values():
+        if isinstance(type_decl, syntax.UnionType):
+            for variant in type_decl.variants:
+                if variant.name == constructor:
+                    return variant.fields
+    raise ValueError(f"no record type or union variant named {constructor!r}")
+
+
 def call_function(function: syntax.Function, args: tuple[object, ...], program: syntax.Program) -> object:
     env = dict(zip((name for name, _ in function.signature.params), args))
 
@@ -88,8 +104,7 @@ def eval_expr(expr: object, env: dict[str, object], program: syntax.Program) -> 
     if isinstance(expr, syntax.FieldAccess):
         target = eval_expr(expr.target, env, program)
         assert isinstance(target, ConstructorValue)
-        record_type = program.types[target.constructor]
-        field_names = [name for name, _ in record_type.fields]
+        field_names = [name for name, _ in _fields_of(target.constructor, program)]
         return target.fields[field_names.index(expr.field_name)]
 
     if isinstance(expr, syntax.OperatorCall):
