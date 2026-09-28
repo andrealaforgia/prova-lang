@@ -2,6 +2,12 @@
 evaluation run describes itself only as evaluation output, never as
 verified, proved or built.
 
+Covers the six happy-path table-row runs from I1.S1.B1, plus the two
+runtime outcomes that produce free-form diagnostic text rather than a
+rendered value -- an entry precondition violation and a postcondition
+violation -- since that free text is the most likely place a stray
+"holds"/"proves"/"verified" could leak in.
+
 Drives only the `prova` command's real JSON stdin/stdout surface, per the
 I1 change plan. No imports from src/prova.
 """
@@ -25,6 +31,13 @@ FORBIDDEN_CLAIM = re.compile(
     re.IGNORECASE,
 )
 
+# Unique in the reservation source: the `step` body's accepted-Reserve
+# branch. Bumping the increment from 1 to 2 breaks the postcondition
+# `(= (.reserved (.state result)) (+ (.reserved current) 1))` for an
+# accepted Reserve, without touching requires/ensures/examples.
+POSTCONDITION_MUTATION_TARGET = "(Outcome (Reservation (+ (.reserved current) 1)) true)"
+POSTCONDITION_MUTATION_REPLACEMENT = "(Outcome (Reservation (+ (.reserved current) 2)) true)"
+
 
 def _reservation_source() -> str:
     text = (REPO_ROOT / "SPEC.md").read_text(encoding="utf-8")
@@ -33,6 +46,14 @@ def _reservation_source() -> str:
     fence_start = text.index("```lisp", start) + len("```lisp\n")
     fence_end = text.index("```", fence_start)
     return text[fence_start:fence_end]
+
+
+def _postcondition_violating_source() -> str:
+    protected = _reservation_source()
+    assert protected.count(POSTCONDITION_MUTATION_TARGET) == 1, "expected exactly one occurrence to mutate"
+    mutated = protected.replace(POSTCONDITION_MUTATION_TARGET, POSTCONDITION_MUTATION_REPLACEMENT, 1)
+    assert mutated != protected
+    return mutated
 
 
 def _find_forbidden(value) -> list[str]:
@@ -52,6 +73,39 @@ def _find_forbidden(value) -> list[str]:
     return hits
 
 
+def _run_evaluate(source: str, function: str, arguments: list[str]) -> tuple[dict, str]:
+    request = {
+        "prova": "i1",
+        "operation": "evaluate",
+        "source": source,
+        "function": function,
+        "arguments": arguments,
+    }
+    proc = subprocess.run(
+        ["prova"],
+        input=json.dumps(request),
+        capture_output=True,
+        text=True,
+        timeout=10.0,
+    )
+    assert proc.returncode == 0, f"tool failure evaluating {function}({arguments}): stderr={proc.stderr!r}"
+    try:
+        response = json.loads(proc.stdout)
+    except (json.JSONDecodeError, ValueError):
+        raise AssertionError(f"non-JSON response evaluating {function}({arguments}): {proc.stdout!r}")
+    return response, proc.stderr
+
+
+def _assert_no_forbidden_claim(response: dict, stderr: str, label: str) -> None:
+    assert response.get("claim", {}).get("kind") == "evaluation", (
+        f"response does not describe itself as evaluation output for {label}: {response}"
+    )
+    body_hits = _find_forbidden(response)
+    stderr_hits = FORBIDDEN_CLAIM.findall(stderr)
+    assert not body_hits, f"forbidden claim wording in response body for {label}: {body_hits}; response={response}"
+    assert not stderr_hits, f"forbidden claim wording on stderr for {label}: {stderr_hits}"
+
+
 def test_b2_every_evaluation_run_describes_itself_only_as_evaluation_output():
     """Given the reported output of any of these runs, when the Owner reads
     it, then it describes itself only as evaluation output and contains no
@@ -59,40 +113,31 @@ def test_b2_every_evaluation_run_describes_itself_only_as_evaluation_output():
     source = _reservation_source()
 
     for before, event in SIX_PAIRS:
-        request = {
-            "prova": "i1",
-            "operation": "evaluate",
-            "source": source,
-            "function": "step",
-            "arguments": [f"(Reservation {before})", f"({event})"],
-        }
-        proc = subprocess.run(
-            ["prova"],
-            input=json.dumps(request),
-            capture_output=True,
-            text=True,
-            timeout=10.0,
-        )
-        assert proc.returncode == 0, f"tool failure evaluating step({before}, {event}): stderr={proc.stderr!r}"
-        try:
-            response = json.loads(proc.stdout)
-        except (json.JSONDecodeError, ValueError):
-            raise AssertionError(f"non-JSON response evaluating step({before}, {event}): {proc.stdout!r}")
+        response, stderr = _run_evaluate(source, "step", [f"(Reservation {before})", f"({event})"])
+        label = f"step({before}, {event})"
+        assert response.get("status") == "completed", f"{label} was not evaluated: {response}"
+        _assert_no_forbidden_claim(response, stderr, label)
 
-        assert response.get("status") == "completed", (
-            f"step({before}, {event}) was not evaluated: {response}"
-        )
-        assert response.get("claim", {}).get("kind") == "evaluation", (
-            f"response does not describe itself as evaluation output for "
-            f"step({before}, {event}): {response}"
-        )
+    # Entry precondition violation: (Reservation 5) fails `valid-state`
+    # (0 <= reserved <= 2), so `step`'s own `requires` rejects it before the
+    # body runs. The violation's free-form reason text is exactly the kind
+    # of prose the happy-path cases above cannot exercise.
+    precondition_response, precondition_stderr = _run_evaluate(source, "step", ["(Reservation 5)", "(Reserve)"])
+    assert precondition_response.get("status") == "completed", precondition_response
+    categories = {d.get("category") for d in (precondition_response.get("diagnostics") or [])}
+    assert "precondition_violation" in categories, (
+        f"expected a precondition_violation diagnostic for step((Reservation 5), (Reserve)): {precondition_response}"
+    )
+    _assert_no_forbidden_claim(precondition_response, precondition_stderr, "step((Reservation 5), (Reserve)) [precondition]")
 
-        body_hits = _find_forbidden(response)
-        stderr_hits = FORBIDDEN_CLAIM.findall(proc.stderr)
-        assert not body_hits, (
-            f"forbidden claim wording in response body for step({before}, {event}): "
-            f"{body_hits}; response={response}"
-        )
-        assert not stderr_hits, (
-            f"forbidden claim wording on stderr for step({before}, {event}): {stderr_hits}"
-        )
+    # Postcondition violation: a deliberately mutated copy of `step` whose
+    # body no longer satisfies its own `ensures`. Only the free-form
+    # diagnostic reason differs from the protected source's happy path.
+    mutated_source = _postcondition_violating_source()
+    postcondition_response, postcondition_stderr = _run_evaluate(mutated_source, "step", ["(Reservation 0)", "(Reserve)"])
+    assert postcondition_response.get("status") == "completed", postcondition_response
+    categories = {d.get("category") for d in (postcondition_response.get("diagnostics") or [])}
+    assert "postcondition_violation" in categories, (
+        f"expected a postcondition_violation diagnostic for the mutated step((Reservation 0), (Reserve)): {postcondition_response}"
+    )
+    _assert_no_forbidden_claim(postcondition_response, postcondition_stderr, "mutated step((Reservation 0), (Reserve)) [postcondition]")
