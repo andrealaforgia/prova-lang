@@ -124,17 +124,40 @@ def _field_type(type_name: str, field_name: str, program: syntax.Program) -> str
 
 
 def _pattern_bindings(
-    pattern: object, scrutinee_type: str | None, program: syntax.Program
+    pattern: object,
+    scrutinee_type: str | None,
+    program: syntax.Program,
+    diagnostics: list[Diagnostic],
+    location: tuple[int, int],
 ) -> dict[str, str]:
     if isinstance(pattern, syntax.PatVar):
         return {pattern.name: scrutinee_type} if scrutinee_type is not None else {}
     if isinstance(pattern, syntax.PatConstructor):
-        fields = syntax.resolve_constructor_fields(pattern.name, program)
-        if fields is None:
+        resolved = syntax.resolve_constructor(pattern.name, program)
+        if resolved is None:
+            diagnostics.append(
+                Diagnostic(
+                    "unbound_constructor",
+                    f"unknown constructor {pattern.name!r} in match pattern",
+                    location,
+                )
+            )
+            for subpattern in pattern.subpatterns:
+                _pattern_bindings(subpattern, None, program, diagnostics, location)
             return {}
+        owning_type, fields = resolved
+        if scrutinee_type is not None and owning_type != scrutinee_type:
+            diagnostics.append(
+                Diagnostic(
+                    "type_mismatch",
+                    f"match pattern {pattern.name!r} has type {owning_type}, "
+                    f"scrutinee has type {scrutinee_type}",
+                    location,
+                )
+            )
         bindings: dict[str, str] = {}
         for (field_name, field_type), subpattern in zip(fields, pattern.subpatterns):
-            bindings.update(_pattern_bindings(subpattern, field_type, program))
+            bindings.update(_pattern_bindings(subpattern, field_type, program, diagnostics, location))
         return bindings
     return {}
 
@@ -192,7 +215,11 @@ def _infer(
         disagreement = False
         for clause in expr.clauses:
             clause_env = dict(env)
-            clause_env.update(_pattern_bindings(clause.pattern, scrutinee_type, program))
+            clause_env.update(
+                _pattern_bindings(
+                    clause.pattern, scrutinee_type, program, diagnostics, (expr.line, expr.column)
+                )
+            )
             clause_type = _infer(clause.body, clause_env, program, diagnostics)
             if clause_type is None:
                 continue
