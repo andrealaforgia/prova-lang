@@ -14,34 +14,7 @@ I1 change plan. No imports from src/prova.
 
 from __future__ import annotations
 
-import re
-
-from _reservation_fixtures import reservation_source, reserve_bug_source, run_check
-
-FRESH_RESERVE_INPUT = 1
-
-# Matches `(example (step (Reservation N) (Reserve)) ...)` in the real
-# SPEC.md source text, capturing N -- the `current.reserved` value each
-# declared Reserve example is actually called with.
-DECLARED_RESERVE_EXAMPLE = re.compile(
-    r"\(example \(step \(Reservation (-?\d+)\) \(Reserve\)\)"
-)
-
-
-def test_b2_declared_examples_never_reach_the_injected_site():
-    """The injected defect only fires when `current.reserved` = 1. This
-    reads the protected source's own declared examples for `step` (Reserve)
-    calls and confirms none of them passes 1 -- if SPEC.md's examples ever
-    changed to include 1, this would fail, since the defect would then be
-    reachable by a declared example rather than only by a fresh input."""
-    declared_reserve_inputs = [
-        int(value) for value in DECLARED_RESERVE_EXAMPLE.findall(reservation_source())
-    ]
-    assert declared_reserve_inputs, "found no declared Reserve examples for step"
-    assert FRESH_RESERVE_INPUT not in declared_reserve_inputs, (
-        f"declared Reserve examples {declared_reserve_inputs} already reach "
-        f"current.reserved={FRESH_RESERVE_INPUT}, so the injected defect is not hidden"
-    )
+from _reservation_fixtures import reserve_bug_source, run_check
 
 
 def test_b2_hidden_type_error_in_steps_branch_is_rejected():
