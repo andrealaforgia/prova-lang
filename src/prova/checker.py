@@ -123,6 +123,64 @@ def _field_type(type_name: str, field_name: str, program: syntax.Program) -> str
     return None
 
 
+_LITERAL_PATTERN_TYPES = {
+    syntax.PatInt: "Int",
+    syntax.PatBool: "Bool",
+    syntax.PatUnit: "Unit",
+}
+
+
+def _constructor_signature(type_name: str, program: syntax.Program) -> dict[str, list[str]] | None:
+    """Constructor key -> field types for a finitely-inhabited-by-constructors
+    type; `None` for `Int` and for types with no known constructors."""
+    if type_name == "Bool":
+        return {"true": [], "false": []}
+    if type_name == "Unit":
+        return {"()": []}
+    type_decl = program.types.get(type_name)
+    if isinstance(type_decl, syntax.RecordType):
+        return {type_decl.name: [t for _, t in type_decl.fields]}
+    if isinstance(type_decl, syntax.UnionType):
+        return {v.name: [t for _, t in v.fields] for v in type_decl.variants}
+    return None
+
+
+def _pattern_key(pattern: object) -> str | None:
+    if isinstance(pattern, syntax.PatBool):
+        return "true" if pattern.value else "false"
+    if isinstance(pattern, syntax.PatUnit):
+        return "()"
+    if isinstance(pattern, syntax.PatConstructor):
+        return pattern.name
+    return None
+
+
+def _is_wild(pattern: object) -> bool:
+    return isinstance(pattern, (syntax.PatWildcard, syntax.PatVar))
+
+
+def _covers(rows: list[tuple], types: list[str], program: syntax.Program) -> bool:
+    """True when the pattern rows match every value of the column types."""
+    if not types:
+        return bool(rows)
+    head_type, rest_types = types[0], types[1:]
+    signature = _constructor_signature(head_type, program)
+    if signature is None:
+        return _covers([row[1:] for row in rows if _is_wild(row[0])], rest_types, program)
+    for key, field_types in signature.items():
+        specialised = []
+        for row in rows:
+            head = row[0]
+            if _is_wild(head):
+                specialised.append((syntax.PatWildcard(),) * len(field_types) + row[1:])
+            elif _pattern_key(head) == key:
+                sub = head.subpatterns if isinstance(head, syntax.PatConstructor) else ()
+                specialised.append(tuple(sub) + row[1:])
+        if not _covers(specialised, field_types + rest_types, program):
+            return False
+    return True
+
+
 def _pattern_bindings(
     pattern: object,
     scrutinee_type: str | None,
@@ -132,6 +190,17 @@ def _pattern_bindings(
 ) -> dict[str, str]:
     if isinstance(pattern, syntax.PatVar):
         return {pattern.name: scrutinee_type} if scrutinee_type is not None else {}
+    literal_type = _LITERAL_PATTERN_TYPES.get(type(pattern))
+    if literal_type is not None:
+        if scrutinee_type is not None and scrutinee_type != literal_type:
+            diagnostics.append(
+                Diagnostic(
+                    "type_mismatch",
+                    f"{literal_type} literal pattern against scrutinee of type {scrutinee_type}",
+                    location,
+                )
+            )
+        return {}
     if isinstance(pattern, syntax.PatConstructor):
         resolved = syntax.resolve_constructor(pattern.name, program)
         if resolved is None:
@@ -152,6 +221,15 @@ def _pattern_bindings(
                     "type_mismatch",
                     f"match pattern {pattern.name!r} has type {owning_type}, "
                     f"scrutinee has type {scrutinee_type}",
+                    location,
+                )
+            )
+        if len(fields) != len(pattern.subpatterns):
+            diagnostics.append(
+                Diagnostic(
+                    "arity_mismatch",
+                    f"match pattern {pattern.name!r} takes {len(fields)} field(s), "
+                    f"got {len(pattern.subpatterns)}",
                     location,
                 )
             )
@@ -213,6 +291,7 @@ def _infer(
         scrutinee_type = _infer(expr.scrutinee, env, program, diagnostics)
         result_type: str | None = None
         disagreement = False
+        diagnostics_before_patterns = len(diagnostics)
         for clause in expr.clauses:
             clause_env = dict(env)
             clause_env.update(
@@ -227,6 +306,19 @@ def _infer(
                 result_type = clause_type
             elif result_type != clause_type:
                 disagreement = True
+        patterns_well_formed = len(diagnostics) == diagnostics_before_patterns
+        if (
+            scrutinee_type is not None
+            and patterns_well_formed
+            and not _covers([(c.pattern,) for c in expr.clauses], [scrutinee_type], program)
+        ):
+            diagnostics.append(
+                Diagnostic(
+                    "non_exhaustive_match",
+                    f"'match' does not cover every value of type {scrutinee_type}",
+                    (expr.line, expr.column),
+                )
+            )
         if disagreement:
             diagnostics.append(
                 Diagnostic(
