@@ -18,6 +18,8 @@ from _i1_s3_fixtures import (
     MALFORMED_CATEGORY,
     PRECONDITION_CATEGORY,
     diagnostic_categories,
+    assert_control_succeeds,
+    assert_distinct_from_precondition,
     evaluate_step,
 )
 
@@ -50,6 +52,8 @@ def test_p3_field_count_and_unknown_constructor_rejected_as_input_failure(text, 
     categories = diagnostic_categories(response)
     assert categories & {MALFORMED_CATEGORY, ILL_TYPED_CATEGORY}, f"no input-value category: {response}"
     assert PRECONDITION_CATEGORY not in categories, f"conflated with precondition: {response}"
+    assert_distinct_from_precondition(response, event)
+    assert_control_succeeds(event)
 
 
 def test_p3_input_failure_differs_from_known_precondition_failure():

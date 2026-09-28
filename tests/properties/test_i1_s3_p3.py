@@ -34,6 +34,8 @@ from _i1_s3_fixtures import (
     EVENTS,
     MALFORMED_CATEGORY,
     PRECONDITION_CATEGORY,
+    assert_control_succeeds,
+    assert_distinct_from_precondition,
     assert_rejected,
     assert_success_outcome,
     evaluate_step,
@@ -118,6 +120,8 @@ def test_p3_malformed_current_text_is_rejected_distinctly(text, event):
         category=MALFORMED_CATEGORY,
         forbidden=(PRECONDITION_CATEGORY,),
     )
+    assert_distinct_from_precondition(response, event)
+    assert_control_succeeds(event)
 
 
 def test_p3_matched_zero_control_succeeds_for_each_event():

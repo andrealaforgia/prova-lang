@@ -19,11 +19,13 @@ from _i1_s3_fixtures import TABLE, assert_success_outcome, evaluate_step
 @pytest.mark.parametrize("before,event,after,accepted", TABLE, ids=[f"{b}-{e}" for b, e, _, _ in TABLE])
 def test_p5_valid_pair_succeeds_with_exact_table_outcome(before, event, after, accepted):
     returncode, response, stdout, stderr = evaluate_step(f"(Reservation {before})", event)
-    assert_success_outcome(
+    returned_count = assert_success_outcome(
         returncode, response, stdout, stderr,
         expected_state=after, expected_accepted=accepted,
     )
-    assert 0 <= after <= 2
+    assert 0 <= returned_count <= 2, f"response count {returned_count} outside [0, 2]: {response}"
+    signed_unit = 1 if event == "Reserve" else -1
+    assert returned_count == before + signed_unit if accepted else returned_count == before
 
 
 def test_p5_boundary_rejection_cases_are_not_successes_with_accepted_false():

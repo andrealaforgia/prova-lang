@@ -6,6 +6,8 @@ Not a test module (no `test_` prefix); pytest will not collect it.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from _prova_client import load_reservation_source, parse_value, run_prova
 
 EVENTS = ["Reserve", "Release"]
@@ -55,6 +57,8 @@ def assert_rejected(returncode, response, stdout, stderr, *, category: str, forb
     assert not result.get("value"), f"rejection carried a successful result: {response}"
     categories = diagnostic_categories(response)
     assert category in categories, f"expected category {category!r} in {categories}: {response}"
+    if category == PRECONDITION_CATEGORY:
+        assert_cites_precondition(response)
     for forbidden_category in forbidden:
         assert forbidden_category not in categories, (
             f"unexpected category {forbidden_category!r} present: {response}"
@@ -78,4 +82,50 @@ def assert_success_outcome(returncode, response, stdout, stderr, *, expected_sta
     )
     assert accepted_value is expected_accepted, (
         f"expected accepted={expected_accepted}, got {accepted_value}: {response}"
+    )
+    return state_args[0]
+
+
+_CITATION_MARKERS = ("precondition", "requires", "valid-state")
+
+
+def assert_cites_precondition(response: dict) -> None:
+    """The precondition diagnostic must name the function and its requires
+    clause / valid-state check in its reason or location, not just carry a
+    category label."""
+    diagnostics = [
+        d for d in (response.get("diagnostics") or []) if d.get("category") == PRECONDITION_CATEGORY
+    ]
+    assert diagnostics, f"no precondition diagnostic: {response}"
+    text = " ".join(str(d.get(k, "")) for d in diagnostics for k in ("reason", "location", "path")).lower()
+    assert "step" in text, f"precondition diagnostic does not name the function step: {diagnostics}"
+    assert any(marker in text for marker in _CITATION_MARKERS), (
+        f"precondition diagnostic does not cite the requires clause / valid-state: {diagnostics}"
+    )
+
+
+@lru_cache(maxsize=None)
+def known_precondition_categories(event: str) -> frozenset:
+    _, response, _, _ = evaluate_step("(Reservation 3)", event)
+    categories = frozenset(diagnostic_categories(response or {}))
+    assert PRECONDITION_CATEGORY in categories, f"reference precondition case not rejected: {response}"
+    return categories
+
+
+def assert_control_succeeds(event: str) -> None:
+    """Corrected (Reservation 0) control paired with a rejected family, so a
+    blanket rejection of every request is caught per case."""
+    returncode, response, stdout, stderr = evaluate_step("(Reservation 0)", event)
+    expected_state, expected_accepted = (1, True) if event == "Reserve" else (0, False)
+    assert_success_outcome(
+        returncode, response, stdout, stderr,
+        expected_state=expected_state, expected_accepted=expected_accepted,
+    )
+
+
+def assert_distinct_from_precondition(response: dict, event: str) -> None:
+    categories = diagnostic_categories(response)
+    assert PRECONDITION_CATEGORY not in categories, f"conflated with precondition: {response}"
+    assert categories != known_precondition_categories(event), (
+        f"input failure reported with the same categories as a precondition rejection: {response}"
     )

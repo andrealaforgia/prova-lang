@@ -39,6 +39,8 @@ from _i1_s3_fixtures import (
     ILL_TYPED_CATEGORY,
     MALFORMED_CATEGORY,
     PRECONDITION_CATEGORY,
+    assert_control_succeeds,
+    assert_distinct_from_precondition,
     assert_success_outcome,
     diagnostic_categories,
     evaluate_step,
@@ -125,6 +127,13 @@ _ill_typed_text = st.one_of(
 @settings(derandomize=True, max_examples=60, deadline=None)
 @given(text=_ill_typed_text, event=st.sampled_from(EVENTS))
 @example(text="0", event="Reserve")
+@example(text="0", event="Release")
+@example(text="-1", event="Reserve")
+@example(text="-1", event="Release")
+@example(text="2", event="Reserve")
+@example(text="2", event="Release")
+@example(text="3", event="Reserve")
+@example(text="3", event="Release")
 @example(text="true", event="Release")
 @example(text="false", event="Reserve")
 @example(text="()", event="Release")
@@ -157,11 +166,14 @@ def test_p4_ill_typed_current_is_rejected_distinctly(text, event):
         f"ill-typed value {text!r}/{event} was reported as a precondition violation "
         f"instead of a value-classification error: {response}"
     )
+    assert_distinct_from_precondition(response, event)
+    assert_control_succeeds(event)
 
 
 def test_p4_corrected_controls_succeed():
     for current, event in [
         ("(Reservation 0)", "Reserve"),
+        ("(Reservation 2)", "Reserve"),
         ("(Reservation 1)", "Reserve"),
         ("(Reservation 2)", "Release"),
     ]:
@@ -171,6 +183,7 @@ def test_p4_corrected_controls_succeed():
             (0, "Reserve"): (1, True),
             (1, "Reserve"): (2, True),
             (2, "Release"): (1, True),
+            (2, "Reserve"): (2, False),
         }[(before, event)]
         assert_success_outcome(
             returncode, response, stdout, stderr,
@@ -200,3 +213,14 @@ def test_p4_generated_families_were_exercised():
         f"generated families never produced a case in 200 examples: {missing} "
         f"(hit: {hit_families})"
     )
+
+
+def test_p4_input_type_rejection_differs_from_both_precondition_rejections():
+    for event in EVENTS:
+        _, wrong_type, _, _ = evaluate_step("3", event)
+        for invalid_state in ("(Reservation -1)", "(Reservation 3)"):
+            _, pre, _, _ = evaluate_step(invalid_state, event)
+            assert PRECONDITION_CATEGORY in diagnostic_categories(pre), pre
+            assert diagnostic_categories(wrong_type) != diagnostic_categories(pre), (
+                f"bare 3 and {invalid_state} share categories for {event}: {wrong_type} vs {pre}"
+            )
