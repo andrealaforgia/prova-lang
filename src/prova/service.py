@@ -11,6 +11,8 @@ from prova import checker, evaluator, syntax
 from prova.reader import ReaderError, read_program
 from prova.values import render
 
+UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "verify", "build"})
+
 
 def handle(request: dict) -> dict:
     operation = request.get("operation")
@@ -22,13 +24,24 @@ def handle(request: dict) -> dict:
             request.get("function"),
             request.get("arguments", []),
         )
+    if operation in UNAVAILABLE_OPERATIONS:
+        return {
+            "operation": operation,
+            "status": "unavailable",
+            "diagnostics": [
+                {
+                    "category": "operation_unavailable",
+                    "reason": f"operation {operation!r} is not available in I1",
+                }
+            ],
+        }
     return {
         "operation": operation,
         "status": "unavailable",
         "diagnostics": [
             {
-                "category": "operation_unavailable",
-                "reason": f"operation {operation!r} is not available in I1",
+                "category": "unknown_operation",
+                "reason": f"operation {operation!r} is not recognized",
             }
         ],
     }
