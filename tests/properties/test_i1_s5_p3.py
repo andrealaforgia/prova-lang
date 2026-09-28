@@ -10,6 +10,11 @@ diagnostic category, and the reported line/column moves by exactly the
 blank-line and indent-space deltas applied to that rendering relative to
 the unrendered fixture -- not a location copied verbatim from the
 unrendered fixture, and not a generic file-level report.
+
+The Reserve and Release fixtures are the same kind of defect (Bool
+arithmetic on an integer operand) in two different clauses, so a category
+that genuinely denotes the type error -- rather than being incidental to
+one fixture -- must be reported identically for both.
 """
 
 from __future__ import annotations
@@ -88,4 +93,19 @@ def test_p3_location_tracks_the_layout_changes(fixture_source):
     # fixture must actually differ from one another.
     assert len(set(seen_lines_and_columns.values())) == len(RENDERINGS), (
         f"location did not vary across distinct layouts: {seen_lines_and_columns}"
+    )
+
+
+def test_p3_reserve_and_release_variants_report_the_same_type_error_category():
+    returncode, response, stdout, stderr = run_check(reserve_bug_source())
+    reserve_categories = assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+
+    returncode, response, stdout, stderr = run_check(release_bug_source())
+    release_categories = assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+
+    assert reserve_categories == release_categories, (
+        f"the same kind of defect (Bool arithmetic on an integer operand) in two "
+        f"different clauses reported different categories, so the category does "
+        f"not reliably denote the defect: reserve={reserve_categories}, "
+        f"release={release_categories}"
     )

@@ -7,6 +7,13 @@ Given a variant where `initial`'s body reads an unbound name instead of
 invalid program with a location that tracks the name's position in the
 source (not a fixed, layout-independent report), and after the single
 repair (restoring `0`), the source is accepted again.
+
+B4 also requires this rejection to carry "its own category", confirming
+rejection is not limited to one error shape. A checker reporting one fixed
+generic category for every static defect would satisfy every other
+assertion in this module while never actually identifying what went
+wrong, so this file also checks that the unbound-name category differs
+from the Bool-arithmetic type-error category from I1.S5.P2/P3.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from _i1_s5_fixtures import (
     assert_rejected_as_invalid_program,
     location_of,
     render,
+    reserve_bug_source,
     run_check,
     unbound_bug_source,
     unbound_fix_source,
@@ -72,4 +80,19 @@ def test_p4_location_tracks_the_unbound_names_position():
     )
     assert shifted_column == base_column + 3, (
         f"expected column {base_column + 3}, got {shifted_column}"
+    )
+
+
+def test_p4_category_differs_from_the_bool_arithmetic_type_error_category():
+    returncode, response, stdout, stderr = run_check(unbound_bug_source())
+    unbound_categories = assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+
+    returncode, response, stdout, stderr = run_check(reserve_bug_source())
+    type_error_categories = assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+
+    assert unbound_categories.isdisjoint(type_error_categories), (
+        f"the unbound-name rejection and the Bool-arithmetic type-error rejection "
+        f"reported overlapping categories, so neither category actually denotes "
+        f"its own defect as B3/B4 require: unbound={unbound_categories}, "
+        f"type_error={type_error_categories}"
     )
