@@ -14,6 +14,16 @@ response reports `malformed_value` or `ill_typed_value` (never
 
 Derandomized with a fixed seed and bounded example counts, plus an explicit
 representative of every listed family.
+
+Four of the nine families below are real generators rather than fixed lists,
+closing a gap a validation run found: the previous version only ever tried
+arity 0/2, one constructor payload, two unknown-constructor strings and one
+Outcome literal, so it could not support the verification's claim of
+"generated, bounded payload and arity variations". `_generated_family_hits`
+records which of these generated families a run actually produced at least
+one case from; `test_p4_generated_families_were_exercised` asserts every one
+of them fired at least once in this module's own Hypothesis run, so the
+generation cannot silently collapse back to a single repeated value.
 """
 
 from __future__ import annotations
@@ -31,20 +41,85 @@ from _i1_s3_fixtures import (
     evaluate_step,
 )
 
+_KNOWN_CONSTRUCTOR_NAMES = {"Reservation", "Reserve", "Release", "Outcome"}
+
+# Generated-family coverage recorder: populated as a side effect of drawing
+# from the strategies below, inspected by
+# test_p4_generated_families_were_exercised at the end of this module's run.
+_generated_family_hits: set[str] = set()
+
+
+def _record(family: str, text: str) -> str:
+    _generated_family_hits.add(family)
+    return text
+
+
+# Generated family: an unknown constructor name (never one of the four
+# declared names) with a generated arity of integer fields.
+_unknown_constructor_name = st.from_regex(
+    r"[A-Z][A-Za-z]{0,7}", fullmatch=True
+).filter(lambda name: name not in _KNOWN_CONSTRUCTOR_NAMES)
+_unknown_constructor = st.builds(
+    lambda name, fields: _record(
+        "unknown_constructor",
+        f"({name}{' ' + ' '.join(str(f) for f in fields) if fields else ''})",
+    ),
+    _unknown_constructor_name,
+    st.lists(st.integers(min_value=-5, max_value=5), min_size=0, max_size=3),
+)
+
+# Generated family: Reservation with a generated arity other than 1 (the
+# declared arity), each field a generated integer.
+_reservation_wrong_arity = st.builds(
+    lambda fields: _record(
+        "reservation_wrong_arity",
+        f"(Reservation{' ' + ' '.join(str(f) for f in fields) if fields else ''})",
+    ),
+    st.integers(min_value=0, max_value=4)
+    .filter(lambda n: n != 1)
+    .flatmap(lambda n: st.lists(st.integers(min_value=-5, max_value=5), min_size=n, max_size=n)),
+)
+
+# Generated family: Outcome with a generated reservation count and boolean,
+# still the wrong nominal type for `current`.
+_outcome_value = st.builds(
+    lambda n, accepted: _record("outcome_value", f"(Outcome (Reservation {n}) {accepted})"),
+    st.integers(min_value=-3, max_value=3),
+    st.sampled_from(["true", "false"]),
+)
+
+# Generated family: Reservation whose sole field is itself a constructor
+# value, at a generated nesting depth (Reservation, Outcome or an unknown
+# constructor at the leaf).
+_constructor_leaf = st.one_of(
+    st.builds(lambda n: f"(Reservation {n})", st.integers(min_value=-3, max_value=3)),
+    st.builds(
+        lambda n, accepted: f"(Outcome (Reservation {n}) {accepted})",
+        st.integers(min_value=-3, max_value=3),
+        st.sampled_from(["true", "false"]),
+    ),
+    st.builds(lambda n: f"(NoSuchThing {n})", st.integers(min_value=-3, max_value=3)),
+)
+_reservation_constructor_payload = st.recursive(
+    _constructor_leaf,
+    lambda children: st.builds(lambda c: f"(Reservation {c})", children),
+    max_leaves=4,
+).map(lambda text: _record("reservation_constructor_payload", text))
+
 _ill_typed_text = st.one_of(
     st.integers(min_value=-1000, max_value=1000).map(str),  # bare Int
     st.sampled_from(["true", "false", "()"]),                # Bool, Unit
     st.sampled_from(["(Reserve)", "(Release)"]),              # Event constructors
-    st.sampled_from(["(Outcome (Reservation 0) true)"]),      # Outcome value
-    st.sampled_from(["(NoSuchThing)", "(NoSuchThing 1)"]),   # unknown constructor
-    st.sampled_from(["(Reservation)", "(Reservation 1 2)"]), # wrong arity
+    _outcome_value,                                            # Outcome value, generated
+    _unknown_constructor,                                       # unknown constructor, generated
+    _reservation_wrong_arity,                                   # wrong arity, generated
     st.sampled_from(["(Reservation true)", "(Reservation false)"]),   # Bool payload
     st.sampled_from(["(Reservation ())"]),                    # Unit payload
-    st.sampled_from(["(Reservation (Reserve))"]),             # constructor payload
+    _reservation_constructor_payload,                           # constructor payload, generated
 )
 
 
-@settings(derandomize=True, max_examples=30, deadline=None)
+@settings(derandomize=True, max_examples=60, deadline=None)
 @given(text=_ill_typed_text, event=st.sampled_from(EVENTS))
 @example(text="0", event="Reserve")
 @example(text="true", event="Release")
@@ -98,3 +173,17 @@ def test_p4_corrected_controls_succeed():
             returncode, response, stdout, stderr,
             expected_state=expected_state, expected_accepted=expected_accepted,
         )
+
+
+def test_p4_generated_families_were_exercised():
+    expected_families = {
+        "unknown_constructor",
+        "reservation_wrong_arity",
+        "outcome_value",
+        "reservation_constructor_payload",
+    }
+    missing = expected_families - _generated_family_hits
+    assert not missing, (
+        f"generated families never produced a case in this run: {missing} "
+        f"(hit: {_generated_family_hits}); rerun test_p4_ill_typed_current_is_rejected_distinctly first"
+    )
