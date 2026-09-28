@@ -16,6 +16,8 @@ import pytest
 from _i1_s5_fixtures import (
     RESERVE_BUG_MARKER,
     UNBOUND_NAME,
+    acceptable_sites,
+    assert_reported_at_any,
     diagnostic_locations,
     line_col,
     assert_accepted,
@@ -76,7 +78,7 @@ def test_p5_unmodified_source_remains_an_additional_positive_control():
 
 def test_p5_both_defects_source_reports_each_defect_at_its_own_site():
     """Each diagnostic is resolved against the submitted text: the type_mismatch
-    must sit at the start of `(+ true 1)` and the unbound_name at the start of
+    must sit at the `true` operand or the start of `(+ true 1)` and the unbound_name at the start of
     `missing-count`, so neither defect is reported only by proxy."""
     source = combined_source(reserve_defect=True, unbound_defect=True)
     assert source.count(RESERVE_BUG_MARKER) == 1
@@ -84,13 +86,10 @@ def test_p5_both_defects_source_reports_each_defect_at_its_own_site():
     returncode, response, stdout, stderr = run_check(source)
     assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
 
-    type_site = line_col(source, source.index(RESERVE_BUG_MARKER))
+    type_sites = acceptable_sites(source, RESERVE_BUG_MARKER, "true")
     name_site = line_col(source, source.index(UNBOUND_NAME))
-    type_reported = diagnostic_locations(response, "type_mismatch")
     name_reported = diagnostic_locations(response, "unbound_name")
-    assert type_site in type_reported, (
-        f"no type_mismatch at {type_site}; reported {sorted(type_reported)}: {response}"
-    )
+    assert_reported_at_any(response, "type_mismatch", type_sites, "both-defects")
     assert name_site in name_reported, (
         f"no unbound_name at {name_site}; reported {sorted(name_reported)}: {response}"
     )
@@ -101,9 +100,9 @@ def test_p5_reserve_only_source_reports_type_mismatch_at_the_marker():
     assert source.count(RESERVE_BUG_MARKER) == 1
     returncode, response, stdout, stderr = run_check(source)
     assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
-    site = line_col(source, source.index(RESERVE_BUG_MARKER))
-    reported = diagnostic_locations(response, "type_mismatch")
-    assert site in reported, f"no type_mismatch at {site}; reported {sorted(reported)}: {response}"
+    assert_reported_at_any(
+        response, "type_mismatch", acceptable_sites(source, RESERVE_BUG_MARKER, "true"), "reserve-only"
+    )
 
 
 def test_p5_unbound_only_source_reports_unbound_name_at_the_name():

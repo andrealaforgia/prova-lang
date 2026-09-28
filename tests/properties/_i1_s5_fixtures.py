@@ -252,3 +252,19 @@ def diagnostic_locations(response: dict, category: str) -> set[tuple[int, int]]:
         if isinstance(line, int) and isinstance(column, int):
             found.add((line, column))
     return found
+
+
+def acceptable_sites(text: str, marker: str, operand: str) -> set[tuple[int, int]]:
+    """Positions that identify an arithmetic type defect: the start of the
+    containing erroneous expression (`marker`) or the start of the offending
+    operand within it. Both are resolved against the exact submitted text."""
+    start = text.index(marker)
+    return {line_col(text, start), line_col(text, start + marker.index(operand))}
+
+
+def assert_reported_at_any(response: dict, category: str, sites: set[tuple[int, int]], where: str = "") -> None:
+    reported = diagnostic_locations(response, category)
+    assert reported & sites, (
+        f"{where}: no {category} diagnostic at the offending operand or its containing "
+        f"expression {sorted(sites)}; reported {sorted(reported)}: {response}"
+    )

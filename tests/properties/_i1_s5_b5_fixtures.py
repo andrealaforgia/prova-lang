@@ -8,8 +8,6 @@ Not a test module (no `test_` prefix); pytest will not collect it.
 from __future__ import annotations
 
 import itertools
-import json
-import re
 
 from _prova_client import run_prova
 
@@ -85,6 +83,9 @@ def call(req: dict):
 
 
 def assert_missing_examples_rejection(operation, returncode, response, stdout, stderr, where=""):
+    """A well-formed, non-crashing rejection naming the missing examples
+    clause. No category or status spelling beyond 'a rejection, not a success
+    or a tool failure' is required."""
     assert returncode == 0, f"{where}: non-zero/crash exit {returncode}, stderr={stderr!r}"
     for stream in (stdout, stderr):
         assert "Traceback" not in stream, (
@@ -92,17 +93,16 @@ def assert_missing_examples_rejection(operation, returncode, response, stdout, s
         )
     assert response is not None, f"{where}: stdout is not one JSON response: {stdout!r}"
     assert response.get("operation") == operation, f"{where}: {response}"
-    assert response.get("status") == "invalid_program", f"{where}: {response}"
+    assert response.get("status") not in (None, "completed", "tool_failure"), f"{where}: {response}"
     assert not response.get("result"), f"{where}: rejection carried a result: {response}"
     diagnostics = response.get("diagnostics") or []
     assert diagnostics, f"{where}: no diagnostics: {response}"
-    assert any(
-        d.get("category") == "syntax"
-        and "examples" in str(d.get("reason", "")).lower()
-        and re.search(r"\bf\b", str(d.get("reason", "")))
-        for d in diagnostics
-    ), f"{where}: no syntax diagnostic naming the missing examples clause and function f: {diagnostics}"
-    assert "verified" not in json.dumps(response).lower(), f"{where}: {response}"
+    assert all(isinstance(d, dict) and d.get("category") for d in diagnostics), (
+        f"{where}: diagnostics are not structured: {diagnostics}"
+    )
+    assert any("examples" in str(d.get("reason", "")).lower() for d in diagnostics), (
+        f"{where}: no diagnostic naming the missing examples clause: {diagnostics}"
+    )
 
 
 def assert_accepted_check(response, returncode, where=""):

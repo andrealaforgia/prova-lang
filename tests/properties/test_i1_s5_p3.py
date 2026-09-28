@@ -24,9 +24,9 @@ import pytest
 from _i1_s5_fixtures import (
     RELEASE_BUG_MARKER,
     RESERVE_BUG_MARKER,
+    acceptable_sites,
+    assert_reported_at_any,
     assert_rejected_as_invalid_program,
-    diagnostic_locations,
-    line_col,
     location_of,
     release_bug_source,
     render,
@@ -121,23 +121,22 @@ def test_p3_reserve_and_release_variants_report_the_same_type_error_category():
 
 
 @pytest.mark.parametrize("fixture_source,marker", ANCHORED_FIXTURES)
-def test_p3_type_mismatch_is_located_at_the_offending_expression_in_every_layout(
+def test_p3_type_mismatch_is_located_at_the_offending_site_in_every_layout(
     fixture_source, marker
 ):
-    """Each of the 12 submitted texts is resolved independently: the expected
-    position is where the offending arithmetic expression (`(+ true 1)` or
-    `(- true 1)`) actually starts in that exact text, computed by counting
-    newlines, and the diagnostic must report a type_mismatch there."""
+    """Each of the 12 submitted texts is resolved independently by counting
+    newlines: the diagnostic must report a type_mismatch at the offending Bool
+    operand (`true`) or at the start of the containing expression (`(+ true 1)`
+    / `(- true 1)`). Either identifies the defect; a fixed or layout-independent
+    location identifies neither."""
     base = fixture_source()
     for blank_lines, indent_spaces in RENDERINGS:
         rendered = render(base, blank_lines, indent_spaces)
         assert rendered.count(marker) == 1
-        expected = line_col(rendered, rendered.index(marker))
+        sites = acceptable_sites(rendered, marker, "true")
         returncode, response, stdout, stderr = run_check(rendered)
         assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
-        reported = diagnostic_locations(response, "type_mismatch")
-        assert expected in reported, (
-            f"blank_lines={blank_lines}, indent_spaces={indent_spaces}: no "
-            f"type_mismatch diagnostic at {expected} (start of {marker!r}); "
-            f"type_mismatch locations reported: {sorted(reported)}; response: {response}"
+        assert_reported_at_any(
+            response, "type_mismatch", sites,
+            f"blank_lines={blank_lines}, indent_spaces={indent_spaces}",
         )

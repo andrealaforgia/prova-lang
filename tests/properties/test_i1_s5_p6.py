@@ -20,7 +20,13 @@ import subprocess
 import pytest
 
 from _i1_s5_fixtures import assert_accepted, protected_source, run_check
-from _prova_client import BASELINE_SHA, REPO_ROOT, parse_value, run_prova
+from _prova_client import (
+    REPO_ROOT,
+    SPEC_ORACLE_SHA as BASELINE_SHA,
+    load_reservation_source,
+    parse_value,
+    run_prova,
+)
 
 START_HEADING = "## Core conformance example"
 END_HEADING = "## Empirical evaluation"
@@ -82,9 +88,9 @@ def test_p6_protected_reservation_region_matches_baseline():
     )
 
 
-def test_p6_check_accepts_the_protected_source_with_no_errors():
-    source = protected_source()
-    returncode, response, stdout, stderr = run_check(source)
+@pytest.mark.parametrize("source_of", [protected_source, load_reservation_source], ids=["baseline", "candidate"])
+def test_p6_check_accepts_the_protected_source_with_no_errors(source_of):
+    returncode, response, stdout, stderr = run_check(source_of())
     assert_accepted(returncode, response, stdout, stderr)
 
 

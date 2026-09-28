@@ -1,7 +1,7 @@
 """I1.S5.P9 / I1.S5.B5: restoring the examples clause (signature, contracts
 and body unchanged) makes `check`, `examples` and `evaluate` succeed with
 independently calculated results, and rejected and repaired requests
-interleaved in either order do not leak state into each other.
+interleaved in either order each keep their complete result.
 """
 
 from __future__ import annotations
@@ -66,10 +66,30 @@ def test_p9_repaired_matrix_sources_succeed(contract, body, placement):
     _check_repaired(source, placement, body, f"{contract}-{body}-{placement}")
 
 
+def _assert_good_full_result(operation, resp, rc, placement, where):
+    """The complete successful result for `request(operation, ...)`: `check`
+    accepted, all declared examples passed, `evaluate` returning the
+    independently calculated value (f(0) = 1 for the incrementing body when
+    sole; helper(0) = 0 when the helper is selected)."""
+    assert rc == 0 and resp is not None, where
+    if operation == "check":
+        assert_accepted_check(resp, rc, where)
+    elif operation == "examples":
+        _assert_examples_pass(resp, rc, placement, where)
+    else:
+        assert resp.get("status") == "completed", f"{where}: {resp}"
+        assert not resp.get("diagnostics"), f"{where}: {resp}"
+        assert resp["result"]["value"] == ("1" if placement == "sole" else "0"), f"{where}: {resp}"
+
+
 @pytest.mark.parametrize("contract", CONTRACTS)
 @pytest.mark.parametrize("placement", PLACEMENTS)
 @pytest.mark.parametrize("order", ["rejected-first", "repaired-first"])
-def test_p9_interleaved_rejected_and_repaired_requests_do_not_leak(contract, placement, order):
+def test_p9_interleaved_rejected_and_repaired_requests_keep_their_full_results(contract, placement, order):
+    """Rejected and repaired requests alternate in both orders; every repaired
+    response must still carry its complete success result and every rejected
+    response its rejection, so neither outcome depends on what the tool ran
+    before it."""
     bad = place(declaration(contract, "n-plus-1", with_examples=False), placement)
     good = place(declaration(contract, "n-plus-1", with_examples=True), placement)
     for operation in ("check", "examples", "evaluate"):
@@ -82,5 +102,4 @@ def test_p9_interleaved_rejected_and_repaired_requests_do_not_leak(contract, pla
             if kind == "bad":
                 assert_missing_examples_rejection(operation, rc, resp, out, err, where)
             else:
-                assert rc == 0 and resp is not None and resp.get("status") == "completed", f"{where}: {resp}"
-                assert not resp.get("diagnostics"), f"{where}: {resp}"
+                _assert_good_full_result(operation, resp, rc, placement, where)
