@@ -11,7 +11,26 @@ from prova import checker, evaluator, syntax
 from prova.reader import ReaderError, read_program
 from prova.values import render
 
+AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover")
 UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "verify", "build"})
+
+DIAGNOSTIC_CATEGORIES = (
+    "syntax",
+    "unbound_type",
+    "unbound_constructor",
+    "unbound_name",
+    "unbound_field",
+    "type_mismatch",
+    "arity_mismatch",
+    "non_exhaustive_match",
+    "unknown_function",
+    "malformed_value",
+    "ill_typed_value",
+    "precondition_violation",
+    "postcondition_violation",
+    "operation_unavailable",
+    "unknown_operation",
+)
 
 
 def handle(request: dict) -> dict:
@@ -26,6 +45,8 @@ def handle(request: dict) -> dict:
             request.get("function"),
             request.get("arguments", []),
         )
+    if operation == "discover":
+        return _run_discover()
     if operation in UNAVAILABLE_OPERATIONS:
         return {
             "operation": operation,
@@ -46,6 +67,26 @@ def handle(request: dict) -> dict:
                 "reason": f"operation {operation!r} is not recognized",
             }
         ],
+    }
+
+
+def _run_discover() -> dict:
+    availability = {name: "available" for name in AVAILABLE_OPERATIONS}
+    availability.update({name: "unavailable" for name in sorted(UNAVAILABLE_OPERATIONS)})
+    return {
+        "operation": "discover",
+        "status": "completed",
+        "claim": {"kind": "manifest", "scope": "this tool"},
+        "diagnostics": [],
+        "result": {
+            "profile": {"name": "core-0", "coverage": "partial"},
+            "operations": availability,
+            "diagnostic_categories": list(DIAGNOSTIC_CATEGORIES),
+            "resource_limits": {
+                "enforced": False,
+                "reason": "no resource limits are enforced in I1",
+            },
+        },
     }
 
 
