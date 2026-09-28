@@ -315,6 +315,8 @@ def parse_value(node: object) -> object:
     if not node.items:
         return UNIT
     head = node.items[0]
+    if not isinstance(head, Atom):
+        raise SyntaxError_("a value's constructor name must be a symbol", *_position(node))
     constructor_name = head.text
     fields = tuple(parse_value(v) for v in node.items[1:])
     return ConstructorValue(constructor_name, fields)
