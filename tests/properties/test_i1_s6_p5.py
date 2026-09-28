@@ -18,6 +18,7 @@ does not depend on which cases Hypothesis happens to draw.
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
@@ -27,6 +28,7 @@ from _i1_s6_fixtures import (
     evaluate_add_one,
     independent_add_one,
     load_add_one_source,
+    parse_value,
 )
 
 _sequence_domain = st.one_of(
@@ -47,6 +49,59 @@ def test_p5_mixed_sequence_each_response_matches_its_own_request(sequence):
     for n in sequence:
         returncode, response, stdout, stderr = evaluate_add_one(n, source=source)
         assert_add_one_result(returncode, response, stdout, stderr, n=n)
+
+
+# Pinned adjacent-distinct integers near 2^53, 2^63 and 2^128, in several
+# orders (ascending, descending, interleaved, sign-changing, repeated), all
+# against one fixed source. Adjacent values differ by one, so an echoed,
+# stale, cached or binary64-rounded result cannot match its own request.
+_ADJACENT = {
+    "2^53": [2**53 - 1, 2**53, 2**53 + 1, 2**53 + 2, 2**53 + 3],
+    "2^63": [2**63 - 2, 2**63 - 1, 2**63, 2**63 + 1, 2**63 + 2],
+    "2^128": [2**128 - 1, 2**128, 2**128 + 1, 2**128 + 2],
+}
+_NEG_ADJACENT = [-(2**53) - 2, -(2**53) - 1, -(2**63) - 2, -(2**63) - 1, -(2**63), -(2**128) - 1, -(2**128)]
+_PINNED_SEQUENCES = {
+    "2^53-ascending": _ADJACENT["2^53"],
+    "2^53-descending": list(reversed(_ADJACENT["2^53"])),
+    "2^63-ascending": _ADJACENT["2^63"],
+    "2^63-descending": list(reversed(_ADJACENT["2^63"])),
+    "2^128-ascending": _ADJACENT["2^128"],
+    "2^128-descending": list(reversed(_ADJACENT["2^128"])),
+    "interleaved": [2**53 + 1, 2**63 + 1, 2**128 + 1, 2**53 + 2, 2**63 + 2, 2**128 + 2],
+    "sign-changes": [2**63, -(2**63) - 1, 2**63 + 1, -(2**63) - 2, 2**128, -(2**128), 41],
+    "repeats": [2**63, 2**63, 2**63 + 1, 2**63, 41, 41, -(2**64)],
+    "negatives-adjacent": _NEG_ADJACENT,
+    "negatives-reversed": list(reversed(_NEG_ADJACENT)),
+    "mixed-permutation-a": [9007199254740993, 41, -9007199254740995, 2**128 - 1, 2**63, -(2**63) - 1],
+    "mixed-permutation-b": [-(2**63) - 1, 2**63, 2**128 - 1, -9007199254740995, 41, 9007199254740993],
+}
+
+
+@pytest.mark.parametrize("name", sorted(_PINNED_SEQUENCES))
+def test_p5_pinned_adjacent_and_permuted_sequences(name):
+    sequence = _PINNED_SEQUENCES[name]
+    source = load_add_one_source()
+    seen_results = []
+    for n in sequence:
+        returncode, response, stdout, stderr = evaluate_add_one(n, source=source)
+        assert_add_one_result(returncode, response, stdout, stderr, n=n)
+        seen_results.append(parse_value(response["result"]["value"]))
+    assert seen_results == [n + 1 for n in sequence]
+
+
+def test_p5_permutations_of_one_multiset_give_permuted_results():
+    a = _PINNED_SEQUENCES["mixed-permutation-a"]
+    b = _PINNED_SEQUENCES["mixed-permutation-b"]
+    assert sorted(a) == sorted(b)
+    source = load_add_one_source()
+    by_input = {}
+    for seq in (a, b):
+        for n in seq:
+            _, response, _, _ = evaluate_add_one(n, source=source)
+            value = parse_value(response["result"]["value"])
+            assert by_input.setdefault(n, value) == value, f"order-dependent result for {n}"
+            assert value == n + 1
 
 
 # Values chosen so that none of the four fault models coincides with the

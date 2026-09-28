@@ -39,6 +39,37 @@ def _evaluate_step(count: int, event: str):
     return run_prova(request)
 
 
+_MANDATORY_INVALID_COUNTS = [
+    -1,
+    3,
+    2**53 + 1,
+    -(2**53) - 1,
+    2**63,
+    -(2**63) - 1,
+    9223372036854775808,
+    -9223372036854775810,
+    -9007199254740995,
+]
+
+
+def _assert_entry_rejection(count, event):
+    returncode, response, stdout, stderr = _evaluate_step(count, event)
+    assert returncode == 0, f"tool failure: stderr={stderr!r}"
+    assert response is not None, f"non-JSON response: {stdout!r}"
+    assert response.get("status") == "completed", f"step({count}, {event}): {response}"
+    assert not response.get("result"), f"rejection carried a successful result: {response}"
+    categories = {d.get("category") for d in (response.get("diagnostics") or [])}
+    assert "precondition_violation" in categories, (
+        f"step({count}, {event}): expected precondition_violation among {categories}: {response}"
+    )
+
+
+@pytest.mark.parametrize("event", EVENTS)
+@pytest.mark.parametrize("count", _MANDATORY_INVALID_COUNTS)
+def test_p8_every_mandatory_invalid_count_rejected_with_both_events(count, event):
+    _assert_entry_rejection(count, event)
+
+
 @settings(derandomize=True, max_examples=16, deadline=None)
 @given(count=_invalid_domain, event=st.sampled_from(EVENTS))
 @example(count=-1, event="Reserve")
