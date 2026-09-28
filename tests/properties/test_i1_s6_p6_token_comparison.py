@@ -20,7 +20,8 @@ from _prova_client import _extract_reservation_source, _tokenize
 
 
 def _tokens_without_comments(source: str) -> list[str]:
-    return _tokenize(re.sub(r";[^\n]*", "", source))
+    # A quoted string is matched first so a ';' inside it is kept.
+    return _tokenize(re.sub(r'("(?:[^"\\]|\\.)*")|;[^\n]*', lambda m: m.group(1) or "", source))
 
 
 def _table_rows(section: str) -> list[list[str]]:
