@@ -43,10 +43,16 @@ def diagnostic_categories(response: dict) -> set[str]:
 
 
 def assert_rejected(returncode, response, stdout, stderr, *, category: str, forbidden=()):
+    # No blanket status check: an entry precondition_violation is reported
+    # under status "completed" (the checked pipeline ran to a diagnosed
+    # verdict), per the I1.S1.B2 contract already established and judged.
+    # malformed_value/ill_typed_value use "invalid_input" instead; either
+    # way, "rejected" here means no successful result value, not a specific
+    # status string.
     assert returncode == 0, f"tool failure: stderr={stderr!r}"
     assert response is not None, f"non-JSON response: {stdout!r}"
-    assert response.get("status") != "completed", f"expected a rejection, got: {response}"
-    assert not response.get("result"), f"rejection carried a successful result: {response}"
+    result = response.get("result") or {}
+    assert not result.get("value"), f"rejection carried a successful result: {response}"
     categories = diagnostic_categories(response)
     assert category in categories, f"expected category {category!r} in {categories}: {response}"
     for forbidden_category in forbidden:
