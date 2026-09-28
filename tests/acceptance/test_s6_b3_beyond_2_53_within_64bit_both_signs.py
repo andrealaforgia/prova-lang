@@ -10,39 +10,12 @@ arithmetic, not read from the implementation.
 
 from __future__ import annotations
 
-import json
-import pathlib
-import subprocess
-
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-ADD_ONE_PATH = REPO_ROOT / "conformance" / "add-one.prova"
+from _i1_s6_fixtures import evaluate_add_one
 
 CASES = [
     (9007199254740993, 9007199254740994),
     (-9007199254740995, -9007199254740994),
 ]
-
-
-def _evaluate_add_one(n: int) -> dict:
-    request = {
-        "prova": "i1",
-        "operation": "evaluate",
-        "source": ADD_ONE_PATH.read_text(encoding="utf-8"),
-        "function": "add-one",
-        "arguments": [str(n)],
-    }
-    proc = subprocess.run(
-        ["prova"],
-        input=json.dumps(request),
-        capture_output=True,
-        text=True,
-        timeout=10.0,
-    )
-    assert proc.returncode == 0, f"tool failure evaluating add-one({n}): stderr={proc.stderr!r}"
-    try:
-        return json.loads(proc.stdout)
-    except (json.JSONDecodeError, ValueError):
-        raise AssertionError(f"non-JSON response evaluating add-one({n}): {proc.stdout!r}")
 
 
 def test_add_one_beyond_2_53_but_within_64_bit_range_positive_and_negative():
@@ -51,7 +24,7 @@ def test_add_one_beyond_2_53_but_within_64_bit_range_positive_and_negative():
     (9007199254740993 and -9007199254740995), then the reported results
     are exactly 9007199254740994 and -9007199254740994."""
     for n, expected in CASES:
-        response = _evaluate_add_one(n)
+        response = evaluate_add_one(n)
 
         assert response.get("status") == "completed", f"expected a successful evaluation of add-one({n}): {response}"
         result = response.get("result") or {}

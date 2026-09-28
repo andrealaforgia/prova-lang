@@ -5,9 +5,10 @@ through direct evaluation.
 Exercises the whole story together, each case its own fresh `prova`
 process: beyond both 2^53 and 2^63-1 positive (I1.S6.B1), below -2^63
 (I1.S6.B2), beyond 2^53 but within 64-bit range on both signs (I1.S6.B3),
-and the small positive control (I1.S6.B4). This is the story-level check
-that these magnitudes compose correctly on the real surface, not a
-restatement of any single behaviour's own acceptance test.
+and the small positive control (I1.S6.B4). This is the union of B1-B4's
+own values run through the same helper, kept as the story-level check
+that runs alongside them rather than in place of them; it does not add
+assertion power beyond running B1-B4 together.
 
 Drives only the `prova` command's real JSON stdin/stdout surface, per the
 I1 change plan. No imports from src/prova; every expected result is
@@ -17,12 +18,7 @@ arithmetic, not read from the implementation.
 
 from __future__ import annotations
 
-import json
-import pathlib
-import subprocess
-
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-ADD_ONE_PATH = REPO_ROOT / "conformance" / "add-one.prova"
+from _i1_s6_fixtures import evaluate_add_one
 
 CASES = [
     9223372036854775808,  # 2**63: beyond both 2**53 and 2**63 - 1
@@ -31,28 +27,6 @@ CASES = [
     -9007199254740995,  # beyond 2**53, within 64-bit range, negative
     41,  # positive control
 ]
-
-
-def _evaluate_add_one_fresh_process(n: int) -> dict:
-    request = {
-        "prova": "i1",
-        "operation": "evaluate",
-        "source": ADD_ONE_PATH.read_text(encoding="utf-8"),
-        "function": "add-one",
-        "arguments": [str(n)],
-    }
-    proc = subprocess.run(
-        ["prova"],
-        input=json.dumps(request),
-        capture_output=True,
-        text=True,
-        timeout=10.0,
-    )
-    assert proc.returncode == 0, f"tool failure evaluating add-one({n}): stderr={proc.stderr!r}"
-    try:
-        return json.loads(proc.stdout)
-    except (json.JSONDecodeError, ValueError):
-        raise AssertionError(f"non-JSON response evaluating add-one({n}): {proc.stdout!r}")
 
 
 def test_int_add_one_is_exact_across_every_declared_magnitude_end_to_end():
@@ -64,7 +38,7 @@ def test_int_add_one_is_exact_across_every_declared_magnitude_end_to_end():
     64-bit wraparound."""
     for n in CASES:
         expected = n + 1
-        response = _evaluate_add_one_fresh_process(n)
+        response = evaluate_add_one(n)
 
         assert response.get("status") == "completed", f"expected a successful evaluation of add-one({n}): {response}"
         result = response.get("result") or {}
