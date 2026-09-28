@@ -116,6 +116,30 @@ def test_b4_refused_build_leaves_pre_existing_outputs_byte_for_byte_untouched():
         assert response.get("operation") == "build", response
         assert response.get("status") == "unavailable", f"build was not refused: {response}"
 
+        build_categories = {d.get("category") for d in response.get("diagnostics") or []}
+        bogus_request = {
+            "prova": "i1",
+            "operation": "totally_bogus_xyz",
+            "source": source,
+        }
+        bogus_proc = subprocess.run(
+            ["prova"],
+            input=json.dumps(bogus_request),
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+        )
+        assert bogus_proc.returncode == 0, f"tool failure requesting bogus operation: stderr={bogus_proc.stderr!r}"
+        bogus_response = json.loads(bogus_proc.stdout)
+        bogus_categories = {d.get("category") for d in bogus_response.get("diagnostics") or []}
+        assert build_categories.isdisjoint(bogus_categories), (
+            f"build was refused under the same diagnostic category "
+            f"({build_categories & bogus_categories!r}) as a completely "
+            f"unrecognized operation name, so this is not shown to be a "
+            f"deliberate refusal of a known build operation: "
+            f"build={response!r} bogus={bogus_response!r}"
+        )
+
         assert first_deviation is None, (
             "the output directory's contents changed at some point while the "
             "build was running, even though a snapshot taken only at the end "
