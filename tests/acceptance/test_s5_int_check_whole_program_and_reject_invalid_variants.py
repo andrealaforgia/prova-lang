@@ -15,57 +15,20 @@ I1 change plan. No imports from src/prova.
 
 from __future__ import annotations
 
-import json
-import pathlib
-import subprocess
-
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-
-RESERVE_OLD = "(Outcome (Reservation (+ (.reserved current) 1)) true)"
-RESERVE_BUG = (
-    "(Outcome (Reservation (if (= (.reserved current) 1) "
-    "(+ true 1) (+ (.reserved current) 1))) true)"
+from _reservation_fixtures import (
+    INIT_BUG_SITE,
+    RESERVE_BUG_SITE,
+    line_column_of,
+    reservation_source,
+    reserve_bug_source,
+    run_check,
+    unbound_name_source,
 )
 
-INIT_OLD = "  (examples (example (initial) => (Reservation 0)))\n  (Reservation 0))\n"
-INIT_BUG = "  (examples (example (initial) => (Reservation 0)))\n  (Reservation missing-count))\n"
-
-
-def _reservation_source() -> str:
-    text = (REPO_ROOT / "SPEC.md").read_text(encoding="utf-8")
-    heading = "## Core conformance example"
-    start = text.index(heading)
-    fence_start = text.index("```lisp", start) + len("```lisp\n")
-    fence_end = text.index("```", fence_start)
-    return text[fence_start:fence_end]
-
-
-def _reserve_bug_source() -> str:
-    source = _reservation_source()
-    assert source.count(RESERVE_OLD) == 1
-    return source.replace(RESERVE_OLD, RESERVE_BUG, 1)
-
-
-def _unbound_name_source() -> str:
-    source = _reservation_source()
-    assert source.count(INIT_OLD) == 1
-    return source.replace(INIT_OLD, INIT_BUG, 1)
-
-
-def _run_check_fresh_process(source: str) -> dict:
-    request = {"prova": "i1", "operation": "check", "source": source}
-    proc = subprocess.run(
-        ["prova"],
-        input=json.dumps(request),
-        capture_output=True,
-        text=True,
-        timeout=10.0,
-    )
-    assert proc.returncode == 0, f"tool failure: stderr={proc.stderr!r}"
-    try:
-        return json.loads(proc.stdout)
-    except (json.JSONDecodeError, ValueError):
-        raise AssertionError(f"non-JSON response: {proc.stdout!r}")
+EXPECTED_CATEGORIES = {
+    "reserve": "type_mismatch",
+    "unbound": "unbound_name",
+}
 
 
 def test_int_check_accepts_the_valid_program_and_rejects_two_differently_shaped_variants():
@@ -73,7 +36,7 @@ def test_int_check_accepts_the_valid_program_and_rejects_two_differently_shaped_
     when the Owner runs the check operation against each, one independent
     process per case, then the valid source is accepted with no errors and
     each variant is rejected with its own category and location."""
-    accepted = _run_check_fresh_process(_reservation_source())
+    accepted = run_check(reservation_source())
     assert accepted.get("status") == "completed", (
         f"the unmodified reservation source must be accepted: {accepted}"
     )
@@ -81,21 +44,38 @@ def test_int_check_accepts_the_valid_program_and_rejects_two_differently_shaped_
         f"acceptance carried diagnostics: {accepted}"
     )
 
+    cases = {
+        "reserve": (reserve_bug_source(), RESERVE_BUG_SITE),
+        "unbound": (unbound_name_source(), INIT_BUG_SITE),
+    }
+
     seen_categories = set()
-    for source in (_reserve_bug_source(), _unbound_name_source()):
-        response = _run_check_fresh_process(source)
+    for label, (source, bug_site) in cases.items():
+        response = run_check(source)
         assert response.get("status") == "invalid_program", (
-            f"expected the variant to be rejected as an invalid program, got: {response}"
+            f"expected the {label} variant to be rejected as an invalid program, "
+            f"got: {response}"
         )
         diagnostics = response.get("diagnostics") or []
         assert diagnostics, f"rejection carried no diagnostics: {response}"
         diagnostic = diagnostics[0]
+
         category = diagnostic.get("category")
-        assert category, f"diagnostic did not name a category: {diagnostic}"
+        assert category == EXPECTED_CATEGORIES[label], (
+            f"diagnostic category {category!r} does not identify the {label} "
+            f"defect as {EXPECTED_CATEGORIES[label]!r}: {diagnostic}"
+        )
+
+        expected_line, expected_column = line_column_of(source, bug_site)
         location = diagnostic.get("location") or {}
-        assert isinstance(location.get("line"), int) and isinstance(
-            location.get("column"), int
-        ), f"diagnostic did not name a line/column location: {diagnostic}"
+        assert (location.get("line"), location.get("column")) == (
+            expected_line,
+            expected_column,
+        ), (
+            f"diagnostic location {location} does not point at the injected "
+            f"{label} defect {bug_site!r}, expected line {expected_line} column "
+            f"{expected_column}: {diagnostic}"
+        )
         seen_categories.add(category)
 
     assert len(seen_categories) == 2, (
