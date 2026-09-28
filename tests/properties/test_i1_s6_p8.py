@@ -53,7 +53,10 @@ def test_p8_invalid_counts_rejected_on_entry_precondition_at_any_magnitude(count
     returncode, response, stdout, stderr = _evaluate_step(count, event)
     assert returncode == 0, f"tool failure: stderr={stderr!r}"
     assert response is not None, f"non-JSON response: {stdout!r}"
-    assert response.get("status") != "completed", f"expected a rejection, got: {response}"
+    # A precondition violation still reports status "completed": the tool
+    # ran to completion and reports the violation as a diagnostic, rather
+    # than treating the rejection itself as a non-completion.
+    assert response.get("status") == "completed", f"expected a completed run reporting a diagnostic, got: {response}"
     assert not response.get("result"), f"rejection carried a successful result: {response}"
     categories = {d.get("category") for d in (response.get("diagnostics") or [])}
     assert "precondition_violation" in categories, (
