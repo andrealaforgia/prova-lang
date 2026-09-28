@@ -5,9 +5,11 @@ precondition, with no successful return value for either event -- at any
 magnitude, including magnitudes that only large-integer support makes
 reachable.
 
-Finite evidence domain: generated invalid counts in [-2^256, 2^256], always
-including -1, 3, 2^53+1, -2^53-1, 2^63, -2^63-1, and the approved
-large-integer examples 9223372036854775808 and -9223372036854775810.
+Evidence: the mandatory invalid counts pinned once in
+_MANDATORY_INVALID_COUNTS (-1, 3, 2^53+1, -2^53-1, 2^63, -2^63-1, and the
+approved large-integer examples 9223372036854775808 and
+-9223372036854775810), each with both events, plus generated invalid counts
+in [-2^256, 2^256].
 Boundary controls are counts 0 and 2 with both events, which must still
 succeed per the protected six-row table.
 """
@@ -56,6 +58,8 @@ def _assert_entry_rejection(count, event):
     returncode, response, stdout, stderr = _evaluate_step(count, event)
     assert returncode == 0, f"tool failure: stderr={stderr!r}"
     assert response is not None, f"non-JSON response: {stdout!r}"
+    # A precondition violation still reports status "completed": the tool
+    # ran to completion and reports the violation as a diagnostic.
     assert response.get("status") == "completed", f"step({count}, {event}): {response}"
     assert not response.get("result"), f"rejection carried a successful result: {response}"
     categories = {d.get("category") for d in (response.get("diagnostics") or [])}
@@ -72,27 +76,10 @@ def test_p8_every_mandatory_invalid_count_rejected_with_both_events(count, event
 
 @settings(derandomize=True, max_examples=16, deadline=None)
 @given(count=_invalid_domain, event=st.sampled_from(EVENTS))
-@example(count=-1, event="Reserve")
-@example(count=3, event="Release")
-@example(count=2**53 + 1, event="Reserve")
-@example(count=-(2**53) - 1, event="Release")
-@example(count=2**63, event="Reserve")
-@example(count=-(2**63) - 1, event="Release")
-@example(count=9223372036854775808, event="Release")
-@example(count=-9223372036854775810, event="Reserve")
-def test_p8_invalid_counts_rejected_on_entry_precondition_at_any_magnitude(count, event):
-    returncode, response, stdout, stderr = _evaluate_step(count, event)
-    assert returncode == 0, f"tool failure: stderr={stderr!r}"
-    assert response is not None, f"non-JSON response: {stdout!r}"
-    # A precondition violation still reports status "completed": the tool
-    # ran to completion and reports the violation as a diagnostic, rather
-    # than treating the rejection itself as a non-completion.
-    assert response.get("status") == "completed", f"expected a completed run reporting a diagnostic, got: {response}"
-    assert not response.get("result"), f"rejection carried a successful result: {response}"
-    categories = {d.get("category") for d in (response.get("diagnostics") or [])}
-    assert "precondition_violation" in categories, (
-        f"expected precondition_violation among {categories}: {response}"
-    )
+def test_p8_generated_invalid_counts_rejected_at_any_magnitude(count, event):
+    """Counts drawn from the whole invalid domain, beyond the pinned
+    mandatory list above, are rejected on the entry precondition."""
+    _assert_entry_rejection(count, event)
 
 
 @pytest.mark.parametrize(

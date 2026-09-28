@@ -230,3 +230,12 @@ def combined_source(*, reserve_defect: bool, unbound_defect: bool) -> str:
         assert source.count(INIT_OLD) == 1
         source = source.replace(INIT_OLD, INIT_BUG, 1)
     return source
+
+
+def literal(type_name: str, n: int) -> str:
+    """A literal of `type_name` (Bool, Int or Unit), varied by `n`."""
+    if type_name == "Bool":
+        return "true" if n % 2 == 0 else "false"
+    if type_name == "Int":
+        return str(n)
+    return "()"

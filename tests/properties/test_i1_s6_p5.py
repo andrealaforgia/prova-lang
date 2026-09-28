@@ -80,20 +80,22 @@ _PINNED_SEQUENCES = {
 
 @pytest.mark.parametrize("name", sorted(_PINNED_SEQUENCES))
 def test_p5_pinned_adjacent_and_permuted_sequences(name):
-    sequence = _PINNED_SEQUENCES[name]
+    """Every input in each pinned sequence gets its own exact successor,
+    and any failure names the sequence position and input that broke."""
     source = load_add_one_source()
-    seen_results = []
-    for n in sequence:
+    for position, n in enumerate(_PINNED_SEQUENCES[name]):
         returncode, response, stdout, stderr = evaluate_add_one(n, source=source)
-        assert_add_one_result(returncode, response, stdout, stderr, n=n)
-        seen_results.append(parse_value(response["result"]["value"]))
-    assert seen_results == [n + 1 for n in sequence]
+        try:
+            assert_add_one_result(returncode, response, stdout, stderr, n=n)
+        except AssertionError as failure:
+            raise AssertionError(
+                f"sequence {name!r} position {position}: input n={n}: {failure}"
+            ) from failure
 
 
-def test_p5_permutations_of_one_multiset_give_permuted_results():
+def test_p5_permuting_a_sequence_permutes_the_results_with_no_order_dependence():
     a = _PINNED_SEQUENCES["mixed-permutation-a"]
     b = _PINNED_SEQUENCES["mixed-permutation-b"]
-    assert sorted(a) == sorted(b)
     source = load_add_one_source()
     by_input = {}
     for seq in (a, b):
@@ -101,7 +103,7 @@ def test_p5_permutations_of_one_multiset_give_permuted_results():
             _, response, _, _ = evaluate_add_one(n, source=source)
             value = parse_value(response["result"]["value"])
             assert by_input.setdefault(n, value) == value, f"order-dependent result for {n}"
-            assert value == n + 1
+            assert value == n + 1, f"input n={n}: got {value}"
 
 
 # Values chosen so that none of the four fault models coincides with the

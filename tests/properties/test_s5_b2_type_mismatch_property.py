@@ -29,16 +29,10 @@ from hypothesis import strategies as st
 
 from prova import service
 
+from _i1_s5_fixtures import diagnostic_categories, literal
+
 TYPES = ("Bool", "Int", "Unit")
 SHAPES = ("flat", "if", "let")
-
-
-def _literal(type_name: str, n: int) -> str:
-    if type_name == "Bool":
-        return "true" if n % 2 == 0 else "false"
-    if type_name == "Int":
-        return str(n)
-    return "()"
 
 
 def _shaped(expr_text: str, shape: str) -> str:
@@ -51,11 +45,6 @@ def _shaped(expr_text: str, shape: str) -> str:
 
 def _check(source: str) -> dict:
     return service.handle({"prova": "i1", "operation": "check", "source": source})
-
-
-def _has_type_mismatch(response: dict) -> bool:
-    diagnostics = response.get("diagnostics") or []
-    return any(d["category"] == "type_mismatch" for d in diagnostics)
 
 
 _type_pairs_disagreeing = st.tuples(
@@ -73,15 +62,15 @@ def test_body_type_disagreeing_with_declared_return_type_is_always_rejected(type
     it is rejected with a `type_mismatch` diagnostic, for every type pair
     and every shape."""
     declared_type, body_type = types
-    body = _shaped(_literal(body_type, n), shape)
+    body = _shaped(literal(body_type, n), shape)
     source = f"""
 (defn f (sig () -> {declared_type} ! pure)
-  (examples (example (f) => {_literal(declared_type, 0)}))
+  (examples (example (f) => {literal(declared_type, 0)}))
   {body})
 """
     response = _check(source)
-    assert response["status"] != "completed", response
-    assert _has_type_mismatch(response), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"type_mismatch"}, response
 
 
 _non_bool_types = st.sampled_from(("Int", "Unit"))
@@ -95,7 +84,7 @@ def test_non_bool_contract_clause_is_always_rejected(clause_kind, clause_type, s
     or `Unit`, wrapped in any shape, when `check` runs, then it is rejected
     with a `type_mismatch` diagnostic, for both clause kinds, both non-Bool
     types and every shape."""
-    clause = _shaped(_literal(clause_type, n), shape)
+    clause = _shaped(literal(clause_type, n), shape)
     source = f"""
 (defn f (sig ((n Int)) -> Int ! pure)
   ({clause_kind} {clause})
@@ -103,8 +92,8 @@ def test_non_bool_contract_clause_is_always_rejected(clause_kind, clause_type, s
   n)
 """
     response = _check(source)
-    assert response["status"] != "completed", response
-    assert _has_type_mismatch(response), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"type_mismatch"}, response
 
 
 @settings(derandomize=True, max_examples=30, deadline=None)
@@ -115,12 +104,12 @@ def test_matching_body_and_bool_contracts_are_always_accepted(type_name, shape, 
     and `ensures` clauses, when `check` runs, then it completes with no
     diagnostics -- the positive control that keeps the rejection tests
     above from passing by over-rejecting."""
-    body = _shaped(_literal(type_name, n), shape)
+    body = _shaped(literal(type_name, n), shape)
     source = f"""
 (defn f (sig () -> {type_name} ! pure)
   (requires true)
   (ensures true)
-  (examples (example (f) => {_literal(type_name, n)}))
+  (examples (example (f) => {literal(type_name, n)}))
   {body})
 """
     response = _check(source)

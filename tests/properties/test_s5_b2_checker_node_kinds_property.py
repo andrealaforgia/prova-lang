@@ -21,24 +21,13 @@ from hypothesis import strategies as st
 
 from prova import service
 
+from _i1_s5_fixtures import diagnostic_categories, literal
+
 TYPES = ("Bool", "Int", "Unit")
-
-
-def _literal(type_name: str, n: int) -> str:
-    if type_name == "Bool":
-        return "true" if n % 2 == 0 else "false"
-    if type_name == "Int":
-        return str(n)
-    return "()"
 
 
 def _check(source: str) -> dict:
     return service.handle({"prova": "i1", "operation": "check", "source": source})
-
-
-def _has_category(response: dict, category: str) -> bool:
-    diagnostics = response.get("diagnostics") or []
-    return any(d["category"] == category for d in diagnostics)
 
 
 _type_pairs_disagreeing = st.tuples(
@@ -54,10 +43,10 @@ def _match_source(clause_a_type: str, clause_b_type: str, n: int) -> str:
     return f"""
 (deftype Ev (union (A) (B)))
 (defn f (sig ((e Ev)) -> {clause_a_type} ! pure)
-  (examples (example (f (A)) => {_literal(clause_a_type, 0)}))
+  (examples (example (f (A)) => {literal(clause_a_type, 0)}))
   (match e
-    ((A) {_literal(clause_a_type, n)})
-    ((B) {_literal(clause_b_type, n)})))
+    ((A) {literal(clause_a_type, n)})
+    ((B) {literal(clause_b_type, n)})))
 """
 
 
@@ -69,8 +58,8 @@ def test_match_clauses_disagreeing_are_always_rejected(types, n):
     for every disagreeing type pair."""
     clause_a_type, clause_b_type = types
     response = _check(_match_source(clause_a_type, clause_b_type, n))
-    assert response["status"] != "completed", response
-    assert _has_category(response, "type_mismatch"), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"type_mismatch"}, response
 
 
 @settings(derandomize=True, max_examples=15, deadline=None)
@@ -102,8 +91,8 @@ def test_field_access_on_unknown_field_is_always_rejected(field_name):
     not declare, when `check` runs, then it is rejected with an
     `unbound_field` diagnostic, for every unknown field name tried."""
     response = _check(_field_access_source(field_name))
-    assert response["status"] != "completed", response
-    assert _has_category(response, "unbound_field"), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"unbound_field"}, response
 
 
 def test_field_access_on_declared_field_is_accepted():
@@ -121,7 +110,7 @@ def _constructor_call_source(arg_type: str, n: int) -> str:
 (deftype Rec (record (foo Int)))
 (defn f (sig () -> Rec ! pure)
   (examples (example (f) => (Rec 1)))
-  (Rec {_literal(arg_type, n)}))
+  (Rec {literal(arg_type, n)}))
 """
 
 
@@ -135,8 +124,8 @@ def test_constructor_call_field_type_mismatch_is_always_rejected(arg_type, n):
     declared field type, when `check` runs, then it is rejected with a
     `type_mismatch` diagnostic, for every disagreeing argument type."""
     response = _check(_constructor_call_source(arg_type, n))
-    assert response["status"] != "completed", response
-    assert _has_category(response, "type_mismatch"), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"type_mismatch"}, response
 
 
 @settings(derandomize=True, max_examples=10, deadline=None)
@@ -158,7 +147,7 @@ def _call_source(arg_type: str, n: int) -> str:
   n)
 (defn f (sig () -> Int ! pure)
   (examples (example (f) => 1))
-  (g {_literal(arg_type, n)}))
+  (g {literal(arg_type, n)}))
 """
 
 
@@ -169,8 +158,8 @@ def test_call_argument_type_mismatch_is_always_rejected(arg_type, n):
     declared parameter type, when `check` runs, then it is rejected with
     a `type_mismatch` diagnostic, for every disagreeing argument type."""
     response = _check(_call_source(arg_type, n))
-    assert response["status"] != "completed", response
-    assert _has_category(response, "type_mismatch"), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"type_mismatch"}, response
 
 
 @settings(derandomize=True, max_examples=10, deadline=None)
@@ -188,10 +177,10 @@ def test_call_argument_type_matching_is_always_accepted(n):
 def _call_return_propagation_source(callee_return_type: str, caller_return_type: str) -> str:
     return f"""
 (defn g (sig () -> {callee_return_type} ! pure)
-  (examples (example (g) => {_literal(callee_return_type, 0)}))
-  {_literal(callee_return_type, 0)})
+  (examples (example (g) => {literal(callee_return_type, 0)}))
+  {literal(callee_return_type, 0)})
 (defn f (sig () -> {caller_return_type} ! pure)
-  (examples (example (f) => {_literal(caller_return_type, 0)}))
+  (examples (example (f) => {literal(caller_return_type, 0)}))
   (g))
 """
 
@@ -206,8 +195,8 @@ def test_call_result_type_disagreeing_with_caller_return_type_is_always_rejected
     itself (not just a wrapping literal) propagates its inferred type."""
     callee_return_type, caller_return_type = types
     response = _check(_call_return_propagation_source(callee_return_type, caller_return_type))
-    assert response["status"] != "completed", response
-    assert _has_category(response, "type_mismatch"), response
+    assert response["status"] == "invalid_program", response
+    assert diagnostic_categories(response) == {"type_mismatch"}, response
 
 
 @settings(derandomize=True, max_examples=10, deadline=None)
