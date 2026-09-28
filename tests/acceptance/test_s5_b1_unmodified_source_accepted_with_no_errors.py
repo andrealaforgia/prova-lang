@@ -7,43 +7,17 @@ I1 change plan. No imports from src/prova.
 
 from __future__ import annotations
 
-import json
-import pathlib
-import subprocess
+import hashlib
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-
-
-def _reservation_source() -> str:
-    text = (REPO_ROOT / "SPEC.md").read_text(encoding="utf-8")
-    heading = "## Core conformance example"
-    start = text.index(heading)
-    fence_start = text.index("```lisp", start) + len("```lisp\n")
-    fence_end = text.index("```", fence_start)
-    return text[fence_start:fence_end]
-
-
-def _run_check(source: str) -> dict:
-    request = {"prova": "i1", "operation": "check", "source": source}
-    proc = subprocess.run(
-        ["prova"],
-        input=json.dumps(request),
-        capture_output=True,
-        text=True,
-        timeout=10.0,
-    )
-    assert proc.returncode == 0, f"tool failure: stderr={proc.stderr!r}"
-    try:
-        return json.loads(proc.stdout)
-    except (json.JSONDecodeError, ValueError):
-        raise AssertionError(f"non-JSON response: {proc.stdout!r}")
+from _reservation_fixtures import reservation_source, run_check
 
 
 def test_b1_unmodified_reservation_source_is_accepted_with_no_errors():
     """Given the unmodified reservation source, when the Owner runs the
     check operation against it, then the tool reports the whole program as
-    accepted with no errors."""
-    response = _run_check(_reservation_source())
+    accepted with no errors, having actually processed that input."""
+    source = reservation_source()
+    response = run_check(source)
 
     assert response.get("operation") == "check", response
     assert response.get("status") == "completed", (
@@ -51,4 +25,17 @@ def test_b1_unmodified_reservation_source_is_accepted_with_no_errors():
     )
     assert not response.get("diagnostics"), (
         f"acceptance carried diagnostics: {response}"
+    )
+    assert response.get("claim") == {"kind": "static_check", "scope": "this input"}, (
+        f"unexpected claim block: {response}"
+    )
+
+    # A stub that unconditionally returns "completed, no diagnostics" for any
+    # input could satisfy the assertions above without reading `source` at
+    # all. Requiring the reported digest to match this specific source's own
+    # hash forces the tool to have actually taken this input into account.
+    expected_digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    assert response.get("source_digest") == expected_digest, (
+        f"reported source digest does not match a hash of the actual input "
+        f"source, so the response cannot be tied to this program: {response}"
     )

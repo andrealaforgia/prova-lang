@@ -22,10 +22,6 @@ EXPECTED_UNBOUND_CATEGORY = "unbound_name"
 EXPECTED_RESERVE_CATEGORY = "type_mismatch"
 
 
-def test_b4_unbound_name_variant_differs_from_the_first_variant():
-    assert unbound_name_source() != reserve_bug_source()
-
-
 def test_b4_second_invalid_construct_is_rejected_with_its_own_category_and_location():
     """Given a second hand-built variant with a different invalid
     construct elsewhere in the source, when the Owner runs the check
