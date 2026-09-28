@@ -10,6 +10,9 @@ source's own byte content is unchanged before and after the sequence.
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
 from _i1_s2_fixtures import (
     MUTATIONS,
     digest,
@@ -20,6 +23,14 @@ from _i1_s2_fixtures import (
     protected_source,
     run_examples,
 )
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _working_tree_digests() -> dict[str, str]:
+    paths = [REPO_ROOT / "SPEC.md", *sorted((REPO_ROOT / "conformance").rglob("reservation*.prova"))]
+    return {str(p.relative_to(REPO_ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
 
 def _assert_protected_run_is_clean(label: str):
@@ -44,6 +55,7 @@ def _assert_protected_run_is_clean(label: str):
 
 
 def test_p4_protected_source_stays_isolated_across_mutated_runs():
+    files_before = _working_tree_digests()
     before_digest = _assert_protected_run_is_clean("initial protected run")
 
     for mutation in MUTATIONS:
@@ -62,7 +74,7 @@ def test_p4_protected_source_stays_isolated_across_mutated_runs():
 
         _assert_protected_run_is_clean(f"protected run after {mutation.id}")
 
-    after_digest = digest(protected_source())
-    assert after_digest == before_digest, (
-        "protected source's own content changed over the course of the sequence"
+    assert _working_tree_digests() == files_before, (
+        "protected working-tree artefacts changed over the course of the sequence"
     )
+    assert digest(protected_source()) == before_digest

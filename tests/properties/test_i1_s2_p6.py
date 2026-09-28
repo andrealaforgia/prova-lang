@@ -71,3 +71,23 @@ def test_p6_step_reproduces_every_table_row(before, event, expected_after, expec
         assert after == before, (
             f"rejected step({before}, {event}) changed state to {after}, expected unchanged {before}"
         )
+
+
+def test_p6_initial_evaluates_to_empty_reservation():
+    request = {
+        "prova": "i1",
+        "operation": "evaluate",
+        "source": protected_source(),
+        "function": "initial",
+        "arguments": [],
+    }
+    returncode, response, stdout, stderr = run_prova(request)
+    assert returncode == 0, f"tool failure evaluating initial(): stderr={stderr!r}"
+    assert response is not None, f"non-JSON response evaluating initial(): {stdout!r}"
+    assert response.get("operation") == "evaluate", response
+    assert response.get("status") == "completed", response
+    value_text = (response.get("result") or {}).get("value")
+    assert value_text, f"no result value for initial(): {response}"
+    assert parse_value(value_text) == ("Reservation", (0,)), (
+        f"initial() expected Reservation 0, got {value_text!r}; full response={response}"
+    )
