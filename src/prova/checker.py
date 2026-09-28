@@ -88,7 +88,14 @@ def _check_expr(expr: object, program: syntax.Program, function_name: str, diagn
             )
         for arg in expr.args:
             _check_expr(arg, program, function_name, diagnostics)
-    elif isinstance(expr, (syntax.ConstructorCall, syntax.OperatorCall)):
+    elif isinstance(expr, syntax.ConstructorCall):
+        if syntax.resolve_constructor_fields(expr.name, program) is None:
+            diagnostics.append(
+                Diagnostic("unbound_constructor", f"unknown constructor {expr.name!r} in {function_name!r}")
+            )
+        for arg in expr.args:
+            _check_expr(arg, program, function_name, diagnostics)
+    elif isinstance(expr, syntax.OperatorCall):
         for arg in expr.args:
             _check_expr(arg, program, function_name, diagnostics)
     elif isinstance(expr, syntax.FieldAccess):

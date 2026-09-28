@@ -120,3 +120,20 @@ def test_field_access_on_a_constructor_naming_no_declared_type_reports_a_diagnos
 
     assert response["status"] != "completed", response
     assert response.get("diagnostics"), response
+
+
+UNRESOLVABLE_CONSTRUCTOR_IN_BODY_SOURCE = """
+(deftype Box (union (Full (value Int)) (Empty)))
+(defn crash (sig () -> Int ! pure)
+  (examples (example (crash) => 1))
+  (.value (Bogus)))
+"""
+
+
+def test_constructor_call_naming_no_declared_type_in_a_function_body_reports_a_diagnostic_instead_of_crashing():
+    response = service.handle(
+        {"prova": "i1", "operation": "examples", "source": UNRESOLVABLE_CONSTRUCTOR_IN_BODY_SOURCE}
+    )
+
+    assert response["status"] != "completed", response
+    assert response.get("diagnostics"), response
