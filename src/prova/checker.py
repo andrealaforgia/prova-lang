@@ -54,12 +54,25 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
         check_type_name(function.signature.return_type, f"function {function.name!r} return type")
 
         params_env = {name: type_ for name, type_ in function.signature.params}
-        for expr in (*function.requires, function.body):
-            _infer(expr, params_env, program, diagnostics)
+        for clause_expr in function.requires:
+            _check_contract_clause_is_bool(clause_expr, params_env, program, diagnostics)
+
+        return_type = function.signature.return_type
+        body_type = _infer(function.body, params_env, program, diagnostics)
+        if body_type is not None and body_type != return_type:
+            diagnostics.append(
+                Diagnostic(
+                    "type_mismatch",
+                    f"function {function.name!r} body has type {body_type}, "
+                    f"declared return type {return_type}",
+                    (function.body.line, function.body.column),
+                )
+            )
+
         result_env = dict(params_env)
-        result_env["result"] = function.signature.return_type
-        for expr in function.ensures:
-            _infer(expr, result_env, program, diagnostics)
+        result_env["result"] = return_type
+        for clause_expr in function.ensures:
+            _check_contract_clause_is_bool(clause_expr, result_env, program, diagnostics)
 
         for ordinal, example in enumerate(function.examples):
             where = f"function {function.name!r} example {ordinal}"
@@ -68,6 +81,20 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
             _check_value(example.expected, program, where, diagnostics)
 
     return diagnostics
+
+
+def _check_contract_clause_is_bool(
+    expr: object, env: dict[str, str], program: syntax.Program, diagnostics: list[Diagnostic]
+) -> None:
+    clause_type = _infer(expr, env, program, diagnostics)
+    if clause_type is not None and clause_type != "Bool":
+        diagnostics.append(
+            Diagnostic(
+                "type_mismatch",
+                f"contract clause expects Bool, got {clause_type}",
+                (expr.line, expr.column),
+            )
+        )
 
 
 def _check_value(value: object, program: syntax.Program, where: str, diagnostics: list[Diagnostic]) -> None:

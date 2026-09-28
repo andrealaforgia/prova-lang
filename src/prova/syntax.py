@@ -97,11 +97,15 @@ def resolve_constructor_fields(constructor: str, program: Program) -> tuple[tupl
 @dataclass(frozen=True)
 class IntLit:
     value: int
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class BoolLit:
     value: bool
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -344,11 +348,11 @@ def parse_value(node: object) -> object:
 def parse_expr(node: object) -> Expr:
     if isinstance(node, Atom):
         if node.text == "true":
-            return BoolLit(True)
+            return BoolLit(True, node.line, node.column)
         if node.text == "false":
-            return BoolLit(False)
+            return BoolLit(False, node.line, node.column)
         if node.is_int:
-            return IntLit(node.int_value)
+            return IntLit(node.int_value, node.line, node.column)
         return NameRef(node.text, node.line, node.column)
 
     assert isinstance(node, SList)
