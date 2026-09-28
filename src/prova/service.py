@@ -152,6 +152,38 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "diagnostics": [{"category": "malformed_value", "reason": error.message}],
         }
 
+    params = function.signature.params
+    if len(args) != len(params):
+        return {
+            "operation": "evaluate",
+            "status": "invalid_input",
+            "diagnostics": [
+                {
+                    "category": "arity_mismatch",
+                    "reason": (
+                        f"function {function_name!r} expects {len(params)} argument(s), "
+                        f"got {len(args)}"
+                    ),
+                }
+            ],
+        }
+
+    try:
+        for arg, (param_name, param_type) in zip(args, params):
+            evaluator.check_value_type(arg, param_type, program, f"argument {param_name!r}")
+    except evaluator.MalformedValue as error:
+        return {
+            "operation": "evaluate",
+            "status": "invalid_input",
+            "diagnostics": [{"category": "malformed_value", "reason": error.reason}],
+        }
+    except evaluator.IllTypedValue as error:
+        return {
+            "operation": "evaluate",
+            "status": "invalid_input",
+            "diagnostics": [{"category": "ill_typed_value", "reason": error.reason}],
+        }
+
     try:
         result = evaluator.call_function(function, args, program)
     except evaluator.PreconditionViolation as violation:

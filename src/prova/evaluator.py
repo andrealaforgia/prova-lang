@@ -7,6 +7,61 @@ from prova import syntax
 from prova.values import UNIT, ConstructorValue, Unit
 
 
+class MalformedValue(Exception):
+    """An argument value has no shape any declared type recognizes: an
+    unknown constructor, or a known constructor applied to the wrong
+    number of fields for its own declaration."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class IllTypedValue(Exception):
+    """An argument value is well-formed on its own terms but does not
+    match the type declared at this position."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def check_value_type(value: object, type_name: str, program: syntax.Program, where: str) -> None:
+    """Raise `MalformedValue` or `IllTypedValue` when `value` does not
+    match `type_name`, recursing into constructor fields. Silent when it
+    matches."""
+    if type_name == "Unit":
+        if not isinstance(value, Unit):
+            raise IllTypedValue(f"{where} expects Unit, got {value!r}")
+        return
+    if type_name == "Bool":
+        if not isinstance(value, bool):
+            raise IllTypedValue(f"{where} expects Bool, got {value!r}")
+        return
+    if type_name == "Int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise IllTypedValue(f"{where} expects Int, got {value!r}")
+        return
+
+    if not isinstance(value, ConstructorValue):
+        raise IllTypedValue(f"{where} expects {type_name!r}, got {value!r}")
+
+    resolved = syntax.resolve_constructor(value.constructor, program)
+    if resolved is None:
+        raise MalformedValue(f"{where}: no record type or union variant named {value.constructor!r}")
+    owner, fields = resolved
+    if len(fields) != len(value.fields):
+        raise MalformedValue(
+            f"{where}: constructor {value.constructor!r} takes {len(fields)} field(s), "
+            f"got {len(value.fields)}"
+        )
+    if owner != type_name:
+        raise IllTypedValue(f"{where} expects {type_name!r}, got {owner!r} value {value.constructor!r}")
+
+    for (field_name, field_type), field_value in zip(fields, value.fields):
+        check_value_type(field_value, field_type, program, f"{where} field {field_name!r}")
+
+
 class PreconditionViolation(Exception):
     def __init__(self, function_name: str):
         super().__init__(f"precondition violated calling {function_name!r}")
