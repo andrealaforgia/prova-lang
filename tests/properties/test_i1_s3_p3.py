@@ -89,7 +89,7 @@ _wrap_inner = st.one_of(
 _wrap_depth = st.integers(min_value=1, max_value=3)
 _wrapped_head = st.builds(
     lambda inner, depth: "(" * depth + inner + ")" * depth, _wrap_inner, _wrap_depth
-)
+).filter(lambda text: text != "()")  # "()" parses as the well-formed Unit value, not malformed
 
 _malformed_text = st.one_of(
     _empty_or_whitespace, _truncated, _unmatched_parens, _multiple_values, _wrapped_head
