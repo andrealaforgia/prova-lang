@@ -148,6 +148,10 @@ _ill_typed_text = st.one_of(
 @example(text="(Reservation ())", event="Reserve")
 @example(text="(Reservation (Reserve))", event="Release")
 def test_p4_ill_typed_current_is_rejected_distinctly(text, event):
+    _assert_rejected_distinctly(text, event)
+
+
+def _assert_rejected_distinctly(text, event):
     returncode, response, stdout, stderr = evaluate_step(text, event)
     assert returncode == 0, f"tool crashed on ill-typed text {text!r}/{event}: stderr={stderr!r}"
     assert response is not None, f"non-JSON response for {text!r}/{event}: {stdout!r}"
@@ -168,6 +172,21 @@ def test_p4_ill_typed_current_is_rejected_distinctly(text, event):
     )
     assert_distinct_from_precondition(response, event)
     assert_control_succeeds(event)
+
+
+FINITE_FAMILY_TEXTS = [
+    "true", "false", "()", "(Reserve)", "(Release)",
+    "(Reservation true)", "(Reservation false)", "(Reservation ())",
+    "(Reservation (Reserve))", "(Reservation (Release))",
+]
+
+
+def test_p4_finite_families_exhaustively_crossed_with_both_events():
+    cases = [(text, event) for text in FINITE_FAMILY_TEXTS for event in EVENTS]
+    assert len(cases) == 2 * len(FINITE_FAMILY_TEXTS) and len(set(cases)) == len(cases)
+    assert {event for _, event in cases} == set(EVENTS)
+    for text, event in cases:
+        _assert_rejected_distinctly(text, event)
 
 
 def test_p4_corrected_controls_succeed():
