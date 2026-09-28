@@ -5,6 +5,9 @@ description = "Prova: a checked evaluator for core-0 programs"
 requires-python = ">=3.12,<3.13"
 dependencies = []
 
+[project.scripts]
+prova = "prova.__main__:main"
+
 [dependency-groups]
 dev = [
     "pytest",
