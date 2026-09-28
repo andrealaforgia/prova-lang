@@ -106,42 +106,55 @@ class BoolLit:
 
 @dataclass(frozen=True)
 class UnitLit:
-    pass
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class NameRef:
     name: str
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class Call:
     name: str
     args: tuple["Expr", ...]
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class ConstructorCall:
     name: str
     args: tuple["Expr", ...]
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class OperatorCall:
     operator: str
     args: tuple["Expr", ...]
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class FieldAccess:
     field_name: str
     target: "Expr"
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class Let:
     bindings: tuple[tuple[str, "Expr"], ...]
     body: "Expr"
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -149,6 +162,8 @@ class If:
     condition: "Expr"
     then_branch: "Expr"
     else_branch: "Expr"
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -161,6 +176,8 @@ class MatchClause:
 class Match:
     scrutinee: "Expr"
     clauses: tuple[MatchClause, ...]
+    line: int = 0
+    column: int = 0
 
 
 Expr = object  # IntLit | BoolLit | UnitLit | NameRef | Call | ConstructorCall
@@ -332,11 +349,12 @@ def parse_expr(node: object) -> Expr:
             return BoolLit(False)
         if node.is_int:
             return IntLit(node.int_value)
-        return NameRef(node.text)
+        return NameRef(node.text, node.line, node.column)
 
     assert isinstance(node, SList)
+    line, column = node.line, node.column
     if not node.items:
-        return UnitLit()
+        return UnitLit(line, column)
 
     head = node.items[0]
     if not isinstance(head, Atom):
@@ -348,30 +366,32 @@ def parse_expr(node: object) -> Expr:
             (b.items[0].text, parse_expr(b.items[1])) for b in node.items[1].items
         )
         body = parse_expr(node.items[2])
-        return Let(bindings, body)
+        return Let(bindings, body, line, column)
 
     if name == "if":
         return If(
             parse_expr(node.items[1]),
             parse_expr(node.items[2]),
             parse_expr(node.items[3]),
+            line,
+            column,
         )
 
     if name == "match":
         scrutinee = parse_expr(node.items[1])
         clauses = tuple(_parse_clause(c) for c in node.items[2:])
-        return Match(scrutinee, clauses)
+        return Match(scrutinee, clauses, line, column)
 
     if name.startswith("."):
         target = parse_expr(node.items[1])
-        return FieldAccess(name[1:], target)
+        return FieldAccess(name[1:], target, line, column)
 
     args = tuple(parse_expr(a) for a in node.items[1:])
     if name in OPERATORS:
-        return OperatorCall(name, args)
+        return OperatorCall(name, args, line, column)
     if name[0].isupper():
-        return ConstructorCall(name, args)
-    return Call(name, args)
+        return ConstructorCall(name, args, line, column)
+    return Call(name, args, line, column)
 
 
 def _parse_clause(node: SList) -> MatchClause:

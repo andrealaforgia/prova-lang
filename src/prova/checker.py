@@ -1,9 +1,9 @@
-"""Whole-program static checking, positive path.
+"""Whole-program static checking: declarations, scope and nominal typing.
 
-I1.S1 introduces this module to accept the reservation source; it checks
-that every referenced type and called function exists, with correct
-arity. Nominal type inference, exhaustiveness and full diagnostic
-reporting are S5's scope.
+Reports every referenced type, constructor and name as it resolves them,
+and infers the nominal type of every expression (including both branches
+of an `if` and every `match` clause, reached or not) to catch a type
+error anywhere in the program, not only ones a call happens to exercise.
 """
 
 from __future__ import annotations
@@ -14,12 +14,16 @@ from prova import syntax
 from prova.values import ConstructorValue
 
 BUILTIN_TYPES = {"Unit", "Bool", "Int"}
+NUMERIC_OPERATORS = {"+", "-", "*"}
+COMPARISON_OPERATORS = {"<", "<=", ">", ">="}
+BOOLEAN_OPERATORS = {"and", "or", "not"}
 
 
 @dataclass(frozen=True)
 class Diagnostic:
     category: str
     reason: str
+    location: tuple[int, int] | None = None
 
 
 def check_program(program: syntax.Program) -> list[Diagnostic]:
@@ -48,8 +52,15 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
         for param_name, param_type in function.signature.params:
             check_type_name(param_type, f"function {function.name!r} parameter {param_name!r}")
         check_type_name(function.signature.return_type, f"function {function.name!r} return type")
-        for expr in (*function.requires, *function.ensures, function.body):
-            _check_expr(expr, program, function.name, diagnostics)
+
+        params_env = {name: type_ for name, type_ in function.signature.params}
+        for expr in (*function.requires, function.body):
+            _infer(expr, params_env, program, diagnostics)
+        result_env = dict(params_env)
+        result_env["result"] = function.signature.return_type
+        for expr in function.ensures:
+            _infer(expr, result_env, program, diagnostics)
+
         for ordinal, example in enumerate(function.examples):
             where = f"function {function.name!r} example {ordinal}"
             for arg in example.args:
@@ -71,44 +82,250 @@ def _check_value(value: object, program: syntax.Program, where: str, diagnostics
         _check_value(field_value, program, where, diagnostics)
 
 
-def _check_expr(expr: object, program: syntax.Program, function_name: str, diagnostics: list[Diagnostic]) -> None:
+def _field_type(type_name: str, field_name: str, program: syntax.Program) -> str | None:
+    type_decl = program.types.get(type_name)
+    if isinstance(type_decl, syntax.RecordType):
+        fields = type_decl.fields
+    elif isinstance(type_decl, syntax.UnionType):
+        fields = [f for variant in type_decl.variants for f in variant.fields]
+    else:
+        return None
+    for name, field_type in fields:
+        if name == field_name:
+            return field_type
+    return None
+
+
+def _pattern_bindings(
+    pattern: object, scrutinee_type: str | None, program: syntax.Program
+) -> dict[str, str]:
+    if isinstance(pattern, syntax.PatVar):
+        return {pattern.name: scrutinee_type} if scrutinee_type is not None else {}
+    if isinstance(pattern, syntax.PatConstructor):
+        fields = syntax.resolve_constructor_fields(pattern.name, program)
+        if fields is None:
+            return {}
+        bindings: dict[str, str] = {}
+        for (field_name, field_type), subpattern in zip(fields, pattern.subpatterns):
+            bindings.update(_pattern_bindings(subpattern, field_type, program))
+        return bindings
+    return {}
+
+
+def _infer(
+    expr: object, env: dict[str, str], program: syntax.Program, diagnostics: list[Diagnostic]
+) -> str | None:
+    if isinstance(expr, syntax.IntLit):
+        return "Int"
+    if isinstance(expr, syntax.BoolLit):
+        return "Bool"
+    if isinstance(expr, syntax.UnitLit):
+        return "Unit"
+
+    if isinstance(expr, syntax.NameRef):
+        if expr.name in env:
+            return env[expr.name]
+        diagnostics.append(
+            Diagnostic("unbound_name", f"unbound name {expr.name!r}", (expr.line, expr.column))
+        )
+        return None
+
+    if isinstance(expr, syntax.Let):
+        local_env = dict(env)
+        for name, bound_expr in expr.bindings:
+            local_env[name] = _infer(bound_expr, local_env, program, diagnostics)
+        return _infer(expr.body, local_env, program, diagnostics)
+
+    if isinstance(expr, syntax.If):
+        condition_type = _infer(expr.condition, env, program, diagnostics)
+        if condition_type is not None and condition_type != "Bool":
+            diagnostics.append(
+                Diagnostic(
+                    "type_mismatch",
+                    f"'if' condition expects Bool, got {condition_type}",
+                    (expr.line, expr.column),
+                )
+            )
+        then_type = _infer(expr.then_branch, env, program, diagnostics)
+        else_type = _infer(expr.else_branch, env, program, diagnostics)
+        if then_type is not None and else_type is not None and then_type != else_type:
+            diagnostics.append(
+                Diagnostic(
+                    "type_mismatch",
+                    f"'if' branches disagree: {then_type} vs {else_type}",
+                    (expr.line, expr.column),
+                )
+            )
+            return None
+        return then_type if then_type is not None else else_type
+
+    if isinstance(expr, syntax.Match):
+        scrutinee_type = _infer(expr.scrutinee, env, program, diagnostics)
+        result_type: str | None = None
+        disagreement = False
+        for clause in expr.clauses:
+            clause_env = dict(env)
+            clause_env.update(_pattern_bindings(clause.pattern, scrutinee_type, program))
+            clause_type = _infer(clause.body, clause_env, program, diagnostics)
+            if clause_type is None:
+                continue
+            if result_type is None:
+                result_type = clause_type
+            elif result_type != clause_type:
+                disagreement = True
+        if disagreement:
+            diagnostics.append(
+                Diagnostic(
+                    "type_mismatch",
+                    "'match' clauses disagree on result type",
+                    (expr.line, expr.column),
+                )
+            )
+            return None
+        return result_type
+
+    if isinstance(expr, syntax.FieldAccess):
+        target_type = _infer(expr.target, env, program, diagnostics)
+        if target_type is None:
+            return None
+        field_type = _field_type(target_type, expr.field_name, program)
+        if field_type is None:
+            diagnostics.append(
+                Diagnostic(
+                    "unbound_field",
+                    f"type {target_type!r} has no field {expr.field_name!r}",
+                    (expr.line, expr.column),
+                )
+            )
+        return field_type
+
+    if isinstance(expr, syntax.OperatorCall):
+        arg_types = [_infer(arg, env, program, diagnostics) for arg in expr.args]
+        return _check_operator(expr, arg_types, diagnostics)
+
+    if isinstance(expr, syntax.ConstructorCall):
+        fields = syntax.resolve_constructor_fields(expr.name, program)
+        if fields is None:
+            diagnostics.append(
+                Diagnostic(
+                    "unbound_constructor",
+                    f"unknown constructor {expr.name!r}",
+                    (expr.line, expr.column),
+                )
+            )
+            for arg in expr.args:
+                _infer(arg, env, program, diagnostics)
+            return None
+        if len(fields) != len(expr.args):
+            diagnostics.append(
+                Diagnostic(
+                    "arity_mismatch",
+                    f"constructor {expr.name!r} takes {len(fields)} field(s), got {len(expr.args)}",
+                    (expr.line, expr.column),
+                )
+            )
+        for (field_name, field_type), arg in zip(fields, expr.args):
+            arg_type = _infer(arg, env, program, diagnostics)
+            if arg_type is not None and arg_type != field_type:
+                diagnostics.append(
+                    Diagnostic(
+                        "type_mismatch",
+                        f"constructor {expr.name!r} field {field_name!r} expects "
+                        f"{field_type}, got {arg_type}",
+                        (expr.line, expr.column),
+                    )
+                )
+        for arg in expr.args[len(fields):]:
+            _infer(arg, env, program, diagnostics)
+        return syntax.resolve_constructor(expr.name, program)[0]
+
     if isinstance(expr, syntax.Call):
         callee = program.functions.get(expr.name)
         if callee is None:
             diagnostics.append(
-                Diagnostic("unbound_name", f"call to undeclared function {expr.name!r} in {function_name!r}")
+                Diagnostic(
+                    "unbound_name",
+                    f"call to undeclared function {expr.name!r}",
+                    (expr.line, expr.column),
+                )
             )
-        elif len(expr.args) != len(callee.signature.params):
+            for arg in expr.args:
+                _infer(arg, env, program, diagnostics)
+            return None
+        params = callee.signature.params
+        if len(expr.args) != len(params):
             diagnostics.append(
                 Diagnostic(
                     "arity_mismatch",
-                    f"call to {expr.name!r} in {function_name!r} passes {len(expr.args)} "
-                    f"argument(s), expected {len(callee.signature.params)}",
+                    f"call to {expr.name!r} passes {len(expr.args)} argument(s), "
+                    f"expected {len(params)}",
+                    (expr.line, expr.column),
                 )
             )
-        for arg in expr.args:
-            _check_expr(arg, program, function_name, diagnostics)
-    elif isinstance(expr, syntax.ConstructorCall):
-        if syntax.resolve_constructor_fields(expr.name, program) is None:
+        for (param_name, param_type), arg in zip(params, expr.args):
+            arg_type = _infer(arg, env, program, diagnostics)
+            if arg_type is not None and arg_type != param_type:
+                diagnostics.append(
+                    Diagnostic(
+                        "type_mismatch",
+                        f"call to {expr.name!r} argument {param_name!r} expects "
+                        f"{param_type}, got {arg_type}",
+                        (expr.line, expr.column),
+                    )
+                )
+        for arg in expr.args[len(params):]:
+            _infer(arg, env, program, diagnostics)
+        return callee.signature.return_type
+
+    raise TypeError(f"unrecognised expression node: {expr!r}")
+
+
+def _check_operator(
+    expr: syntax.OperatorCall, arg_types: list[str | None], diagnostics: list[Diagnostic]
+) -> str:
+    op = expr.operator
+    if op in NUMERIC_OPERATORS:
+        for arg_type in arg_types:
+            if arg_type is not None and arg_type != "Int":
+                diagnostics.append(
+                    Diagnostic(
+                        "type_mismatch",
+                        f"operator {op!r} expects Int operands, got {arg_type}",
+                        (expr.line, expr.column),
+                    )
+                )
+        return "Int"
+    if op in COMPARISON_OPERATORS:
+        for arg_type in arg_types:
+            if arg_type is not None and arg_type != "Int":
+                diagnostics.append(
+                    Diagnostic(
+                        "type_mismatch",
+                        f"operator {op!r} expects Int operands, got {arg_type}",
+                        (expr.line, expr.column),
+                    )
+                )
+        return "Bool"
+    if op == "=":
+        known = [t for t in arg_types if t is not None]
+        if len(set(known)) > 1:
             diagnostics.append(
-                Diagnostic("unbound_constructor", f"unknown constructor {expr.name!r} in {function_name!r}")
+                Diagnostic(
+                    "type_mismatch",
+                    f"'=' operands have different types: {known}",
+                    (expr.line, expr.column),
+                )
             )
-        for arg in expr.args:
-            _check_expr(arg, program, function_name, diagnostics)
-    elif isinstance(expr, syntax.OperatorCall):
-        for arg in expr.args:
-            _check_expr(arg, program, function_name, diagnostics)
-    elif isinstance(expr, syntax.FieldAccess):
-        _check_expr(expr.target, program, function_name, diagnostics)
-    elif isinstance(expr, syntax.Let):
-        for _, bound_expr in expr.bindings:
-            _check_expr(bound_expr, program, function_name, diagnostics)
-        _check_expr(expr.body, program, function_name, diagnostics)
-    elif isinstance(expr, syntax.If):
-        _check_expr(expr.condition, program, function_name, diagnostics)
-        _check_expr(expr.then_branch, program, function_name, diagnostics)
-        _check_expr(expr.else_branch, program, function_name, diagnostics)
-    elif isinstance(expr, syntax.Match):
-        _check_expr(expr.scrutinee, program, function_name, diagnostics)
-        for clause in expr.clauses:
-            _check_expr(clause.body, program, function_name, diagnostics)
+        return "Bool"
+    if op in BOOLEAN_OPERATORS:
+        for arg_type in arg_types:
+            if arg_type is not None and arg_type != "Bool":
+                diagnostics.append(
+                    Diagnostic(
+                        "type_mismatch",
+                        f"operator {op!r} expects Bool operands, got {arg_type}",
+                        (expr.line, expr.column),
+                    )
+                )
+        return "Bool"
+    raise ValueError(f"unknown operator {op!r}")

@@ -53,6 +53,14 @@ def _source_digest(source: str) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
+def _diagnostic_dict(diagnostic: checker.Diagnostic) -> dict:
+    entry = {"category": diagnostic.category, "reason": diagnostic.reason}
+    if diagnostic.location is not None:
+        line, column = diagnostic.location
+        entry["location"] = {"line": line, "column": column}
+    return entry
+
+
 def _run_check(source: str) -> dict:
     try:
         forms = read_program(source)
@@ -69,9 +77,7 @@ def _run_check(source: str) -> dict:
         return {
             "operation": "check",
             "status": "invalid_program",
-            "diagnostics": [
-                {"category": d.category, "reason": d.reason} for d in diagnostics
-            ],
+            "diagnostics": [_diagnostic_dict(d) for d in diagnostics],
         }
 
     return {
@@ -100,7 +106,7 @@ def _run_examples(source: str) -> dict:
             "operation": "examples",
             "status": "invalid_program",
             "diagnostics": [
-                {"category": d.category, "reason": d.reason} for d in diagnostics
+                _diagnostic_dict(d) for d in diagnostics
             ],
         }
 
@@ -158,7 +164,7 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "operation": "evaluate",
             "status": "invalid_program",
             "diagnostics": [
-                {"category": d.category, "reason": d.reason} for d in diagnostics
+                _diagnostic_dict(d) for d in diagnostics
             ],
         }
 
