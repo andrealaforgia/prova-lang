@@ -11,6 +11,11 @@ from __future__ import annotations
 
 from prova import service
 
+
+def _categories(response: dict) -> set[str]:
+    return {d["category"] for d in response.get("diagnostics") or []}
+
+
 BOOL_RETURN_BUT_INT_BODY = """
 (defn bad (sig () -> Bool ! pure)
   (examples (example (bad) => true))
@@ -21,9 +26,8 @@ BOOL_RETURN_BUT_INT_BODY = """
 def test_body_type_disagreeing_with_declared_return_type_is_rejected():
     response = service.handle({"prova": "i1", "operation": "check", "source": BOOL_RETURN_BUT_INT_BODY})
 
-    assert response["status"] != "completed", response
-    diagnostics = response.get("diagnostics") or []
-    assert any(d["category"] == "type_mismatch" for d in diagnostics), diagnostics
+    assert response["status"] == "invalid_program", response
+    assert _categories(response) == {"type_mismatch"}, response
 
 
 NON_BOOL_REQUIRES = """
@@ -37,9 +41,8 @@ NON_BOOL_REQUIRES = """
 def test_requires_clause_that_is_not_bool_is_rejected():
     response = service.handle({"prova": "i1", "operation": "check", "source": NON_BOOL_REQUIRES})
 
-    assert response["status"] != "completed", response
-    diagnostics = response.get("diagnostics") or []
-    assert any(d["category"] == "type_mismatch" for d in diagnostics), diagnostics
+    assert response["status"] == "invalid_program", response
+    assert _categories(response) == {"type_mismatch"}, response
 
 
 NON_BOOL_ENSURES = """
@@ -53,9 +56,8 @@ NON_BOOL_ENSURES = """
 def test_ensures_clause_that_is_not_bool_is_rejected():
     response = service.handle({"prova": "i1", "operation": "check", "source": NON_BOOL_ENSURES})
 
-    assert response["status"] != "completed", response
-    diagnostics = response.get("diagnostics") or []
-    assert any(d["category"] == "type_mismatch" for d in diagnostics), diagnostics
+    assert response["status"] == "invalid_program", response
+    assert _categories(response) == {"type_mismatch"}, response
 
 
 MATCHING_BODY_AND_CONTRACTS = """

@@ -7,21 +7,20 @@ is covered. Hand-picked examples cannot carry that claim; a `_covers` that
 ignored nested columns, or that counted clauses rather than constructors,
 would pass them.
 
-Two finite domains are swept exhaustively (every non-empty subset):
+Two finite domains are swept exhaustively, one parametrized case per
+non-empty subset (15 each):
 - the constructors of a four-constructor union;
 - the four value combinations of a two-column record of `Bool` fields,
   where coverage depends on BOTH columns.
 
-Derandomized with a fixed seed and a bounded example count so the verdict
-does not depend on which cases Hypothesis happens to draw.
+No random generation is involved, so the verdict cannot depend on a seed.
 """
 
 from __future__ import annotations
 
 import itertools
 
-from hypothesis import given, settings
-from hypothesis import strategies as st
+import pytest
 
 from prova import service
 
@@ -29,6 +28,14 @@ from _i1_s5_fixtures import diagnostic_categories
 
 CONSTRUCTORS = ("Red", "Green", "Blue", "Amber")
 COMBINATIONS = tuple(itertools.product(("true", "false"), repeat=2))
+
+
+def _non_empty_subsets(items: tuple) -> list[list]:
+    return [
+        list(subset)
+        for size in range(1, len(items) + 1)
+        for subset in itertools.combinations(items, size)
+    ]
 
 
 def _check(source: str) -> dict:
@@ -70,8 +77,7 @@ def _assert_exhaustive_iff_complete(response: dict, complete: bool, covered) -> 
         )
 
 
-@settings(derandomize=True, max_examples=40, deadline=None)
-@given(covered=st.lists(st.sampled_from(CONSTRUCTORS), min_size=1, unique=True))
+@pytest.mark.parametrize("covered", _non_empty_subsets(CONSTRUCTORS), ids="-".join)
 def test_union_match_is_non_exhaustive_exactly_when_a_constructor_is_missing(covered):
     """Given a union match covering any non-empty subset of the union's
     constructors, when `check` runs, then it reports exactly
@@ -82,8 +88,11 @@ def test_union_match_is_non_exhaustive_exactly_when_a_constructor_is_missing(cov
     )
 
 
-@settings(derandomize=True, max_examples=40, deadline=None)
-@given(covered=st.lists(st.sampled_from(COMBINATIONS), min_size=1, unique=True))
+@pytest.mark.parametrize(
+    "covered",
+    _non_empty_subsets(COMBINATIONS),
+    ids=lambda subset: "-".join(a[0] + b[0] for a, b in subset),
+)
 def test_multi_column_record_match_is_non_exhaustive_exactly_when_a_combination_is_missing(
     covered,
 ):
