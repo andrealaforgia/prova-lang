@@ -21,6 +21,8 @@ from __future__ import annotations
 from _i1_s5_fixtures import (
     UNBOUND_NAME,
     assert_accepted,
+    diagnostic_locations,
+    line_col,
     assert_rejected_as_invalid_program,
     location_of,
     render,
@@ -96,3 +98,26 @@ def test_p4_category_differs_from_the_bool_arithmetic_type_error_category():
         f"its own defect as B3/B4 require: unbound={unbound_categories}, "
         f"type_error={type_error_categories}"
     )
+
+
+def test_p4_unbound_name_is_reported_as_unbound_name_at_the_name_in_every_layout():
+    """Resolved against each submitted text: the diagnostic category is
+    exactly `unbound_name` and one of its locations is where `missing-count`
+    actually starts in that text (found by counting newlines)."""
+    base = unbound_bug_source()
+    for blank_lines in (0, 1, 3):
+        for indent_spaces in (0, 2):
+            rendered = render(base, blank_lines, indent_spaces)
+            assert rendered.count(UNBOUND_NAME) == 1
+            expected = line_col(rendered, rendered.index(UNBOUND_NAME))
+            returncode, response, stdout, stderr = run_check(rendered)
+            categories = assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+            assert "unbound_name" in categories, (
+                f"blank_lines={blank_lines}, indent_spaces={indent_spaces}: "
+                f"category is not unbound_name: {categories}"
+            )
+            reported = diagnostic_locations(response, "unbound_name")
+            assert expected in reported, (
+                f"blank_lines={blank_lines}, indent_spaces={indent_spaces}: no "
+                f"unbound_name at {expected}; reported {sorted(reported)}: {response}"
+            )

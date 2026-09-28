@@ -94,3 +94,23 @@ def test_p5_both_defects_source_reports_each_defect_at_its_own_site():
     assert name_site in name_reported, (
         f"no unbound_name at {name_site}; reported {sorted(name_reported)}: {response}"
     )
+
+
+def test_p5_reserve_only_source_reports_type_mismatch_at_the_marker():
+    source = combined_source(reserve_defect=True, unbound_defect=False)
+    assert source.count(RESERVE_BUG_MARKER) == 1
+    returncode, response, stdout, stderr = run_check(source)
+    assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+    site = line_col(source, source.index(RESERVE_BUG_MARKER))
+    reported = diagnostic_locations(response, "type_mismatch")
+    assert site in reported, f"no type_mismatch at {site}; reported {sorted(reported)}: {response}"
+
+
+def test_p5_unbound_only_source_reports_unbound_name_at_the_name():
+    source = combined_source(reserve_defect=False, unbound_defect=True)
+    assert source.count(UNBOUND_NAME) == 1
+    returncode, response, stdout, stderr = run_check(source)
+    assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+    site = line_col(source, source.index(UNBOUND_NAME))
+    reported = diagnostic_locations(response, "unbound_name")
+    assert site in reported, f"no unbound_name at {site}; reported {sorted(reported)}: {response}"
