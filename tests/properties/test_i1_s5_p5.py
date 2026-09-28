@@ -14,7 +14,10 @@ from __future__ import annotations
 import pytest
 
 from _i1_s5_fixtures import (
+    RESERVE_BUG_MARKER,
     UNBOUND_NAME,
+    diagnostic_locations,
+    line_col,
     assert_accepted,
     assert_rejected_as_invalid_program,
     combined_source,
@@ -69,3 +72,25 @@ def test_p5_repairing_the_unbound_name_alone_still_exposes_the_reserve_defect():
 def test_p5_unmodified_source_remains_an_additional_positive_control():
     returncode, response, stdout, stderr = run_check(protected_source())
     assert_accepted(returncode, response, stdout, stderr)
+
+
+def test_p5_both_defects_source_reports_each_defect_at_its_own_site():
+    """Each diagnostic is resolved against the submitted text: the type_mismatch
+    must sit at the start of `(+ true 1)` and the unbound_name at the start of
+    `missing-count`, so neither defect is reported only by proxy."""
+    source = combined_source(reserve_defect=True, unbound_defect=True)
+    assert source.count(RESERVE_BUG_MARKER) == 1
+    assert source.count(UNBOUND_NAME) == 1
+    returncode, response, stdout, stderr = run_check(source)
+    assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+
+    type_site = line_col(source, source.index(RESERVE_BUG_MARKER))
+    name_site = line_col(source, source.index(UNBOUND_NAME))
+    type_reported = diagnostic_locations(response, "type_mismatch")
+    name_reported = diagnostic_locations(response, "unbound_name")
+    assert type_site in type_reported, (
+        f"no type_mismatch at {type_site}; reported {sorted(type_reported)}: {response}"
+    )
+    assert name_site in name_reported, (
+        f"no unbound_name at {name_site}; reported {sorted(name_reported)}: {response}"
+    )

@@ -239,3 +239,16 @@ def literal(type_name: str, n: int) -> str:
     if type_name == "Int":
         return str(n)
     return "()"
+
+
+def diagnostic_locations(response: dict, category: str) -> set[tuple[int, int]]:
+    """Every (line, column) reported for diagnostics of `category`."""
+    found = set()
+    for d in response.get("diagnostics") or []:
+        if d.get("category") != category:
+            continue
+        location = d.get("location") or {}
+        line, column = location.get("line"), location.get("column")
+        if isinstance(line, int) and isinstance(column, int):
+            found.add((line, column))
+    return found

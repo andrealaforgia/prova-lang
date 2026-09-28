@@ -22,7 +22,11 @@ from __future__ import annotations
 import pytest
 
 from _i1_s5_fixtures import (
+    RELEASE_BUG_MARKER,
+    RESERVE_BUG_MARKER,
     assert_rejected_as_invalid_program,
+    diagnostic_locations,
+    line_col,
     location_of,
     release_bug_source,
     render,
@@ -41,6 +45,11 @@ assert len(RENDERINGS) == 6
 FIXTURES = [
     pytest.param(reserve_bug_source, id="reserve"),
     pytest.param(release_bug_source, id="release"),
+]
+
+ANCHORED_FIXTURES = [
+    pytest.param(reserve_bug_source, RESERVE_BUG_MARKER, id="reserve"),
+    pytest.param(release_bug_source, RELEASE_BUG_MARKER, id="release"),
 ]
 
 
@@ -109,3 +118,26 @@ def test_p3_reserve_and_release_variants_report_the_same_type_error_category():
         f"not reliably denote the defect: reserve={reserve_categories}, "
         f"release={release_categories}"
     )
+
+
+@pytest.mark.parametrize("fixture_source,marker", ANCHORED_FIXTURES)
+def test_p3_type_mismatch_is_located_at_the_offending_expression_in_every_layout(
+    fixture_source, marker
+):
+    """Each of the 12 submitted texts is resolved independently: the expected
+    position is where the offending arithmetic expression (`(+ true 1)` or
+    `(- true 1)`) actually starts in that exact text, computed by counting
+    newlines, and the diagnostic must report a type_mismatch there."""
+    base = fixture_source()
+    for blank_lines, indent_spaces in RENDERINGS:
+        rendered = render(base, blank_lines, indent_spaces)
+        assert rendered.count(marker) == 1
+        expected = line_col(rendered, rendered.index(marker))
+        returncode, response, stdout, stderr = run_check(rendered)
+        assert_rejected_as_invalid_program(returncode, response, stdout, stderr)
+        reported = diagnostic_locations(response, "type_mismatch")
+        assert expected in reported, (
+            f"blank_lines={blank_lines}, indent_spaces={indent_spaces}: no "
+            f"type_mismatch diagnostic at {expected} (start of {marker!r}); "
+            f"type_mismatch locations reported: {sorted(reported)}; response: {response}"
+        )
