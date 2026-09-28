@@ -8,7 +8,7 @@ I1 change plan. No imports from src/prova.
 
 from __future__ import annotations
 
-from _i1_s6_fixtures import evaluate_add_one
+from _i1_s6_acceptance_fixtures import evaluate_add_one
 
 
 def test_add_one_of_41_is_42_as_a_positive_control():

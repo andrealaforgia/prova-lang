@@ -10,7 +10,7 @@ read from the implementation.
 
 from __future__ import annotations
 
-from _i1_s6_fixtures import evaluate_add_one
+from _i1_s6_acceptance_fixtures import evaluate_add_one
 
 N = -9223372036854775810  # below -2**63
 EXPECTED = -9223372036854775809

@@ -11,7 +11,7 @@ read from the implementation.
 
 from __future__ import annotations
 
-from _i1_s6_fixtures import evaluate_add_one
+from _i1_s6_acceptance_fixtures import evaluate_add_one
 
 N = 9223372036854775808  # 2**63, above both 2**53 and 2**63 - 1
 EXPECTED = 9223372036854775809
