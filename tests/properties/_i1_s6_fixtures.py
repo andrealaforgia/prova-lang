@@ -11,6 +11,7 @@ import pathlib
 import subprocess
 
 from _prova_client import (  # noqa: F401  (re-exported for the test modules)
+    BASELINE_SHA,
     REPO_ROOT,
     SPEC_ORACLE_SHA,
     load_reservation_source,

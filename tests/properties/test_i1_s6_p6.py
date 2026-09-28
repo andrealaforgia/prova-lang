@@ -14,7 +14,7 @@ content, order and every literal must match exactly.
 from __future__ import annotations
 
 from _i1_s6_fixtures import (
-    SPEC_ORACLE_SHA,
+    BASELINE_SHA,
     normalize_formatting,
     protected_region,
     spec_text_at,
@@ -23,7 +23,7 @@ from _i1_s6_fixtures import (
 
 
 def test_p6_protected_region_unchanged_ignoring_formatting():
-    baseline = normalize_formatting(protected_region(spec_text_at(SPEC_ORACLE_SHA)))
+    baseline = normalize_formatting(protected_region(spec_text_at(BASELINE_SHA)))
     candidate = normalize_formatting(protected_region(working_tree_spec_text()))
     assert candidate == baseline, (
         "the protected reservation region (source, contract, examples and "
