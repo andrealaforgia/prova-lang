@@ -36,19 +36,10 @@ def values_equal(left: object, right: object) -> bool:
 
 
 def _fields_of(constructor: str, program: syntax.Program) -> tuple[tuple[str, str], ...]:
-    """Field declarations for a constructor's owning type: either a record
-    type of the same name, or the variant of that name inside some union
-    type (a union variant's constructor name is the variant's own name,
-    not the union type's name it is keyed under in `program.types`)."""
-    type_decl = program.types.get(constructor)
-    if isinstance(type_decl, syntax.RecordType):
-        return type_decl.fields
-    for type_decl in program.types.values():
-        if isinstance(type_decl, syntax.UnionType):
-            for variant in type_decl.variants:
-                if variant.name == constructor:
-                    return variant.fields
-    raise ValueError(f"no record type or union variant named {constructor!r}")
+    fields = syntax.resolve_constructor_fields(constructor, program)
+    if fields is None:
+        raise ValueError(f"no record type or union variant named {constructor!r}")
+    return fields
 
 
 def call_function(function: syntax.Function, args: tuple[object, ...], program: syntax.Program) -> object:

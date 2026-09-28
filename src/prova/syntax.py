@@ -68,6 +68,23 @@ class Program:
     functions: dict[str, Function] = field(default_factory=dict)
 
 
+def resolve_constructor_fields(constructor: str, program: Program) -> tuple[tuple[str, str], ...] | None:
+    """Field declarations for a constructor's owning type: either a record
+    type of the same name, or the variant of that name inside some union
+    type (a union variant's constructor name is the variant's own name,
+    not the union type's name it is keyed under in `program.types`). `None`
+    when no declared type or variant matches."""
+    type_decl = program.types.get(constructor)
+    if isinstance(type_decl, RecordType):
+        return type_decl.fields
+    for type_decl in program.types.values():
+        if isinstance(type_decl, UnionType):
+            for variant in type_decl.variants:
+                if variant.name == constructor:
+                    return variant.fields
+    return None
+
+
 # --- expressions --------------------------------------------------------
 
 @dataclass(frozen=True)

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from prova import syntax
+from prova.values import ConstructorValue
 
 BUILTIN_TYPES = {"Unit", "Bool", "Int"}
 
@@ -49,8 +50,25 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
         check_type_name(function.signature.return_type, f"function {function.name!r} return type")
         for expr in (*function.requires, *function.ensures, function.body):
             _check_expr(expr, program, function.name, diagnostics)
+        for ordinal, example in enumerate(function.examples):
+            where = f"function {function.name!r} example {ordinal}"
+            for arg in example.args:
+                _check_value(arg, program, where, diagnostics)
+            _check_value(example.expected, program, where, diagnostics)
 
     return diagnostics
+
+
+def _check_value(value: object, program: syntax.Program, where: str, diagnostics: list[Diagnostic]) -> None:
+    if not isinstance(value, ConstructorValue):
+        return
+    if syntax.resolve_constructor_fields(value.constructor, program) is None:
+        diagnostics.append(
+            Diagnostic("unbound_constructor", f"unknown constructor {value.constructor!r} in {where}")
+        )
+        return
+    for field_value in value.fields:
+        _check_value(field_value, program, where, diagnostics)
 
 
 def _check_expr(expr: object, program: syntax.Program, function_name: str, diagnostics: list[Diagnostic]) -> None:
