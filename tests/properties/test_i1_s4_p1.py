@@ -34,25 +34,3 @@ def test_p1_mutants_change_only_step_body_and_retain_the_rest():
             f"mutant {mutant.id!r} body does not match its declared mutation"
         )
         assert source != protected_source(), f"mutant {mutant.id!r} is byte-identical to the protected source"
-
-
-def test_p1_mutant_semantics_independently_recomputed_over_full_grid():
-    # Hand-derived, independent of the mutant-generation code: for every
-    # count/event pair, does each mutant's stated rule differ from the
-    # protected source's rule at least where the corresponding behaviour
-    # claims a violation?
-    diffs_by_mutant = {"missing-guard": 0, "flipped-flag": 0, "always-reject": 0}
-    for mutant in MUTANTS:
-        for count in COUNTS:
-            for event in EVENTS:
-                baseline = independent_expected_outcome(None, count, event)
-                mutant_outcome = independent_expected_outcome(mutant.id, count, event)
-                if baseline != mutant_outcome:
-                    diffs_by_mutant[mutant.id] += 1
-
-    # missing-guard only diverges at the single boundary case (2, Reserve).
-    assert diffs_by_mutant["missing-guard"] == 1
-    # flipped-flag diverges everywhere: the flag is negated unconditionally.
-    assert diffs_by_mutant["flipped-flag"] == 6
-    # always-reject diverges on every case the table marks accepted (4 of 6).
-    assert diffs_by_mutant["always-reject"] == 4

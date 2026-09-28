@@ -3,17 +3,14 @@ its runtime oracle survive the mutation campaign unchanged.
 
 Given SPEC.md's Core conformance example at the pinned preparation baseline,
 when compared against the same region at the candidate revision, then it is
-unchanged beyond formatting. Given the protected source text used by the
-runtime controls, when snapshotted before and after the three mutation
-sources are built and evaluated, then that snapshot is byte-identical, so no
-mutation run wrote through to, or replaced, the protected oracle.
+unchanged beyond formatting. The before/after-execution bracket runs a fresh
+campaign and lives in test_i1_s4_p7_pinned_snapshots.py.
 """
 
 from __future__ import annotations
 
 import subprocess
 
-from _i1_s4_fixtures import MUTANTS, digest, evaluate_step, mutated_source, protected_source
 from _prova_client import BASELINE_SHA, REPO_ROOT
 
 START_HEADING = "## Core conformance example"
@@ -46,17 +43,3 @@ def test_p7_protected_reservation_region_matches_baseline():
         "SPEC.md's protected reservation example changed beyond formatting "
         f"since baseline {BASELINE_SHA}"
     )
-
-
-def test_p7_protected_source_survives_the_mutation_campaign_unchanged():
-    before = protected_source()
-    before_digest = digest(before)
-
-    for mutant in MUTANTS:
-        source = mutated_source(mutant)
-        assert digest(source) != before_digest, f"mutant {mutant.id!r} did not actually change the source"
-        evaluate_step(source, count=0, event="Reserve")
-
-    after = protected_source()
-    assert digest(after) == before_digest, "the protected source changed after the mutation runs"
-    assert after == before

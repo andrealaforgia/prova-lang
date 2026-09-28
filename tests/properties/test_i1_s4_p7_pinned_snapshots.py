@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import subprocess
 
-from _i1_s4_v4 import PINNED_TABLE, campaign, read_forms, sha256, sources
+from _i1_s4_v4 import PINNED_TABLE, campaign, read_forms, run_campaign, sha256, sources
 from _i1_s4_fixtures import MUTANTS, mutated_source
 from _prova_client import REPO_ROOT, SPEC_ORACLE_SHA, _extract_reservation_source, protected_region
 
@@ -67,13 +67,31 @@ def test_p7_runtime_controls_use_the_candidate_protected_source():
     assert {c.response["source_digest"] for c in controls} == {protected_digest}
 
 
+def _working_tree_digest() -> str:
+    """Digest of every file execution could touch: SPEC.md, the conformance
+    tree and the evidence fixtures, read from the working tree."""
+    import hashlib
+    h = hashlib.sha256()
+    paths = [REPO_ROOT / "SPEC.md"]
+    for d in ("conformance", "evidence"):
+        root = REPO_ROOT / d
+        if root.is_dir():
+            paths += sorted(p for p in root.rglob("*") if p.is_file())
+    for path in paths:
+        h.update(str(path.relative_to(REPO_ROOT)).encode() + b"\0" + path.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
 def test_p7_protected_snapshots_agree_before_after_construction_and_after_execution():
-    snapshot = lambda: (sha256(sources()["protected"]), sha256(_extract_reservation_source(_candidate_spec())),
+    """Runs a fresh, uncached campaign (control, three mutants, control) between
+    the snapshots, so the bracket surrounds real executions."""
+    snapshot = lambda: (_working_tree_digest(), sha256(_extract_reservation_source(_candidate_spec())),
                         tuple(sorted(PINNED_TABLE.items())))
     before = snapshot()
     built = {m.id: mutated_source(m) for m in MUTANTS}
     after_construction = snapshot()
-    campaign()  # executes every mutant and control call
+    calls = run_campaign()
     after_execution = snapshot()
+    assert len(calls) == 30 and all(c.response is not None for c in calls)
     assert before == after_construction == after_execution
-    assert all(sha256(s) != before[0] for s in built.values())
+    assert all(sha256(s) != sha256(_extract_reservation_source(_candidate_spec())) for s in built.values())
