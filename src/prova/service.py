@@ -16,6 +16,8 @@ UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "verify", "build"})
 
 def handle(request: dict) -> dict:
     operation = request.get("operation")
+    if operation == "check":
+        return _run_check(request.get("source", ""))
     if operation == "examples":
         return _run_examples(request.get("source", ""))
     if operation == "evaluate":
@@ -49,6 +51,36 @@ def handle(request: dict) -> dict:
 
 def _source_digest(source: str) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _run_check(source: str) -> dict:
+    try:
+        forms = read_program(source)
+        program = syntax.parse_program(forms)
+    except (ReaderError, syntax.SyntaxError_) as error:
+        return {
+            "operation": "check",
+            "status": "invalid_program",
+            "diagnostics": [{"category": "syntax", "reason": error.message}],
+        }
+
+    diagnostics = checker.check_program(program)
+    if diagnostics:
+        return {
+            "operation": "check",
+            "status": "invalid_program",
+            "diagnostics": [
+                {"category": d.category, "reason": d.reason} for d in diagnostics
+            ],
+        }
+
+    return {
+        "operation": "check",
+        "status": "completed",
+        "claim": {"kind": "static_check", "scope": "this input"},
+        "source_digest": _source_digest(source),
+        "diagnostics": [],
+    }
 
 
 def _run_examples(source: str) -> dict:
