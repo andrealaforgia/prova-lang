@@ -82,6 +82,13 @@ def _run_discover() -> dict:
             "profile": {"name": "core-0", "coverage": "partial"},
             "operations": availability,
             "diagnostic_categories": list(DIAGNOSTIC_CATEGORIES),
+            "documentation": {
+                "evaluate": (
+                    "A completed evaluate response means the function's postconditions "
+                    "were checked and held for the supplied input; it is not a proof "
+                    "for all inputs."
+                ),
+            },
             "resource_limits": {
                 "enforced": False,
                 "reason": "no resource limits are enforced in I1",

@@ -304,6 +304,17 @@ def _parse_function_decl(form: SList) -> Function:
         ensures = tuple(parse_expr(e) for e in rest[0].items[1:])
         rest = rest[1:]
 
+    if not rest or _head_symbol(rest[0]) != "examples":
+        raise SyntaxError_(
+            f"function {name!r} must declare an examples clause "
+            "(examples ...) before its body",
+            *_position(form),
+        )
+    if len(rest) != 2:
+        raise SyntaxError_(
+            f"function {name!r} must have exactly one body expression after its examples clause",
+            *_position(form),
+        )
     examples = _parse_examples(rest[0])
     body = parse_expr(rest[1])
     return Function(name, signature, requires, ensures, examples, body)
@@ -313,7 +324,18 @@ def _parse_examples(node: SList) -> tuple[Example, ...]:
     return tuple(_parse_example(e) for e in node.items[1:])
 
 
-def _parse_example(node: SList) -> Example:
+def _parse_example(node: object) -> Example:
+    if not (
+        isinstance(node, SList)
+        and len(node.items) == 4
+        and isinstance(node.items[1], SList)
+        and node.items[1].items
+        and isinstance(node.items[1].items[0], Atom)
+    ):
+        raise SyntaxError_(
+            "a declared example must have the shape (example (f args...) -> expected)",
+            *_position(node),
+        )
     call = node.items[1]
     function_name = call.items[0].text
     args = tuple(parse_value(v) for v in call.items[1:])
