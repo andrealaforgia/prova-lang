@@ -1,0 +1,41 @@
+; Lamport, "Specifying Systems", chapter 2: the hour clock.
+;   HCini == hr \in 1..12
+;   HCnxt == hr' = IF hr # 12 THEN hr + 1 ELSE 1
+;   HC    == HCini /\ [][HCnxt]_hr
+; The clock has one action, a tick, which is always possible, so every event
+; is admissible and every tick is accepted. The invariant is HCini itself.
+
+(deftype Clock (record (hr Int)))
+(deftype Event (union (Tick)))
+(deftype Outcome (record (state Clock) (accepted Bool)))
+
+(defn valid-state
+  (sig ((current Clock)) -> Bool ! pure)
+  (examples
+    (example (valid-state (Clock 1)) => true)
+    (example (valid-state (Clock 12)) => true)
+    (example (valid-state (Clock 0)) => false)
+    (example (valid-state (Clock 13)) => false))
+  (and (>= (.hr current) 1) (<= (.hr current) 12)))
+
+(defn initial
+  (sig () -> Clock ! pure)
+  (ensures (valid-state result))
+  (examples (example (initial) => (Clock 12)))
+  (Clock 12))
+
+(defn step
+  (sig ((current Clock) (event Event)) -> Outcome ! pure)
+  (requires (valid-state current))
+  (ensures
+    (valid-state (.state result))
+    (.accepted result)
+    (= (.hr (.state result))
+       (if (= (.hr current) 12) 1 (+ (.hr current) 1))))
+  (examples
+    (example (step (Clock 1) (Tick)) => (Outcome (Clock 2) true))
+    (example (step (Clock 11) (Tick)) => (Outcome (Clock 12) true))
+    (example (step (Clock 12) (Tick)) => (Outcome (Clock 1) true)))
+  (match event
+    ((Tick)
+      (Outcome (Clock (if (= (.hr current) 12) 1 (+ (.hr current) 1))) true))))
