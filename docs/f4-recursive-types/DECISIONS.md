@@ -2,7 +2,7 @@
 
 kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: none
 
-## oracle (revision 1)
+## oracle (revision 2)
 
 - **decisions**:
   - DEC1: the refusal gets its own category recursive_type instead of reusing cyclic_dependency, because the subject (declared data types, not functions), the repair (wait for a later profile, not remove a call) and the published F2 law (cyclic_dependency means the call graph) differ, and a consumer filters by category; service.py grows by 1 name, the smallest edit that keeps the two apart.

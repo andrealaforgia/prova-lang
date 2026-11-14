@@ -160,6 +160,9 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 ## Observed side effects (git, BASE to HEAD)
 
 - M docs/ROADMAP.md (+1 -1 lines)
+- A docs/f4-recursive-types/DECISIONS.md (+12 -0 lines)
+- A docs/f4-recursive-types/SUMMARY.md (+439 -0 lines)
+- A docs/f4-recursive-types/TRACE.md (+5 -0 lines)
 - A docs/feature/obligation-inventory/craft.md (+95 -0 lines)
 - A docs/feature/obligation-inventory/design.md (+85 -0 lines)
 - A docs/feature/obligation-inventory/handoff.md (+42 -0 lines)
@@ -200,8 +203,9 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - 6c12e91 Keep the delivery's record beside the change
 - 186988f [F4] read a dependency cycle and a type's fields in one place each
 - 5df6a20 [F4] refuse data that leads back to itself, naming the types on the cycle
+- ac6f43a [F4] keep the delivery's record beside the change
 
-## 1. oracle: Frame the work and write the oracle (revision 1)
+## 3. oracle: Frame the work and write the oracle (revision 2)
 
 - **request**:
   - /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-f4/request.md
@@ -345,13 +349,12 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - I3.crash => n/a: the constructor does no recursion, no IO and no graph walk
 - **laws**:
   - LAW1 | a program is refused with a recursive_type diagnostic exactly when its type-dependency graph has a cycle, and the refusal names exactly the types that lie on one | generator=test_a_program_is_refused_exactly_when_a_type_leads_back_to_itself | observation=the categories and cycle member lists of the check response, against a transitive closure computed from the generator own edge list | mutant=name the type whose field opened the walk instead of the types on the cycle, or accept a cycle of length 3
-  - LAW2 | a reported cycle of types always names at least one type, so the refusal it carries says which declarations to look at | generator=test_a_type_cycle_that_names_no_type_is_refused_with_a_reason | observation=ValueError that says what was wrong and what to build the cycle from | mutant=drop the constructor check, so a refusal naming nothing can be built
 - **messages**:
   - MSG1 | (deftype Node (record (value Int) (next Node))) | the type Node leads back to itself through the declared types of its fields | core-0 requires the type-dependency graph to be acyclic, so recursive data belongs to a later profile | remove or retype the field that closes the cycle, or keep the type for a profile that supports recursive data | test=test_the_refusal_sends_the_reader_to_a_later_profile
   - MSG2 | a TypeCycle built with no member | a cycle must name at least one type | a refusal with no member would not say which declarations to repair | build it from the types the dependency search found depending on each other | test=test_a_type_cycle_that_names_no_type_is_refused_with_a_reason
-- **red**: `uv run pytest -q tests/acceptance/test_f4_b1_a_record_holding_itself_is_refused.py tests/acceptance/test_f4_b2_two_records_holding_each_other_are_refused.py tests/acceptance/test_f4_b3_a_union_variant_closing_a_cycle_is_refused.py tests/acceptance/test_f4_b5_the_refusal_says_recursive_data_is_outside_this_profile.py tests/acceptance/test_f4_b6_a_function_reading_recursive_data_is_refused_without_crashing.py tests/acceptance/test_f4_b7_the_manifest_publishes_the_new_category.py tests/properties/test_f4_type_dependency_cycles.py` exited 1 in 1.384s
+- **red**: `uv run pytest -q tests/acceptance/test_f4_b1_a_record_holding_itself_is_refused.py tests/acceptance/test_f4_b2_two_records_holding_each_other_are_refused.py tests/acceptance/test_f4_b3_a_union_variant_closing_a_cycle_is_refused.py tests/acceptance/test_f4_b5_the_refusal_says_recursive_data_is_outside_this_profile.py tests/acceptance/test_f4_b6_a_function_reading_recursive_data_is_refused_without_crashing.py tests/acceptance/test_f4_b7_the_manifest_publishes_the_new_category.py tests/properties/test_f4_type_dependency_cycles.py` exited 1 in 1.732s
   - failing on the pre-feature tree (8): tests/acceptance/test_f4_b1_a_record_holding_itself_is_refused.py::test_a_record_with_a_field_of_its_own_type_is_refused_naming_the_cycle, tests/acceptance/test_f4_b2_two_records_holding_each_other_are_refused.py::test_two_records_that_each_hold_the_other_are_refused_naming_both, tests/acceptance/test_f4_b3_a_union_variant_closing_a_cycle_is_refused.py::test_a_union_whose_variant_payload_closes_a_cycle_is_refused, tests/acceptance/test_f4_b5_the_refusal_says_recursive_data_is_outside_this_profile.py::test_the_refusal_sends_the_reader_to_a_later_profile[a, tests/acceptance/test_f4_b5_the_refusal_says_recursive_data_is_outside_this_profile.py::test_the_refusal_sends_the_reader_to_a_later_profile[two, tests/acceptance/test_f4_b6_a_function_reading_recursive_data_is_refused_without_crashing.py::test_a_function_that_matches_on_recursive_data_is_refused_not_crashed, tests/acceptance/test_f4_b7_the_manifest_publishes_the_new_category.py::test_the_manifest_publishes_the_recursive_data_category, tests/properties/test_f4_type_dependency_cycles.py::test_a_program_is_refused_exactly_when_a_type_leads_back_to_itself
-  - tests (read from the run): 9 failed, 6 passed in 0.97s
+  - tests (read from the run): 9 failed, 6 passed in 1.02s
   ```text
               )
               return
@@ -392,23 +395,23 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   FAILED tests/acceptance/test_f4_b6_a_function_reading_recursive_data_is_refused_without_crashing.py::test_a_function_that_matches_on_recursive_data_is_refused_not_crashed
   FAILED tests/acceptance/test_f4_b7_the_manifest_publishes_the_new_category.py::test_the_manifest_publishes_the_recursive_data_category
   FAILED tests/properties/test_f4_type_dependency_cycles.py::test_a_program_is_refused_exactly_when_a_type_leads_back_to_itself
-  9 failed, 6 passed in 0.97s
+  9 failed, 6 passed in 1.02s
   ```
 
-## 2. craft: Craft the change (revision 1)
+## 4. craft: Craft the change (revision 2)
 
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 90.761s
-  - tests (read from the run): 857 passed in 90.64s
-  - slowest: 6.42s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 3.81s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 3.51s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 3.06s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 2.29s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 1.78s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  - slowest: 1.57s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.34s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  - slowest: 1.26s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 1.21s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 85.02s
+  - tests (read from the run): 857 passed in 84.88s
+  - slowest: 5.37s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 3.49s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 3.11s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 2.86s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 2.20s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 1.55s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 1.28s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  - slowest: 1.23s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.18s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  - slowest: 1.15s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
   ```text
   ........................................................................ [  8%]
   ........................................................................ [ 16%]
@@ -423,17 +426,64 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ........................................................................ [ 92%]
   .................................................................        [100%]
   ============================= slowest 10 durations =============================
-  6.42s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  3.81s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  3.51s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  3.06s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  2.29s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  1.78s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  1.57s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.34s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  1.26s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  1.21s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  857 passed in 90.64s (0:01:30)
+  5.37s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  3.49s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  3.11s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  2.86s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  2.20s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  1.55s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  1.28s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  1.23s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.18s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1.15s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  857 passed in 84.88s (0:01:24)
   ```
-- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.098s
+- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.055s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this environment, so jev_decide.py exits 3; the category and early-refusal choices were decided locally and recorded as DEC1 and DEC2
+
+## 5. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the change follows DEC1 (own category recursive_type), DEC2 (functions not checked when a cycle is found, src/prova/checker.py:203) and DEC3 (members instead of a location)
+  - D2: pass - the cycle search has one owner, _cycles_among at src/prova/checker.py:314, used by the function rule and the type rule; the fields of a declared type have one reader, _declared_fields at src/prova/checker.py:421
+  - D3: pass - the checker keeps the rule, service.py only publishes the category name at src/prova/service.py:28; no transport or filesystem code entered the checker
+  - D4: pass - src/prova/checker.py:105 TypeCycle inherits the constructor that refuses an empty member tuple, so a refusal that names no type cannot be built, and the category is a named constant at src/prova/checker.py:37
+  - D5: pass - src/prova/checker.py:110 the kind of a cycle is one class attribute and each subclass carries only its own sentence; DeclarationCycle, Cycle and TypeCycle are each under 25 lines
+  - D6: pass - the shared behaviour sits in a small value hierarchy rather than a flag; no pattern was introduced for its own sake
+  - D7: pass - the language of the domain is used throughout: declared type, field, variant payload, cycle, profile
+  - D8: pass - the checker reads only the parsed program; no IO, no process and no clock was added
+  - D9: pass - tests/acceptance/test_f4_b6_a_function_reading_recursive_data_is_refused_without_crashing.py:27 drives the real prova command over JSON on stdin and reads only the response and the exit code; no acceptance test imports src/prova
+  - D10: pass - every test name states the behaviour in the words of a reader, for example test_a_function_that_matches_on_recursive_data_is_refused_not_crashed
+  - D11: pass - the shapes and the reading helpers live in tests/acceptance/_f4_recursive_type_fixtures.py, and each refused program has an accepted twin beside it
+  - D12: pass - tests/properties/test_f4_type_dependency_cycles.py:105 generates every graph over 3 types as records or unions and decides the expected verdict with its own transitive closure at line 71, a different algorithm from the tool
+  - D13: pass - the 18 new tests run in 0.60s together; the whole suite is 857 tests in 83.70s, and the slowest tests of the run are recorded by the green command
+  - D14: pass - the 3 refused shapes share one assertion helper and the property covers the general law, so no test repeats another
+  - D15: pass - tests/acceptance/_f4_recursive_type_fixtures.py:186 says what was wrong, which types were expected and what to repair; the product refusal at src/prova/checker.py:105 names the types, the rule, the later profile and the two repairs
+  - D16: n/a: the rule is a pure function of the program text; there is no state, protocol, concurrency or crash recovery for a formal model to carry (DEC4)
+  - D17: pass - the module docstring of src/prova/checker.py now states the type rule and its early refusal, and the brief records DEC1 to DEC5 with the measured RecursionError that justifies DEC2
+- **independent_review**:
+  - REV1 | reviewer=nw-software-crafter-reviewer | findings=A separate read-only reviewer agent, 2026-11-14, APPROVE with no findings on identity ac6f43a. Own probes, about 35 cases: all 5 acceptance criteria pass (self-referencing record, two-record cycle, union-variant cycle, 3-type chain accepted, diamond accepted, tail cycle naming only the nodes on it, a 2000-type cycle and a 2000-type chain with no RecursionError). No existing test modified: only src/prova/checker.py and src/prova/service.py changed. SPEC.md untouched. Full suite 857 passed on its own run. recursive_type is published by discover. On main a recursive union read by a match raised RecursionError; it is now a structured refusal with exit 0. Composition with F2 and F3 shows no crash and no double reporting. Reviewer limits: Jev unavailable, no mutation run, no CI run, and evaluator.py, obligations.py and the rest of syntax.py were not audited. | resolution=Verdict accepted, no code changed, so the reviewed identity ac6f43a still stands. The 8 reviewer notes are accepted and deferred, none of them a defect of this behaviour: (1) the _is_a_cycle docstring at checker.py:386-388 still says functions although the search now serves type cycles; (2) the KIND default on DeclarationCycle at checker.py:67 is unreachable; (3) Diagnostic.cycle is typed DeclarationCycle or None while the base class declares no diagnostic method, latent and read by nothing; (4) the two cycle kinds format their names differently, unquoted for functions and quoted for types, and the F2 tests pin the unquoted form; (5) suppressing cyclic_dependency while a type cycle stands is sound and is disclosed as DEC2; (6) a redeclared builtin that also holds itself gives 2 refusals, duplicate_declaration and recursive_type; (7) the property generator is capped at 3 types and larger shapes are covered by hand and by the reviewer probes; (8) pre-existing and out of scope, a malformed sig crashes the parser with an unhandled IndexError at src/prova/syntax.py:411 on main too, which roadmap feature F6 owns. Notes 1 to 4 are editorial or latent and belong to the next change that touches those lines; 5 to 7 need no action; 8 is reported to its owner.
+
+## 6. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - Data that leads back to itself is now refused.
+- **not_verified**:
+  - Jev was unavailable in this environment (TYPESAFE_API_KEY absent, client exit 3), so the category choice and the early-refusal choice were decided locally and recorded as DEC1 and DEC2 instead of being put to the service.
+  - No mutation run and no CI run were made for this change; the suite was run locally on macOS with the Python the repository pins, not in the CI environment.
+  - The recorded RED ran on the workspace pre-feature tree, which was taken before main moved; it therefore does not cover the F16 code that arrived with the rebase. Only the full suite run after the rebase covers that composition.
+  - The 8 reviewer notes were not acted on, to keep the reviewed identity: the _is_a_cycle docstring still says functions, the KIND default on the base class is unreachable, Diagnostic.cycle is typed to a base class that declares no diagnostic method, and the two cycle kinds quote their names differently.
+  - A malformed sig crashes the parser with an unhandled IndexError at src/prova/syntax.py:411; it is pre-existing on main, out of scope here, and belongs to roadmap feature F6.
+  - The property generator is capped at 3 types; larger shapes (a 2000-type cycle and a 2000-type chain) were only exercised by the reviewer probes, not by a committed test.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit ac6f43a46e26768a44a08aea5f5f4477d4213c61
+  - no checks declared
+
+## Not backed by the diff
+
+- The checker reads the declared field types of every record and every union variant as a dependency graph, reuses the cycle search the function rule already owns, and answers such a program in the new recursive_type category: the refusal names every type on the cycle, in its sentence and in the cycle member list of the response, says that core-0 requires the type-dependency graph to be acyclic and that recursive data belongs to a later profile, and says that the functions were not checked.: a guarantee names no test function of the change
+- That last part is a decision with a measured reason (DEC2): on the pre-feature tree a recursive union read by a match ended the command in a RecursionError, because every check that follows the fields of a type ends only on acyclic types.: a guarantee names no test function of the change
+- A field naming a type the program never declares stays an unknown type, and a chain of types that never leads back stays accepted.: a guarantee names no test function of the change
+- The refusal got its own category rather than reusing cyclic_dependency (DEC1), so service.py grew by one published name and nothing else; a reader who filters by category keeps the call-graph rule and the data rule apart.: a guarantee names no test function of the change
+- A prefactoring commit went first: the cycle search and the reading of a declared type fields each have one owner now, with no test edited.: a guarantee names no test function of the change
+- A separate read-only reviewer agent approved the change on its own probes and left 8 notes, all accepted and deferred, none a defect of this behaviour; they are recorded with the review.: a guarantee names no test function of the change
