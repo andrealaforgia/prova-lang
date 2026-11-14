@@ -241,7 +241,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 ## Observed side effects (git, BASE to HEAD)
 
 - A docs/f6-names-and-markers/DECISIONS.md (+18 -0 lines)
-- A docs/f6-names-and-markers/SUMMARY.md (+614 -0 lines)
+- A docs/f6-names-and-markers/SUMMARY.md (+619 -0 lines)
 - A docs/f6-names-and-markers/TRACE.md (+6 -0 lines)
 - A docs/feature/f6-names-and-markers/craft.md (+66 -0 lines)
 - A docs/feature/f6-names-and-markers/design.md (+90 -0 lines)
@@ -271,54 +271,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - a96b17f [F6] answer every source the reader cannot read, never raise
 - f017243 [F6] cover the pattern a constructor position must hold
 - 5ac07fb [F6] record the delivery beside the change
-
-## 3. craft: Craft the change (revision 1, STALE: an earlier step was recorded again after it; record it again or say why it still holds)
-
-- **refactor_commits**:
-  - 2021b0da308c5e70f314c2fa253a3ded01605059
-- **refactor_check**: the check ran on the parent and on each refactor commit
-  - 2021b0da308c ([F6] build a source refusal in one place): before exit 0, after exit 0
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 93.373s
-  - tests (read from the run): 885 passed in 93.25s
-  - slowest: 5.87s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 3.85s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 3.38s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 2.85s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 2.31s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 1.68s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  - slowest: 1.42s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.30s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 1.24s call tests/properties/test_i1_s4_p5.py::test_p5_positive_control_succeeds_before_and_after_mutation_runs
-  - slowest: 1.21s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  ```text
-  ........................................................................ [  8%]
-  ........................................................................ [ 16%]
-  ........................................................................ [ 24%]
-  ........................................................................ [ 32%]
-  ........................................................................ [ 40%]
-  ........................................................................ [ 48%]
-  ........................................................................ [ 56%]
-  ........................................................................ [ 65%]
-  ........................................................................ [ 73%]
-  ........................................................................ [ 81%]
-  ........................................................................ [ 89%]
-  ........................................................................ [ 97%]
-  .....................                                                    [100%]
-  ============================= slowest 10 durations =============================
-  5.87s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  3.85s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  3.38s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  2.85s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  2.31s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  1.68s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  1.42s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.30s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  1.24s call     tests/properties/test_i1_s4_p5.py::test_p5_positive_control_succeeds_before_and_after_mutation_runs
-  1.21s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  885 passed in 93.25s (0:01:33)
-  ```
-- **scorecard**: `uv run python -m compileall -q src/prova tests` exited 0 in 0.09s
-- **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment, so the client exited 3 when the two open semantic questions (which category carries the new refusals, which component owns the empty-program rule) were sent; both were then decided locally, in design decision DEC1 and in the owner's Option A answer
+- 7948627 [F6] regenerate the record after the design step was recorded again
 
 ## 4. oracle: Frame the work and write the oracle (revision 2)
 
@@ -617,3 +570,51 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - INV5 | every syntax refusal in a response is built in one place and carries the place the refusal holds, so the four operations that read source answer alike and none loses the position | witness=src/prova/service.py:_syntax_diagnostic | bypass=none
 - **prefactoring**: yes
 - **prefactoring_reason**: The four operations that read source each build their own syntax diagnostic dictionary from the same two fields, so the response shape is decided in four places. A first commit extracts those four literals into one builder and changes no behaviour: the same category and the same reason come back, no test is edited and the suite stays green. Only then does the behaviour commit add the location to that single builder, so the place arrives in all four answers at once instead of being added four times.
+
+## 6. craft: Craft the change (revision 2)
+
+- **refactor_commits**:
+  - 2021b0da308c5e70f314c2fa253a3ded01605059
+- **refactor_check**: the check ran on the parent and on each refactor commit
+  - 2021b0da308c ([F6] build a source refusal in one place): before exit 0, after exit 0
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 102.519s
+  - tests (read from the run): 890 passed in 102.37s
+  - slowest: 6.36s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 4.29s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 3.82s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 3.20s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 2.40s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 1.92s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 1.61s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  - slowest: 1.43s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.38s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  - slowest: 1.37s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  ```text
+  ........................................................................ [  8%]
+  ........................................................................ [ 16%]
+  ........................................................................ [ 24%]
+  ........................................................................ [ 32%]
+  ........................................................................ [ 40%]
+  ........................................................................ [ 48%]
+  ........................................................................ [ 56%]
+  ........................................................................ [ 64%]
+  ........................................................................ [ 72%]
+  ........................................................................ [ 80%]
+  ........................................................................ [ 88%]
+  ........................................................................ [ 97%]
+  ..........................                                               [100%]
+  ============================= slowest 10 durations =============================
+  6.36s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  4.29s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  3.82s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  3.20s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  2.40s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  1.92s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  1.61s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  1.43s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.38s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1.37s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  890 passed in 102.37s (0:01:42)
+  ```
+- **scorecard**: `uv run python -m compileall -q src/prova tests` exited 0 in 0.058s
+- **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment, so the client exited 3 when the two open semantic questions (which category carries the new refusals, which component owns the empty-program rule) were sent; both were then decided locally, in design decision DEC1 and in the owner's Option A answer
