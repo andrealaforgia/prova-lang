@@ -1164,3 +1164,13 @@ The Owner approved every recommendation in this roadmap:
 Features blocked only by D1-D6 are now READY. This is the Owner's approval of the
 product owner's recommendations as written in section 5. Details of each option are
 there.
+
+### Follow-ups raised during delivery
+
+- **Extract the shared parse-and-check preamble in `src/prova/service.py`.** The
+  handlers for `check`, `examples`, `evaluate` and (with F16) `verify` each repeat
+  about 15 lines. Do it as one behaviour-preserving commit with no test changes,
+  when no other delivery is editing `service.py`. (Owner, 14 November 2026.)
+- **Remove or reconsider the record-over-union-variant branch of
+  `syntax.resolve_constructor`.** After F3 (constructor names must be unique) no
+  accepted program can reach it. Raised during F3.
