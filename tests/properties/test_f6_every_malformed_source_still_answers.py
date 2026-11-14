@@ -73,6 +73,7 @@ MALFORMED_SOURCES = {
     "a match with no clause": _body("(match 1)"),
     "a match clause with only a pattern": _body("(match 1 ((x)))"),
     "a bare selector": _body("(.hr)"),
+    "a pattern whose constructor is a form": _body("(match 1 (((a b)) 1))"),
 }
 
 
