@@ -63,9 +63,93 @@ class Function:
 
 
 @dataclass(frozen=True)
+class DeclaredName:
+    """One name as the source declares it: what kind of thing it names,
+    where the uniqueness rule applies to it, and the place it stands.
+
+    A name with no spelling cannot be built: a refusal carrying it would
+    not tell the reader which name to repair.
+    """
+
+    kind: str
+    name: str
+    line: int
+    column: int
+    within: str = ""
+
+    _RULES = {
+        "function": "top-level function names must be unique within their namespace",
+        "type": "top-level type names must be unique within their namespace",
+        "constructor": "constructor names must be unique across the program",
+        "field": "fields are unique within each record or variant",
+    }
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise ValueError(
+                "a declared name must have a spelling: this one was built with "
+                "none, so a refusal carrying it would not say which name to "
+                f"repair; build it from the {self.kind or 'declaration'} the "
+                "source declares"
+            )
+
+    def scope(self) -> tuple[str, str, str]:
+        """What makes two declarations a repeat of one another: the same
+        spelling, of the same kind, in the same place of the program."""
+        return (self.kind, self.within, self.name)
+
+    def place(self) -> str:
+        return f"line {self.line} column {self.column}"
+
+    def described(self) -> str:
+        described = f"{self.kind} {self.name!r}"
+        return f"{described} in {self.within}" if self.within else described
+
+    def uniqueness_rule(self) -> str:
+        return self._RULES[self.kind]
+
+
+@dataclass(frozen=True)
+class Declarations:
+    """Every name a program declares, in source order -- including the
+    repeats that the lookup tables of a `Program` cannot hold, because a
+    later declaration overwrites an earlier one there."""
+
+    entries: tuple[DeclaredName, ...] = ()
+
+    def of_kind(self, kind: str) -> tuple[DeclaredName, ...]:
+        return tuple(entry for entry in self.entries if entry.kind == kind)
+
+    def repeated(self) -> tuple[tuple[DeclaredName, ...], ...]:
+        """Each group of two or more declarations of one name in one
+        scope, in source order.
+
+        A record declares a type and a constructor of that same name at
+        one place, so declaring it twice repeats a name in two scopes at
+        the identical two places. That is one defect with one repair:
+        the group is reported once.
+        """
+        groups: dict[tuple[str, str, str], list[DeclaredName]] = {}
+        for entry in self.entries:
+            groups.setdefault(entry.scope(), []).append(entry)
+        reported: list[tuple[DeclaredName, ...]] = []
+        places_reported: set[frozenset[tuple[int, int]]] = set()
+        for members in groups.values():
+            if len(members) < 2:
+                continue
+            places = frozenset((member.line, member.column) for member in members)
+            if places in places_reported:
+                continue
+            places_reported.add(places)
+            reported.append(tuple(members))
+        return tuple(reported)
+
+
+@dataclass(frozen=True)
 class Program:
     types: dict[str, object] = field(default_factory=dict)
     functions: dict[str, Function] = field(default_factory=dict)
+    declarations: Declarations = Declarations()
 
 
 def resolve_constructor(constructor: str, program: Program) -> tuple[str, tuple[tuple[str, str], ...]] | None:
@@ -229,14 +313,19 @@ Pattern = object
 def parse_program(forms: list[object]) -> Program:
     types: dict[str, object] = {}
     functions: dict[str, Function] = {}
+    declared: list[DeclaredName] = []
     for form in forms:
         head = _head_symbol(form)
         if head == "deftype":
             type_decl = _parse_type_decl(form)
             types[type_decl.name] = type_decl
+            declared.extend(_declared_names_of_type(form, type_decl))
         elif head == "defn":
             function = _parse_function_decl(form)
             functions[function.name] = function
+            declared.append(
+                DeclaredName("function", function.name, *_position(form.items[1]))
+            )
         else:
             line, column = _position(form)
             raise SyntaxError_(
@@ -244,7 +333,41 @@ def parse_program(forms: list[object]) -> Program:
                 line,
                 column,
             )
-    return Program(types=types, functions=functions)
+    return Program(
+        types=types,
+        functions=functions,
+        declarations=Declarations(tuple(declared)),
+    )
+
+
+def _declared_names_of_type(form: SList, type_decl: RecordType | UnionType) -> list[DeclaredName]:
+    """Every name one `deftype` form declares: the type, the
+    constructors it introduces -- a record introduces one of its own
+    name, a union one per variant -- and the fields of each of them."""
+    line, column = _position(form.items[1])
+    names = [DeclaredName("type", type_decl.name, line, column)]
+    body = form.items[2]
+    if isinstance(type_decl, RecordType):
+        names.append(DeclaredName("constructor", type_decl.name, line, column))
+        names += _declared_field_names(body.items[1:], f"record {type_decl.name!r}")
+        return names
+    for variant_node in body.items[1:]:
+        variant_name = variant_node.items[0].text
+        names.append(
+            DeclaredName("constructor", variant_name, *_position(variant_node.items[0]))
+        )
+        names += _declared_field_names(
+            variant_node.items[1:],
+            f"variant {variant_name!r} of union {type_decl.name!r}",
+        )
+    return names
+
+
+def _declared_field_names(nodes: list[SList], within: str) -> list[DeclaredName]:
+    return [
+        DeclaredName("field", node.items[0].text, *_position(node.items[0]), within=within)
+        for node in nodes
+    ]
 
 
 def _position(node: object) -> tuple[int, int]:

@@ -16,7 +16,8 @@ failure path `_fields_of` takes when a constructor names neither.
 
 from __future__ import annotations
 
-from prova import service
+from prova import service, syntax
+from prova.reader import read_program
 
 UNION_SOURCE = """
 (deftype Box (union (Full (value Int)) (Empty)))
@@ -96,13 +97,27 @@ COLLISION_SOURCE = """
 """
 
 
-def test_field_access_resolves_the_record_type_when_a_union_variant_shares_its_name():
+def test_a_constructor_name_shared_by_a_record_and_a_union_variant_is_refused():
+    """Superseded expectation. This program used to be accepted and its
+    `.tag` selection evaluated against the record `Marker`. SPEC.md
+    lines 137-143 require constructor names to be unique across the
+    whole program, and the program declares `Marker` twice, so the tool
+    now refuses it before anything is evaluated. The resolution rule
+    this case used to reach is pinned below, on the lookup that owns it.
+    """
     response = service.handle({"prova": "i1", "operation": "examples", "source": COLLISION_SOURCE})
 
-    assert response["status"] == "completed", response
-    results = response["result"]["examples"]
-    assert results[0]["passed"] is True, results[0]
-    assert results[0]["actual"] == "7"
+    assert response["status"] == "invalid_program", response
+    assert [d["category"] for d in response["diagnostics"]] == ["duplicate_declaration"], response
+
+
+def test_the_record_type_owns_a_constructor_name_a_union_variant_also_uses():
+    """The branch the refused program above used to reach: asked for the
+    fields of `Marker`, the lookup answers with the record's own field
+    declarations, not the union variant's."""
+    program = syntax.parse_program(read_program(COLLISION_SOURCE))
+
+    assert syntax.resolve_constructor("Marker", program) == ("Marker", (("tag", "Int"),))
 
 
 UNRESOLVABLE_CONSTRUCTOR_SOURCE = """

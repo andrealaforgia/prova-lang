@@ -25,6 +25,7 @@ COMPARISON_OPERATORS = {"<", "<=", ">", ">="}
 BOOLEAN_OPERATORS = {"and", "or", "not"}
 
 CYCLIC_DEPENDENCY = "cyclic_dependency"
+DUPLICATE_DECLARATION = "duplicate_declaration"
 
 
 @dataclass(frozen=True)
@@ -80,8 +81,56 @@ class Cycle:
         )
 
 
+def _repeated_name_diagnostic(group: tuple[syntax.DeclaredName, ...]) -> Diagnostic:
+    """The refusal a name declared more than once carries: what was
+    declared twice, at which places, which rule it breaks and what to do
+    about it."""
+    first = group[0]
+    places = listed(tuple(member.place() for member in group))
+    return Diagnostic(
+        DUPLICATE_DECLARATION,
+        f"the {first.described()} is declared {len(group)} times, at {places}: "
+        f"core-0 requires that {first.uniqueness_rule()}, so the tool cannot tell "
+        f"which declaration a use of {first.name!r} means; remove or rename all "
+        "but one of them",
+        (group[-1].line, group[-1].column),
+    )
+
+
+def _redeclared_builtin_diagnostic(declared: syntax.DeclaredName) -> Diagnostic:
+    builtins = listed(tuple(sorted(BUILTIN_TYPES)))
+    return Diagnostic(
+        DUPLICATE_DECLARATION,
+        f"the type {declared.name!r} is declared at {declared.place()}, but "
+        f"{declared.name!r} is one of the builtin types ({builtins}): core-0 does "
+        "not allow a builtin type to be redeclared, so the name would stand for "
+        f"two different types; give the declared type a name of its own",
+        (declared.line, declared.column),
+    )
+
+
+def _declaration_diagnostics(program: syntax.Program) -> list[Diagnostic]:
+    """Every refusal the declarations of `program` carry on their own:
+    one name declared twice, and a builtin type redeclared.
+
+    Read from the declarations in source order, not from the lookup
+    tables of the program, where a later declaration of one name has
+    already replaced the earlier one.
+    """
+    diagnostics = [
+        _repeated_name_diagnostic(group)
+        for group in program.declarations.repeated()
+    ]
+    diagnostics += [
+        _redeclared_builtin_diagnostic(declared)
+        for declared in program.declarations.of_kind("type")
+        if declared.name in BUILTIN_TYPES
+    ]
+    return diagnostics
+
+
 def check_program(program: syntax.Program) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
+    diagnostics: list[Diagnostic] = _declaration_diagnostics(program)
     known_types = BUILTIN_TYPES | set(program.types)
 
     def check_type_name(type_name: str, where: str) -> None:

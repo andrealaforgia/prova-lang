@@ -24,6 +24,7 @@ DIAGNOSTIC_CATEGORIES = (
     "arity_mismatch",
     "non_exhaustive_match",
     checker.CYCLIC_DEPENDENCY,
+    checker.DUPLICATE_DECLARATION,
     "unknown_function",
     "malformed_value",
     "ill_typed_value",
