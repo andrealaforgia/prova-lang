@@ -240,6 +240,10 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
+- A docs/f6-names-and-markers/DECISIONS.md (+18 -0 lines)
+- A docs/f6-names-and-markers/SUMMARY.md (+614 -0 lines)
+- A docs/f6-names-and-markers/TRACE.md (+6 -0 lines)
+- A docs/feature/f6-names-and-markers/craft.md (+66 -0 lines)
 - A docs/feature/f6-names-and-markers/design.md (+90 -0 lines)
 - A docs/feature/f6-names-and-markers/oracle.md (+88 -0 lines)
 - M docs/spec-trace.md (+1 -1 lines)
@@ -266,39 +270,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - 070f06c Correct two expectations the empty-program rule contradicts
 - a96b17f [F6] answer every source the reader cannot read, never raise
 - f017243 [F6] cover the pattern a constructor position must hold
-
-## 2. design: Find the owners and design the change (revision 1, STALE: an earlier step was recorded again after it; record it again or say why it still holds)
-
-- **owners**:
-  - the shape of a declared value or function name, and the words the language reserves => src/prova/syntax.py, in a new ValueName value read at every value-name position
-  - the shape of a declared type or constructor name => src/prova/syntax.py, in a new TypeName value read at every type-name position
-  - the three reserved marker tokens, each at the one grammar position it stands at => src/prova/syntax.py, in a new MarkerToken value used by the signature reader and the example reader
-  - a grammar repetition written with a plus must have at least one member (program declarations, function examples) => src/prova/syntax.py, in a new AtLeastOne value with one named instance per repetition
-  - the list of words the language reserves => src/prova/syntax.py, composed from the SPECIAL_FORMS and OPERATORS sets already defined there plus the remaining core keywords, so no second list exists
-  - how a refusal the reader raises becomes one JSON diagnostic, with its category and its place => src/prova/service.py, in one syntax-diagnostic builder the four source-reading operations all call
-  - which categories the manifest publishes => src/prova/service.py, unchanged: the published syntax category already carries every new refusal, so nothing is added there
-  - that a name is declared only once, and the rules of the checker => src/prova/checker.py and syntax.DeclaredName, unchanged: uniqueness and scope are a different question from spelling, and the delivery running beside this one owns that file
-- **reuse_decision**: Reused: SyntaxError_ as the one refusal the reader raises, with the line and column it already carries; the published syntax diagnostic category, because SPEC.md places all seven rules in its lexical rules and core grammar and that category already means source the tool cannot read as a program; the SPECIAL_FORMS and OPERATORS sets already in syntax.py, so the reserved words are composed from them instead of written out a second time; the shape of the existing DeclaredName value, so the new values read like their siblings. New: ValueName, TypeName, MarkerToken and AtLeastOne, because no existing unit owns the spelling of a name or a marker. DeclaredName is the nearest candidate and does not fit: it is built after a declaration is parsed, it covers functions, types, constructors and fields but never a parameter, and it owns whether a name is declared twice, not how a name is spelled. Keeping the two questions in two owners leaves one decider for each. Nothing is added to checker.py, so the parallel delivery's scope and binder logic is untouched.
-- **paradigm**: oo
-- **boundaries**:
-  - the reader-to-tree boundary, from the generic Atom and SList nodes to the typed core-0 tree: owned by src/prova/syntax.py, which is where every new rule is decided and where the place of a misspelling is still known
-  - the tool's JSON response boundary, the category, reason and location of a diagnostic: owned by src/prova/service.py, which is the only place that turns a refusal into a response
-  - the published manifest of diagnostic categories: owned by src/prova/service.py and crossed by nothing in this change, because no new category is published
-  - the whole-program checking boundary in src/prova/checker.py: not crossed by this change, because a misspelling is refused before a tree exists to check
-- **domain_types**:
-  - ValueName: the spelling of a declared value or function name, refused at construction unless it has the shape SPEC.md gives and is none of the words the language reserves; carries the place it stands at, so the refusal can say where
-  - TypeName: the spelling of a declared type or constructor name, refused at construction unless it starts with a capital and holds only letters and digits; carries its place
-  - MarkerToken: one reserved marker token together with the single grammar position it stands at and the repair a reader needs; three named instances, the return arrow, the effect marker and the example arrow, and one method that demands it at that position
-  - AtLeastOne: a grammar repetition written with a plus, holding what it repeats and how to repair a source that writes none; two named instances, the declarations of a program and the examples of a function
-  - Signature and Function, unchanged in shape: they keep holding plain spellings, because the reader now refuses every spelling they could not hold
-- **invariants**:
-  - INV1 | a ValueName exists only for a spelling that has the value-name shape of SPEC.md and is not a reserved word, so no misspelled function or parameter name can reach the typed tree | witness=src/prova/syntax.py:ValueName | bypass=a caller that builds a Function value by hand, bypassing the reader, still passes a plain string; the reader is the only producer of a Function in this tool
-  - INV2 | a TypeName exists only for a spelling that starts with a capital and holds only letters and digits, so no lower-case type or constructor name can reach the typed tree | witness=src/prova/syntax.py:TypeName | bypass=the same hand-built value bypass as INV1; type references inside a signature keep the checker's unknown-type answer and are not read as a TypeName
-  - INV3 | each of the three reserved marker tokens is demanded by one owner at the one grammar position it stands at, so a signature or an example with a mangled or missing marker is refused instead of being read by position | witness=src/prova/syntax.py:MarkerToken | bypass=none
-  - INV4 | every grammar repetition written with a plus is read through one owner that refuses an empty one, so a program with no declaration and a function with no example are both refused | witness=src/prova/syntax.py:AtLeastOne | bypass=none
-  - INV5 | every syntax refusal in a response is built in one place and carries the place the refusal holds, so the four operations that read source answer alike and none loses the position | witness=src/prova/service.py:_syntax_diagnostic | bypass=none
-- **prefactoring**: yes
-- **prefactoring_reason**: The four operations that read source each build their own syntax diagnostic dictionary from the same two fields, so the response shape is decided in four places. A first commit extracts those four literals into one builder and changes no behaviour: the same category and the same reason come back, no test is edited and the suite stays green. Only then does the behaviour commit add the location to that single builder, so the place arrives in all four answers at once instead of being added four times.
+- 5ac07fb [F6] record the delivery beside the change
 
 ## 3. craft: Craft the change (revision 1, STALE: an earlier step was recorded again after it; record it again or say why it still holds)
 
@@ -612,3 +584,36 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   FAILED tests/properties/test_f6_name_and_marker_spelling.py::test_an_example_is_accepted_exactly_when_its_arrow_is_the_defined_one
   24 failed, 6 passed in 2.43s
   ```
+
+## 5. design: Find the owners and design the change (revision 2)
+
+- **owners**:
+  - the shape of a declared value or function name, and the words the language reserves => src/prova/syntax.py, in a new ValueName value read at every value-name position
+  - the shape of a declared type or constructor name => src/prova/syntax.py, in a new TypeName value read at every type-name position
+  - the three reserved marker tokens, each at the one grammar position it stands at => src/prova/syntax.py, in a new MarkerToken value used by the signature reader and the example reader
+  - a grammar repetition written with a plus must have at least one member (program declarations, function examples) => src/prova/syntax.py, in a new AtLeastOne value with one named instance per repetition
+  - the list of words the language reserves => src/prova/syntax.py, composed from the SPECIAL_FORMS and OPERATORS sets already defined there plus the remaining core keywords, so no second list exists
+  - how a refusal the reader raises becomes one JSON diagnostic, with its category and its place => src/prova/service.py, in one syntax-diagnostic builder the four source-reading operations all call
+  - which categories the manifest publishes => src/prova/service.py, unchanged: the published syntax category already carries every new refusal, so nothing is added there
+  - that a name is declared only once, and the rules of the checker => src/prova/checker.py and syntax.DeclaredName, unchanged: uniqueness and scope are a different question from spelling, and the delivery running beside this one owns that file
+- **reuse_decision**: Reused: SyntaxError_ as the one refusal the reader raises, with the line and column it already carries; the published syntax diagnostic category, because SPEC.md places all seven rules in its lexical rules and core grammar and that category already means source the tool cannot read as a program; the SPECIAL_FORMS and OPERATORS sets already in syntax.py, so the reserved words are composed from them instead of written out a second time; the shape of the existing DeclaredName value, so the new values read like their siblings. New: ValueName, TypeName, MarkerToken and AtLeastOne, because no existing unit owns the spelling of a name or a marker. DeclaredName is the nearest candidate and does not fit: it is built after a declaration is parsed, it covers functions, types, constructors and fields but never a parameter, and it owns whether a name is declared twice, not how a name is spelled. Keeping the two questions in two owners leaves one decider for each. Nothing is added to checker.py, so the parallel delivery's scope and binder logic is untouched.
+- **paradigm**: oo
+- **boundaries**:
+  - the reader-to-tree boundary, from the generic Atom and SList nodes to the typed core-0 tree: owned by src/prova/syntax.py, which is where every new rule is decided and where the place of a misspelling is still known
+  - the tool's JSON response boundary, the category, reason and location of a diagnostic: owned by src/prova/service.py, which is the only place that turns a refusal into a response
+  - the published manifest of diagnostic categories: owned by src/prova/service.py and crossed by nothing in this change, because no new category is published
+  - the whole-program checking boundary in src/prova/checker.py: not crossed by this change, because a misspelling is refused before a tree exists to check
+- **domain_types**:
+  - ValueName: the spelling of a declared value or function name, refused at construction unless it has the shape SPEC.md gives and is none of the words the language reserves; carries the place it stands at, so the refusal can say where
+  - TypeName: the spelling of a declared type or constructor name, refused at construction unless it starts with a capital and holds only letters and digits; carries its place
+  - MarkerToken: one reserved marker token together with the single grammar position it stands at and the repair a reader needs; three named instances, the return arrow, the effect marker and the example arrow, and one method that demands it at that position
+  - AtLeastOne: a grammar repetition written with a plus, holding what it repeats and how to repair a source that writes none; two named instances, the declarations of a program and the examples of a function
+  - Signature and Function, unchanged in shape: they keep holding plain spellings, because the reader now refuses every spelling they could not hold
+- **invariants**:
+  - INV1 | a ValueName exists only for a spelling that has the value-name shape of SPEC.md and is not a reserved word, so no misspelled function or parameter name can reach the typed tree | witness=src/prova/syntax.py:ValueName | bypass=a caller that builds a Function value by hand, bypassing the reader, still passes a plain string; the reader is the only producer of a Function in this tool
+  - INV2 | a TypeName exists only for a spelling that starts with a capital and holds only letters and digits, so no lower-case type or constructor name can reach the typed tree | witness=src/prova/syntax.py:TypeName | bypass=the same hand-built value bypass as INV1; type references inside a signature keep the checker's unknown-type answer and are not read as a TypeName
+  - INV3 | each of the three reserved marker tokens is demanded by one owner at the one grammar position it stands at, so a signature or an example with a mangled or missing marker is refused instead of being read by position | witness=src/prova/syntax.py:MarkerToken | bypass=none
+  - INV4 | every grammar repetition written with a plus is read through one owner that refuses an empty one, so a program with no declaration and a function with no example are both refused | witness=src/prova/syntax.py:AtLeastOne | bypass=none
+  - INV5 | every syntax refusal in a response is built in one place and carries the place the refusal holds, so the four operations that read source answer alike and none loses the position | witness=src/prova/service.py:_syntax_diagnostic | bypass=none
+- **prefactoring**: yes
+- **prefactoring_reason**: The four operations that read source each build their own syntax diagnostic dictionary from the same two fields, so the response shape is decided in four places. A first commit extracts those four literals into one builder and changes no behaviour: the same category and the same reason come back, no test is edited and the suite stays green. Only then does the behaviour commit add the location to that single builder, so the place arrives in all four answers at once instead of being added four times.
