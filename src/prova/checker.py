@@ -226,18 +226,27 @@ def _callees_of(function: syntax.Function, program: syntax.Program) -> list[str]
 
 def _cycles_in(program: syntax.Program) -> list[Cycle]:
     """Every set of functions that depend on each other, one `Cycle` per
-    set, ordered by where the program declares them.
-
-    The search is iterative on purpose. A recursive one would end the
-    process with a `RecursionError` on a program with more functions than
-    Python allows nested calls, which is the very failure this rule
-    exists to remove.
-    """
+    set, ordered by where the program declares them."""
     declared = list(program.functions)
-    rank_of = {name: rank for rank, name in enumerate(declared)}
     edges = {
         name: _callees_of(program.functions[name], program) for name in declared
     }
+    return [Cycle(members) for members in _cycles_among(declared, edges)]
+
+
+def _cycles_among(
+    declared: list[str], edges: dict[str, list[str]]
+) -> list[tuple[str, ...]]:
+    """Every set of declarations that depend on each other, one tuple per
+    set: its members in the order `declared` gives them, the sets ordered
+    by their first member.
+
+    The search is iterative on purpose. A recursive one would end the
+    process with a `RecursionError` on a program with more declarations
+    than Python allows nested calls, which is the very failure the rules
+    that use it exist to remove.
+    """
+    rank_of = {name: rank for rank, name in enumerate(declared)}
 
     index: dict[str, int] = {}
     low: dict[str, int] = {}
@@ -279,11 +288,11 @@ def _cycles_in(program: syntax.Program) -> list[Cycle]:
 
     return sorted(
         (
-            Cycle(tuple(sorted(component, key=lambda name: rank_of[name])))
+            tuple(sorted(component, key=lambda name: rank_of[name]))
             for component in components
             if _is_a_cycle(component, edges)
         ),
-        key=lambda cycle: rank_of[cycle.names()[0]],
+        key=lambda members: rank_of[members[0]],
     )
 
 
@@ -332,15 +341,19 @@ def _check_value(value: object, program: syntax.Program, where: str, diagnostics
         _check_value(field_value, program, where, diagnostics)
 
 
-def _field_type(type_name: str, field_name: str, program: syntax.Program) -> str | None:
-    type_decl = program.types.get(type_name)
+def _declared_fields(type_decl: object) -> tuple[tuple[str, str], ...]:
+    """The fields a declared type holds, each as its name and its
+    declared type: a record's own fields, or the fields of every variant
+    of a union. Empty for anything that is not a declared type."""
     if isinstance(type_decl, syntax.RecordType):
-        fields = type_decl.fields
-    elif isinstance(type_decl, syntax.UnionType):
-        fields = [f for variant in type_decl.variants for f in variant.fields]
-    else:
-        return None
-    for name, field_type in fields:
+        return type_decl.fields
+    if isinstance(type_decl, syntax.UnionType):
+        return tuple(f for variant in type_decl.variants for f in variant.fields)
+    return ()
+
+
+def _field_type(type_name: str, field_name: str, program: syntax.Program) -> str | None:
+    for name, field_type in _declared_fields(program.types.get(type_name)):
         if name == field_name:
             return field_type
     return None
