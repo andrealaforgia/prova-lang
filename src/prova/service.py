@@ -129,9 +129,13 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> dict:
 
     Every operation that reads source answers through this builder, so a
     source refused by the reader comes back the same way whichever
-    operation met it.
+    operation met it, carrying the place the refusal stands at so a
+    reader is sent to the line to repair.
     """
-    return {"category": "syntax", "reason": error.message}
+    entry = {"category": "syntax", "reason": error.message}
+    if error.line:
+        entry["location"] = {"line": error.line, "column": error.column}
+    return entry
 
 
 def _run_check(source: str) -> dict:

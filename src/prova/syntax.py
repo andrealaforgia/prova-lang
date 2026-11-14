@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from prova.reader import Atom, SList
 from prova.values import UNIT, ConstructorValue
 
 OPERATORS = {"+", "-", "*", "<", "<=", ">", ">=", "=", "and", "or", "not"}
 SPECIAL_FORMS = {"let", "if", "match"}
+
+# The words core-0 reserves, as SPEC.md lists them: its core keywords,
+# the special forms and the builtin operator names. Composed from the
+# sets above so the words live in one place only.
+CORE_KEYWORDS = frozenset(
+    {
+        "deftype", "record", "union", "defn", "sig", "pure", "requires",
+        "ensures", "examples", "example", "true", "false", "result",
+    }
+) | frozenset(SPECIAL_FORMS)
+RESERVED_WORDS = CORE_KEYWORDS | frozenset(OPERATORS)
 
 
 class SyntaxError_(Exception):
@@ -17,6 +30,168 @@ class SyntaxError_(Exception):
         self.message = message
         self.line = line
         self.column = column
+
+
+# --- how core-0 spells a name, and the tokens it fixes ------------------
+
+@dataclass(frozen=True)
+class ValueName:
+    """The spelling of one value or function name as the source writes
+    it: the name position it stands at, its spelling and its place.
+
+    A spelling core-0 does not give a value name cannot be built, so no
+    misspelled function or parameter name reaches the typed tree.
+    """
+
+    role: str
+    text: str
+    line: int = 0
+    column: int = 0
+
+    SHAPE: ClassVar[re.Pattern] = re.compile(r"[a-z][a-z0-9-]*[?!]?$")
+
+    def __post_init__(self) -> None:
+        if self.text in RESERVED_WORDS:
+            raise SyntaxError_(
+                f"the {self.role} {self.text!r} is a reserved word of core-0: a "
+                "reserved word already means something else wherever it appears, "
+                "so no declaration can take it as its name; rename it to a word "
+                "core-0 does not reserve, such as 'step-one'",
+                self.line,
+                self.column,
+            )
+        if not self.SHAPE.match(self.text):
+            raise SyntaxError_(
+                f"the {self.role} {self.text!r} is not spelled as core-0 spells a "
+                "value name, which is a lower-case letter followed by letters, "
+                "digits and hyphens and an optional '?' or '!': the first letter "
+                "of a name says whether it means a value or a type; spell it with "
+                "a lower-case first letter, as 'add-one'",
+                self.line,
+                self.column,
+            )
+
+    @classmethod
+    def read(cls, role: str, node: object) -> "ValueName":
+        return cls(role, _symbol_text(role, node), *_position(node))
+
+
+@dataclass(frozen=True)
+class TypeName:
+    """The spelling of one declared type or constructor name, refused
+    unless core-0 spells a type name that way."""
+
+    role: str
+    text: str
+    line: int = 0
+    column: int = 0
+
+    SHAPE: ClassVar[re.Pattern] = re.compile(r"[A-Z][A-Za-z0-9]*$")
+
+    def __post_init__(self) -> None:
+        if not self.SHAPE.match(self.text):
+            raise SyntaxError_(
+                f"the {self.role} {self.text!r} is not spelled as core-0 spells a "
+                "type name, which is a capital letter followed by letters and "
+                "digits: the first letter of a name says whether it means a value "
+                "or a type; spell it with a capital first letter, as 'Point'",
+                self.line,
+                self.column,
+            )
+
+    @classmethod
+    def read(cls, role: str, node: object) -> "TypeName":
+        return cls(role, _symbol_text(role, node), *_position(node))
+
+
+@dataclass(frozen=True)
+class MarkerToken:
+    """One token core-0 fixes at a single grammar position -- a reserved
+    marker token, or the one effect core-0 declares -- together with the
+    position it stands at and the repair a reader needs."""
+
+    token: str
+    position: str
+    repair: str
+
+    def demand(self, node: object, within: str, line: int, column: int) -> None:
+        found = node.text if isinstance(node, Atom) else None
+        if found == self.token:
+            return
+        raise SyntaxError_(
+            f"{within} must carry {self.token!r} as {self.position}, but "
+            f"{self._stands(node, found)}: a marker token stands at one grammar "
+            "position only, so without it the tool cannot tell which word means "
+            f"what; {self.repair}",
+            line,
+            column,
+        )
+
+    def _stands(self, node: object, found: str | None) -> str:
+        if found is not None:
+            return f"{found!r} stands there"
+        return "nothing stands there" if node is None else "a form stands there"
+
+
+RETURN_ARROW = MarkerToken(
+    "->",
+    "the arrow before its return type",
+    "write the signature as (sig (parameters) -> Type ! pure)",
+)
+EFFECT_MARKER = MarkerToken(
+    "!",
+    "the effect marker after its return type",
+    "write the signature as (sig (parameters) -> Type ! pure)",
+)
+PURE_EFFECT = MarkerToken(
+    "pure",
+    "the effect after its effect marker",
+    "core-0 declares only the pure effect: write '! pure'",
+)
+EXAMPLE_ARROW = MarkerToken(
+    "=>",
+    "the arrow between its call and its expected value",
+    "write the example as (example (f arguments) => value)",
+)
+
+
+@dataclass(frozen=True)
+class AtLeastOne:
+    """A grammar repetition core-0 writes with a plus: what it repeats,
+    and how to repair a source that writes none of it."""
+
+    repeated: str
+    repair: str
+
+    def demand(self, members: tuple, within: str, line: int, column: int) -> tuple:
+        if members:
+            return tuple(members)
+        raise SyntaxError_(
+            f"{within} holds no {self.repeated}: core-0 writes it with a plus, so "
+            f"it must have at least one {self.repeated}; {self.repair}",
+            line,
+            column,
+        )
+
+
+PROGRAM_DECLARATIONS = AtLeastOne(
+    "declaration",
+    "add at least one (deftype ...) or (defn ...) form to the source",
+)
+FUNCTION_EXAMPLES = AtLeastOne(
+    "example",
+    "add at least one example to the clause, or remove the function",
+)
+
+
+def _symbol_text(role: str, node: object) -> str:
+    if isinstance(node, Atom):
+        return node.text
+    raise SyntaxError_(
+        f"the {role} must be one symbol, but a form stands there: a core-0 name is "
+        "a single symbol; write one name in that position",
+        *_position(node),
+    )
 
 
 # --- declarations -----------------------------------------------------
@@ -311,6 +486,7 @@ Pattern = object
 # --- parsing: declarations -------------------------------------------------
 
 def parse_program(forms: list[object]) -> Program:
+    PROGRAM_DECLARATIONS.demand(tuple(forms), "the source", 1, 1)
     types: dict[str, object] = {}
     functions: dict[str, Function] = {}
     declared: list[DeclaredName] = []
@@ -383,7 +559,7 @@ def _head_symbol(node: object) -> str | None:
 
 
 def _parse_type_decl(form: SList) -> RecordType | UnionType:
-    name = form.items[1].text
+    name = TypeName.read("type name", form.items[1]).text
     body = form.items[2]
     kind = body.items[0].text
     if kind == "record":
@@ -400,20 +576,57 @@ def _parse_field(node: SList) -> tuple[str, str]:
 
 
 def _parse_variant(node: SList) -> Variant:
-    name = node.items[0].text
+    name = TypeName.read("constructor name", node.items[0]).text
     fields = tuple(_parse_field(f) for f in node.items[1:])
     return Variant(name, fields)
 
 
 def _parse_signature(node: SList) -> Signature:
-    params_list = node.items[1]
-    params = tuple(_parse_field(p) for p in params_list.items)
-    return_type = node.items[3].text
+    """The declared parameters and return type of one signature, read
+    through the marker tokens core-0 fixes, never by position alone: a
+    signature that carries another token, or none, is refused where it
+    stands instead of being read as if the tokens were there."""
+    line, column = _position(node)
+    within = "a signature"
+    params_list = _item_at(node, 1)
+    if not isinstance(params_list, SList):
+        raise SyntaxError_(
+            f"{within} must carry a parameter list after 'sig': without it the "
+            "tool cannot tell a parameter from a return type; write the signature "
+            "as (sig (parameters) -> Type ! pure)",
+            line,
+            column,
+        )
+    params = tuple(_parse_parameter(p) for p in params_list.items)
+    RETURN_ARROW.demand(_item_at(node, 2), within, line, column)
+    # A use of a type name, not a declaration of one: whether the type
+    # exists stays the checker's answer, as it is for a parameter type.
+    return_type = _symbol_text("return type", _item_at(node, 3))
+    EFFECT_MARKER.demand(_item_at(node, 4), within, line, column)
+    PURE_EFFECT.demand(_item_at(node, 5), within, line, column)
+    if len(node.items) > 6:
+        raise SyntaxError_(
+            f"{within} carries {len(node.items) - 6} form(s) after its effect: a "
+            "signature ends with its effect, so the tool cannot tell what they "
+            "would mean; remove them from the signature",
+            line,
+            column,
+        )
     return Signature(params, return_type)
 
 
+def _item_at(node: SList, index: int) -> object | None:
+    return node.items[index] if index < len(node.items) else None
+
+
+def _parse_parameter(node: SList) -> tuple[str, str]:
+    """One declared parameter: its name, spelled as core-0 spells a
+    value name, and its declared type."""
+    return ValueName.read("parameter name", node.items[0]).text, node.items[1].text
+
+
 def _parse_function_decl(form: SList) -> Function:
-    name = form.items[1].text
+    name = ValueName.read("function name", form.items[1]).text
     signature = _parse_signature(form.items[2])
     rest = list(form.items[3:])
 
@@ -438,13 +651,18 @@ def _parse_function_decl(form: SList) -> Function:
             f"function {name!r} must have exactly one body expression after its examples clause",
             *_position(form),
         )
-    examples = _parse_examples(rest[0])
+    examples = _parse_examples(rest[0], name)
     body = parse_expr(rest[1])
     return Function(name, signature, requires, ensures, examples, body)
 
 
-def _parse_examples(node: SList) -> tuple[Example, ...]:
-    return tuple(_parse_example(e) for e in node.items[1:])
+def _parse_examples(node: SList, function_name: str) -> tuple[Example, ...]:
+    declared = FUNCTION_EXAMPLES.demand(
+        tuple(node.items[1:]),
+        f"the examples clause of function {function_name!r}",
+        *_position(node),
+    )
+    return tuple(_parse_example(e) for e in declared)
 
 
 def _parse_example(node: object) -> Example:
@@ -459,6 +677,7 @@ def _parse_example(node: object) -> Example:
             "a declared example must have the shape (example (f args...) -> expected)",
             *_position(node),
         )
+    EXAMPLE_ARROW.demand(node.items[2], "a declared example", *_position(node))
     call = node.items[1]
     function_name = call.items[0].text
     args = tuple(parse_value(v) for v in call.items[1:])
