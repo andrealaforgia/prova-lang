@@ -26,6 +26,8 @@ DIAGNOSTIC_CATEGORIES = (
     checker.CYCLIC_DEPENDENCY,
     checker.DUPLICATE_DECLARATION,
     checker.RECURSIVE_TYPE,
+    checker.SHADOWED_BINDING,
+    checker.RESERVED_NAME,
     "unknown_function",
     "malformed_value",
     "ill_typed_value",

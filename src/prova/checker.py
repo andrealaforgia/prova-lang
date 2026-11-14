@@ -35,6 +35,12 @@ BOOLEAN_OPERATORS = {"and", "or", "not"}
 CYCLIC_DEPENDENCY = "cyclic_dependency"
 DUPLICATE_DECLARATION = "duplicate_declaration"
 RECURSIVE_TYPE = "recursive_type"
+SHADOWED_BINDING = "shadowed_binding"
+RESERVED_NAME = "reserved_name"
+
+# The one name core-0 reserves: a postcondition reads it as the
+# function's return value, so no binder may take it.
+RESERVED_FOR_POSTCONDITIONS = "result"
 
 
 @dataclass(frozen=True)
@@ -158,6 +164,226 @@ def _redeclared_builtin_diagnostic(declared: syntax.DeclaredName) -> Diagnostic:
     )
 
 
+@dataclass(frozen=True)
+class Binder:
+    """One name a program introduces where a value is bound: a
+    parameter, a sequential `let` binding or a pattern variable, with
+    the place a reader must go to rename it."""
+
+    name: str
+    kind: str
+    line: int
+    column: int
+
+    def place(self) -> str:
+        return f"line {self.line} column {self.column}"
+
+    def described(self) -> str:
+        return f"the {self.kind} {self.name!r}"
+
+
+@dataclass(frozen=True)
+class HiddenBinding:
+    """One binder that took a name already visible where it stands, and
+    what that name already means."""
+
+    binder: Binder
+    hidden: str
+
+    def diagnostic(self) -> Diagnostic:
+        return Diagnostic(
+            SHADOWED_BINDING,
+            f"{self.binder.described()} at {self.binder.place()} hides "
+            f"{self.hidden}: core-0 requires that a binding does not shadow a "
+            "visible value binding, function or builtin, so a reader cannot tell "
+            f"which {self.binder.name!r} a use means; rename "
+            f"{self.binder.described()} to a name that is not already visible there",
+            (self.binder.line, self.binder.column),
+        )
+
+
+@dataclass(frozen=True)
+class ReservedBinder:
+    """One binder that took `result`, the name only a postcondition may
+    read."""
+
+    binder: Binder
+
+    def diagnostic(self) -> Diagnostic:
+        return Diagnostic(
+            RESERVED_NAME,
+            f"{self.binder.described()} at {self.binder.place()} uses "
+            f"{RESERVED_FOR_POSTCONDITIONS!r}, which core-0 reserves: only a "
+            f"postcondition may read {RESERVED_FOR_POSTCONDITIONS!r}, where it "
+            "names the value the function returns, so no binder may use it; rename "
+            f"{self.binder.described()} and read "
+            f"{RESERVED_FOR_POSTCONDITIONS!r} in a postcondition only",
+            (self.binder.line, self.binder.column),
+        )
+
+
+@dataclass(frozen=True)
+class VisibleNames:
+    """The names in scope where a binding is introduced, each with what
+    introduced it, in the order the program introduces them.
+
+    A scope is never changed: introducing a binder answers with the
+    scope that follows it, so a clause or a `let` body can be read in
+    its own scope without the bindings of a sibling reaching it.
+    """
+
+    introduced: tuple[tuple[str, str], ...] = ()
+
+    def hidden_by(self, binder: Binder) -> HiddenBinding | None:
+        for name, described in self.introduced:
+            if name == binder.name:
+                return HiddenBinding(binder, described)
+        return None
+
+    def also(self, binder: Binder) -> "VisibleNames":
+        return VisibleNames(self.introduced + ((binder.name, self._as(binder)),))
+
+    def _as(self, binder: Binder) -> str:
+        if binder.kind == "parameter":
+            return f"the parameter {binder.name!r} of the same function"
+        if binder.kind == "pattern variable":
+            return f"the pattern variable {binder.name!r} bound earlier in the same pattern"
+        return f"the {binder.kind} {binder.name!r} that encloses it"
+
+
+def _introduce(
+    binder: Binder, visible: VisibleNames
+) -> tuple[list[Diagnostic], VisibleNames]:
+    """The refusals `binder` carries where `visible` is in scope, and
+    the scope that follows it.
+
+    A binder that took the reserved word carries that refusal alone: the
+    reader has one binder to rename, and naming a hidden binding as well
+    would offer a second repair for one defect.
+    """
+    if binder.name == RESERVED_FOR_POSTCONDITIONS:
+        return [ReservedBinder(binder).diagnostic()], visible.also(binder)
+    hidden = visible.hidden_by(binder)
+    refusals = [] if hidden is None else [hidden.diagnostic()]
+    return refusals, visible.also(binder)
+
+
+def _pattern_binders(pattern: object, line: int, column: int) -> list[Binder]:
+    """Every name `pattern` binds, in the order it writes them, so a
+    spelling written twice is seen twice.
+
+    Read apart from `_pattern_bindings`, which answers a different
+    question: the type of each name a clause binds, where a repeated
+    spelling is one entry.
+    """
+    if isinstance(pattern, syntax.PatVar):
+        return [Binder(pattern.name, "pattern variable", line, column)]
+    if isinstance(pattern, syntax.PatConstructor):
+        return [
+            binder
+            for subpattern in pattern.subpatterns
+            for binder in _pattern_binders(subpattern, line, column)
+        ]
+    return []
+
+
+def _binder_refusals_in(expression: object, visible: VisibleNames) -> list[Diagnostic]:
+    """Every refusal the binders written inside `expression` carry, read
+    in the scope each of them stands in.
+
+    A `let` initializer is read in the scope before its own binding, as
+    core-0 requires; each clause of a `match` is read in the scope of the
+    whole expression, so a sibling clause's variables are not visible to
+    it. Any other node is descended by its own fields, so a node kind
+    added to the grammar later cannot escape the rule.
+    """
+    if isinstance(expression, syntax.Let):
+        found: list[Diagnostic] = []
+        scope = visible
+        for name, bound_expression in expression.bindings:
+            found += _binder_refusals_in(bound_expression, scope)
+            binder = Binder(name, "let binding", expression.line, expression.column)
+            refusals, scope = _introduce(binder, scope)
+            found += refusals
+        return found + _binder_refusals_in(expression.body, scope)
+
+    if isinstance(expression, syntax.Match):
+        found = _binder_refusals_in(expression.scrutinee, visible)
+        for clause in expression.clauses:
+            scope = visible
+            for binder in _pattern_binders(
+                clause.pattern, expression.line, expression.column
+            ):
+                refusals, scope = _introduce(binder, scope)
+                found += refusals
+            found += _binder_refusals_in(clause.body, scope)
+        return found
+
+    if is_dataclass(expression) and not isinstance(expression, type):
+        return [
+            diagnostic
+            for field in fields(expression)
+            for diagnostic in _binder_refusals_in(
+                getattr(expression, field.name), visible
+            )
+        ]
+    if isinstance(expression, (tuple, list)):
+        return [
+            diagnostic
+            for item in expression
+            for diagnostic in _binder_refusals_in(item, visible)
+        ]
+    return []
+
+
+def _program_scope(program: syntax.Program) -> VisibleNames:
+    """The names every binding of `program` must leave alone: its
+    declared functions and the builtin operators.
+
+    The builtin types are not among them: they live in the namespace of
+    types, where a value binding cannot hide them.
+    """
+    functions = tuple(
+        (name, f"the declared function {name!r}") for name in program.functions
+    )
+    operators = tuple(
+        (operator, f"the builtin operator {operator!r}")
+        for operator in sorted(syntax.OPERATORS)
+    )
+    return VisibleNames(functions + operators)
+
+
+def _declared_places(program: syntax.Program) -> dict[str, tuple[int, int]]:
+    return {
+        declared.name: (declared.line, declared.column)
+        for declared in program.declarations.of_kind("function")
+    }
+
+
+def _binding_diagnostics(program: syntax.Program) -> list[Diagnostic]:
+    """Every refusal the bindings of `program` carry: a binder that
+    hides a name already visible, and a binder that takes the word
+    core-0 reserves.
+
+    A parameter is a binding too, so it is read in the scope of the
+    declarations before the body is read in the scope of the parameters.
+    """
+    diagnostics: list[Diagnostic] = []
+    declarations = _program_scope(program)
+    places = _declared_places(program)
+    for function in program.functions.values():
+        line, column = places.get(function.name, (0, 0))
+        scope = declarations
+        for parameter_name, _ in function.signature.params:
+            refusals, scope = _introduce(
+                Binder(parameter_name, "parameter", line, column), scope
+            )
+            diagnostics += refusals
+        for expression in (*function.requires, *function.ensures, function.body):
+            diagnostics += _binder_refusals_in(expression, scope)
+    return diagnostics
+
+
 def _declaration_diagnostics(program: syntax.Program) -> list[Diagnostic]:
     """Every refusal the declarations of `program` carry on their own:
     one name declared twice, and a builtin type redeclared.
@@ -180,6 +406,7 @@ def _declaration_diagnostics(program: syntax.Program) -> list[Diagnostic]:
 
 def check_program(program: syntax.Program) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = _declaration_diagnostics(program)
+    diagnostics += _binding_diagnostics(program)
     known_types = BUILTIN_TYPES | set(program.types)
 
     def check_type_name(type_name: str, where: str) -> None:
