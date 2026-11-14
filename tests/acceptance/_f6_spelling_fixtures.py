@@ -102,6 +102,22 @@ CONSTRUCTOR_NAME_STARTING_UPPER_CASE = CONSTRUCTOR_NAME_STARTING_LOWER_CASE.repl
     "(red)", "(Red)"
 )
 
+# --- a constructor spelled as a builtin type, and the same union whose
+# --- constructors are named for themselves
+
+CONSTRUCTOR_NAMED_AS_A_BUILTIN_TYPE = """\
+(deftype Measure (union (Int) (Bool)))
+
+(defn add-one
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (add-one 41) => 42))
+  (+ n 1))
+"""
+
+CONSTRUCTOR_NAMED_FOR_ITSELF = CONSTRUCTOR_NAMED_AS_A_BUILTIN_TYPE.replace(
+    "(union (Int) (Bool))", "(union (Whole) (Flag))"
+)
+
 
 # --- 3. signature markers
 

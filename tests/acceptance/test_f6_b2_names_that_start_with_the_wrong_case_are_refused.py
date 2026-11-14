@@ -17,6 +17,8 @@ the other names and changes only the first letter under observation.
 from __future__ import annotations
 
 from _f6_spelling_fixtures import (
+    CONSTRUCTOR_NAMED_AS_A_BUILTIN_TYPE,
+    CONSTRUCTOR_NAMED_FOR_ITSELF,
     CONSTRUCTOR_NAME_STARTING_LOWER_CASE,
     CONSTRUCTOR_NAME_STARTING_UPPER_CASE,
     FUNCTION_NAME_STARTING_WITH_A_CAPITAL,
@@ -67,6 +69,25 @@ def test_a_constructor_named_with_a_lower_case_first_letter_is_refused():
         check(CONSTRUCTOR_NAME_STARTING_LOWER_CASE),
         naming=["'red'"],
         why="a union variant named 'red'",
+    )
+
+
+def test_a_constructor_named_as_a_builtin_type_is_refused():
+    """Given a union whose first variant is named `Int`, one of the type
+    names core-0 reserves, when the program is checked, then it is
+    invalid and the refusal names `Int`."""
+    assert_refused_naming(
+        check(CONSTRUCTOR_NAMED_AS_A_BUILTIN_TYPE),
+        naming=["'Int'", "reserve"],
+        why="a union variant named 'Int'",
+    )
+
+
+def test_the_same_union_with_constructors_of_its_own_is_accepted():
+    """Control: the same union with its variants named `Whole` and `Flag`
+    is accepted, so the refusal above is about the reserved type names."""
+    assert_accepted(
+        check(CONSTRUCTOR_NAMED_FOR_ITSELF), "a union of two constructors of its own"
     )
 
 

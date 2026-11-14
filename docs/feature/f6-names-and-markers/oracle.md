@@ -13,6 +13,18 @@
 | P5 | A source that declares nothing at all is refused. |
 | P6 | A function whose `(examples)` clause holds no example is refused. |
 | P7 | Every refusal of a misspelled name or marker is placed at the line the misspelling stands on. |
+| P8 | Every source, however truncated or mangled, gets one answer from every operation that reads source: a refusal with a place, never a traceback. |
+| P9 | The source that declares nothing gets the identical refusal from `check`, `examples`, `verify` and `evaluate`. |
+| P10 | A constructor may not be named for one of the builtin type names core-0 reserves. |
+
+P8, P9 and P10 were added after the independent review: the reader still
+raised `IndexError` and `AttributeError` on 17 further malformed shapes (every
+grammar position core-0 fixes, left empty or filled with the wrong kind of
+form), the equality of the empty-source refusal across the four operations was
+asserted nowhere, and a constructor named `Int` was accepted. P8 and P9 are
+proved by the enumerated family in
+`tests/properties/test_f6_every_malformed_source_still_answers.py`; P10 by the
+refusal and its accepted twin in `test_f6_b2_...`.
 
 Criterion 7 of the request — the hour clock, the reservation example and
 `conformance/add-one.prova` still check — is a preservation sentence, not a

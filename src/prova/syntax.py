@@ -23,6 +23,12 @@ CORE_KEYWORDS = frozenset(
 ) | frozenset(SPECIAL_FORMS)
 RESERVED_WORDS = CORE_KEYWORDS | frozenset(OPERATORS)
 
+# The builtin type names core-0 reserves. checker.BUILTIN_TYPES holds the
+# same three names for its own rule about a redeclared type; the two are
+# not yet one set, because the delivery running beside this one owns that
+# file. Reconciling them is one line once that file is free.
+BUILTIN_TYPE_NAMES = frozenset({"Unit", "Bool", "Int"})
+
 
 class SyntaxError_(Exception):
     def __init__(self, message: str, line: int = 0, column: int = 0):
@@ -85,10 +91,21 @@ class TypeName:
     text: str
     line: int = 0
     column: int = 0
+    refused_words: frozenset = frozenset()
 
     SHAPE: ClassVar[re.Pattern] = re.compile(r"[A-Z][A-Za-z0-9]*$")
 
     def __post_init__(self) -> None:
+        if self.text in self.refused_words:
+            raise SyntaxError_(
+                f"the {self.role} {self.text!r} is one of the builtin type names "
+                f"core-0 reserves ({', '.join(sorted(self.refused_words))}): a "
+                "reserved type name already means a builtin type wherever it "
+                "appears, so a declaration cannot introduce it again; give the "
+                "constructor a name of its own, such as 'Whole'",
+                self.line,
+                self.column,
+            )
         if not self.SHAPE.match(self.text):
             raise SyntaxError_(
                 f"the {self.role} {self.text!r} is not spelled as core-0 spells a "
@@ -102,6 +119,18 @@ class TypeName:
     @classmethod
     def read(cls, role: str, node: object) -> "TypeName":
         return cls(role, _symbol_text(role, node), *_position(node))
+
+    @classmethod
+    def read_constructor(cls, node: object) -> "TypeName":
+        """A declared constructor name, which may not be one of the
+        builtin type names core-0 reserves (SPEC.md line 74)."""
+        role = "constructor name"
+        return cls(
+            role,
+            _symbol_text(role, node),
+            *_position(node),
+            refused_words=BUILTIN_TYPE_NAMES,
+        )
 
 
 @dataclass(frozen=True)
@@ -181,6 +210,10 @@ PROGRAM_DECLARATIONS = AtLeastOne(
 FUNCTION_EXAMPLES = AtLeastOne(
     "example",
     "add at least one example to the clause, or remove the function",
+)
+MATCH_CLAUSES = AtLeastOne(
+    "clause",
+    "write it as (match expr (pattern expr) ...)",
 )
 
 
@@ -486,11 +519,11 @@ Pattern = object
 # --- parsing: declarations -------------------------------------------------
 
 def parse_program(forms: list[object]) -> Program:
-    PROGRAM_DECLARATIONS.demand(tuple(forms), "the source", 1, 1)
+    declarations = PROGRAM_DECLARATIONS.demand(tuple(forms), "the source", 1, 1)
     types: dict[str, object] = {}
     functions: dict[str, Function] = {}
     declared: list[DeclaredName] = []
-    for form in forms:
+    for form in declarations:
         head = _head_symbol(form)
         if head == "deftype":
             type_decl = _parse_type_decl(form)
@@ -558,10 +591,24 @@ def _head_symbol(node: object) -> str | None:
     return None
 
 
+_DEFTYPE_REPAIR = (
+    "write it as (deftype TypeName (record (field Type) ...)) or "
+    "(deftype TypeName (union (Constructor (field Type) ...) ...))"
+)
+
+
 def _parse_type_decl(form: SList) -> RecordType | UnionType:
-    name = TypeName.read("type name", form.items[1]).text
-    body = form.items[2]
-    kind = body.items[0].text
+    name = TypeName.read(
+        "type name",
+        _required_at(form, 1, "the type name of a 'deftype' form", _DEFTYPE_REPAIR),
+    ).text
+    body = _required_list_at(form, 2, f"the body of type {name!r}", _DEFTYPE_REPAIR)
+    kind = _symbol_text(
+        f"the kind of type {name!r}",
+        _required_at(
+            body, 0, f"the kind ('record' or 'union') of type {name!r}", _DEFTYPE_REPAIR
+        ),
+    )
     if kind == "record":
         fields = tuple(_parse_field(f) for f in body.items[1:])
         return RecordType(name, fields)
@@ -571,12 +618,19 @@ def _parse_type_decl(form: SList) -> RecordType | UnionType:
     raise SyntaxError_(f"expected 'record' or 'union', found {kind!r}", *_position(body))
 
 
-def _parse_field(node: SList) -> tuple[str, str]:
-    return node.items[0].text, node.items[1].text
+def _parse_field(node: object) -> tuple[str, str]:
+    return _parse_pair(node, "a declared field", None)
 
 
-def _parse_variant(node: SList) -> Variant:
-    name = TypeName.read("constructor name", node.items[0]).text
+def _parse_variant(node: object) -> Variant:
+    name = TypeName.read_constructor(
+        _required_at(
+            node,
+            0,
+            "the constructor name of a declared variant",
+            "write each variant as (Constructor (field Type) ...)",
+        )
+    ).text
     fields = tuple(_parse_field(f) for f in node.items[1:])
     return Variant(name, fields)
 
@@ -615,19 +669,95 @@ def _parse_signature(node: SList) -> Signature:
     return Signature(params, return_type)
 
 
-def _item_at(node: SList, index: int) -> object | None:
-    return node.items[index] if index < len(node.items) else None
+def _item_at(form: object, index: int) -> object | None:
+    """What stands at `index` of `form`, or None when the source wrote
+    nothing there -- or wrote no parenthesised form at all."""
+    if isinstance(form, SList) and index < len(form.items):
+        return form.items[index]
+    return None
 
 
-def _parse_parameter(node: SList) -> tuple[str, str]:
+def _stands_there(node: object) -> str:
+    if node is None:
+        return "nothing stands there"
+    if isinstance(node, Atom):
+        return f"the symbol {node.text!r} stands there"
+    return "a parenthesised form stands there"
+
+
+def _member_count(node: object) -> str:
+    count = len(node.items) if isinstance(node, SList) else 0
+    return f"{count} member(s)"
+
+
+def _required_at(form: object, index: int, what: str, repair: str) -> object:
+    """What core-0 fixes at `index`, or a refusal placed where `form`
+    stands when the source wrote nothing there."""
+    item = _item_at(form, index)
+    if item is None:
+        raise SyntaxError_(
+            f"{what} is missing: core-0 fixes what stands at that position, so the "
+            f"tool cannot read the form without it; {repair}",
+            *_position(form),
+        )
+    return item
+
+
+def _required_list_at(form: object, index: int, what: str, repair: str) -> SList:
+    item = _required_at(form, index, what, repair)
+    if isinstance(item, SList):
+        return item
+    raise SyntaxError_(
+        f"{what} must be a parenthesised form, but {_stands_there(item)}: core-0 "
+        f"fixes what stands at that position; {repair}",
+        *_position(item),
+    )
+
+
+def _parse_pair(node: object, within: str, name_role: str | None) -> tuple[str, str]:
+    """One `(name type)` pair, the shape core-0 writes both a declared
+    field and a declared parameter with.
+
+    `name_role` names the position when its spelling is a rule of this
+    profile, and is None where the spelling of the name is not read here.
+    """
+    if not isinstance(node, SList) or len(node.items) != 2:
+        raise SyntaxError_(
+            f"{within} must be written as one name and one type, as (name Type), "
+            f"but {_stands_there(node)} with {_member_count(node)}: without both "
+            "the tool cannot tell which word is the name and which is the type; "
+            "write it as (name Type)",
+            *_position(node),
+        )
+    name_node, type_node = node.items
+    name = (
+        ValueName.read(name_role, name_node).text
+        if name_role is not None
+        else _symbol_text("a field name", name_node)
+    )
+    return name, _symbol_text(f"the type of {name!r}", type_node)
+
+
+def _parse_parameter(node: object) -> tuple[str, str]:
     """One declared parameter: its name, spelled as core-0 spells a
     value name, and its declared type."""
-    return ValueName.read("parameter name", node.items[0]).text, node.items[1].text
+    return _parse_pair(node, "a declared parameter", "parameter name")
+
+
+_DEFN_REPAIR = (
+    "write it as (defn name (sig (parameters) -> Type ! pure) (examples "
+    "(example (name arguments) => value)) body)"
+)
 
 
 def _parse_function_decl(form: SList) -> Function:
-    name = ValueName.read("function name", form.items[1]).text
-    signature = _parse_signature(form.items[2])
+    name = ValueName.read(
+        "function name",
+        _required_at(form, 1, "the name of a 'defn' form", _DEFN_REPAIR),
+    ).text
+    signature = _parse_signature(
+        _required_list_at(form, 2, f"the signature of function {name!r}", _DEFN_REPAIR)
+    )
     rest = list(form.items[3:])
 
     requires: tuple[Expr, ...] = ()
@@ -674,7 +804,8 @@ def _parse_example(node: object) -> Example:
         and isinstance(node.items[1].items[0], Atom)
     ):
         raise SyntaxError_(
-            "a declared example must have the shape (example (f args...) -> expected)",
+            "a declared example must have the shape "
+            "(example (f arguments...) => expected)",
             *_position(node),
         )
     EXAMPLE_ARROW.demand(node.items[2], "a declared example", *_position(node))
@@ -730,28 +861,44 @@ def parse_expr(node: object) -> Expr:
     name = head.text
 
     if name == "let":
-        bindings = tuple(
-            (b.items[0].text, parse_expr(b.items[1])) for b in node.items[1].items
-        )
-        body = parse_expr(node.items[2])
+        repair = "write it as (let ((name expr) ...) expr)"
+        bindings_node = _required_list_at(node, 1, "the bindings of a 'let'", repair)
+        bindings = tuple(_parse_binding(b) for b in bindings_node.items)
+        body = parse_expr(_required_at(node, 2, "the body of a 'let'", repair))
         return Let(bindings, body, line, column)
 
     if name == "if":
+        repair = "write it as (if condition then-expr else-expr)"
         return If(
-            parse_expr(node.items[1]),
-            parse_expr(node.items[2]),
-            parse_expr(node.items[3]),
+            parse_expr(_required_at(node, 1, "the condition of an 'if'", repair)),
+            parse_expr(_required_at(node, 2, "the then-branch of an 'if'", repair)),
+            parse_expr(_required_at(node, 3, "the else-branch of an 'if'", repair)),
             line,
             column,
         )
 
     if name == "match":
-        scrutinee = parse_expr(node.items[1])
-        clauses = tuple(_parse_clause(c) for c in node.items[2:])
+        repair = "write it as (match expr (pattern expr) ...)"
+        scrutinee = parse_expr(
+            _required_at(node, 1, "the value a 'match' examines", repair)
+        )
+        clauses = tuple(
+            _parse_clause(c)
+            for c in MATCH_CLAUSES.demand(
+                tuple(node.items[2:]), "a 'match'", line, column
+            )
+        )
         return Match(scrutinee, clauses, line, column)
 
     if name.startswith("."):
-        target = parse_expr(node.items[1])
+        target = parse_expr(
+            _required_at(
+                node,
+                1,
+                f"the value the selector {name!r} reads",
+                "write it as (.field-name expr)",
+            )
+        )
         return FieldAccess(name[1:], target, line, column)
 
     args = tuple(parse_expr(a) for a in node.items[1:])
@@ -762,7 +909,34 @@ def parse_expr(node: object) -> Expr:
     return Call(name, args, line, column)
 
 
-def _parse_clause(node: SList) -> MatchClause:
+def _parse_binding(node: object) -> tuple[str, Expr]:
+    """One `let` binding: the name it binds and the expression it binds
+    to that name."""
+    if not isinstance(node, SList) or len(node.items) != 2:
+        raise SyntaxError_(
+            "a 'let' binding must be written as one name and one expression, as "
+            f"(name expr), but {_stands_there(node)} with {_member_count(node)}: "
+            "without both the tool cannot tell what is bound to what; write each "
+            "binding as (name expr)",
+            *_position(node),
+        )
+    name_node, value_node = node.items
+    return (
+        _symbol_text("the name of a 'let' binding", name_node),
+        parse_expr(value_node),
+    )
+
+
+def _parse_clause(node: object) -> MatchClause:
+    if not isinstance(node, SList) or len(node.items) != 2:
+        raise SyntaxError_(
+            "a 'match' clause must be written as one pattern and one expression, "
+            f"as (pattern expr), but {_stands_there(node)} with "
+            f"{_member_count(node)}: without both the tool cannot tell which "
+            "pattern answers with which expression; write each clause as "
+            "(pattern expr)",
+            *_position(node),
+        )
     pattern = _parse_pattern(node.items[0])
     body = parse_expr(node.items[1])
     return MatchClause(pattern, body)
@@ -782,6 +956,6 @@ def _parse_pattern(node: object) -> Pattern:
     assert isinstance(node, SList)
     if not node.items:
         return PatUnit()
-    name = node.items[0].text
+    name = _symbol_text("the constructor of a pattern", node.items[0])
     subpatterns = tuple(_parse_pattern(p) for p in node.items[1:])
     return PatConstructor(name, subpatterns)
