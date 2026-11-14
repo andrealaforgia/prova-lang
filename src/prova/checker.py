@@ -35,6 +35,13 @@ class Diagnostic:
     cycle: "Cycle | None" = None
 
 
+def listed(parts: tuple[str, ...]) -> str:
+    """`parts` as a reader reads them: `a`, `a and b`, `a, b and c`."""
+    if len(parts) == 1:
+        return parts[0]
+    return f"{', '.join(parts[:-1])} and {parts[-1]}"
+
+
 @dataclass(frozen=True)
 class Cycle:
     """The functions of one cycle in the dependency graph of a program,
@@ -59,9 +66,7 @@ class Cycle:
         return self.members
 
     def described(self) -> str:
-        if len(self.members) == 1:
-            return self.members[0]
-        return f"{', '.join(self.members[:-1])} and {self.members[-1]}"
+        return listed(self.members)
 
     def diagnostic(self) -> Diagnostic:
         return Diagnostic(
