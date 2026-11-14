@@ -41,7 +41,9 @@ is flaky across those nine runs.
 
 Nine of the ten files drive the real `prova` command in a subprocess, so
 they are integration-level work, inside the seconds budget rather than
-the 10 ms unit budget. The property file runs in process and is parametrized over chosen sets of cases, not generated or exhaustive. No test sleeps
+the 10 ms unit budget. The property file runs in process and draws its input: five taken
+names over two binder shapes with a fresh generated name for the
+accepted half, clause counts 2 to 6, nesting depths 2 to 8. No test sleeps
 and none reads a clock.
 
 ## The probe: breaking the rule on purpose

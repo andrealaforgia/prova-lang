@@ -1,23 +1,21 @@
-"""Property tests for feature F5's two laws about local bindings.
+"""Property tests for feature F5's three laws about local bindings.
 
-LAW1 states a universal claim and checks it over the binder names
-below: a `let` binding or a
-pattern variable is accepted exactly when its name is not already
-visible where it is introduced (a parameter, a declared function, a
-builtin operator) and is not the reserved word `result`. Hand-picked
-examples cannot carry it: a rule that only compared a binder with the
-parameters, or that only looked at `let`, would pass them.
+Each law is a universal claim, checked with generated input through the
+published `check` operation:
 
-LAW2 states a universal claim and checks it over four clause counts:
-a pattern variable is
-visible only inside its own clause, so one spelling may be bound by any
-number of disjoint clauses, however many there are.
+- LAW1: a binding is refused exactly when its name is already visible
+  where it stands (a parameter, an enclosing `let` binding, a declared
+  function, a builtin operator) or is the reserved word `result`. The
+  generator draws one of the five taken names, one of the two binder
+  shapes, and, for the accepted half, a fresh lower-case name of 1 to 8
+  letters that neither the program nor the language already uses.
+- LAW2: a pattern variable is visible only inside its own clause, for
+  any clause count the generator draws between 2 and 6.
+- LAW3: `let` forms nest without hiding, for any depth the generator
+  draws between 2 and 8, while rebinding an enclosing name is refused.
 
-Both are parametrized over fixed sets this file writes out: the five
-kinds of binder name the rule distinguishes across two binder shapes,
-and the clause counts 2 to 5. That is a chosen sample of a universal
-claim, not an exhaustive sweep of every program and not random
-generation; no verdict depends on a seed, and no case is generated.
+Generated checks are evidence, not proof: they sample these claims over
+the bounds above and over no larger program.
 
 Exercises the published `check` operation of the tool's request
 interface, with the categories it answers with, and no internal symbol
@@ -26,7 +24,7 @@ of the checker.
 
 from __future__ import annotations
 
-import pytest
+from hypothesis import given, strategies as st
 
 from prova import service
 
@@ -82,58 +80,90 @@ def _pattern_variable(name: str) -> str:
     )
 
 
-def _binder_cases() -> list:
-    cases = []
-    for shape, program, parameter in (
-        ("let", _let_binding, THE_LET_PARAMETER),
-        ("pattern", _pattern_variable, THE_MATCHED_PARAMETER),
-    ):
-        hidden = (
-            (parameter, SHADOWED_BINDING_CATEGORY),
-            (THE_OTHER_FUNCTION, SHADOWED_BINDING_CATEGORY),
-            (A_BUILTIN_OPERATOR, SHADOWED_BINDING_CATEGORY),
-            (THE_RESERVED_WORD, RESERVED_NAME_CATEGORY),
-        )
-        for name, category in hidden:
-            cases.append(pytest.param(program(name), name, category, id=f"{shape}-{name}"))
-        for name in FREE_NAMES:
-            cases.append(pytest.param(program(name), name, None, id=f"{shape}-{name}"))
-    return cases
+SHAPES = {"let": (THE_LET_PARAMETER,), "pattern": (THE_MATCHED_PARAMETER,)}
+
+# What each taken name earns, read by the law below. The parameter of
+# the shape under test is added to it when the program is built.
+TAKEN_NAMES = (
+    (THE_OTHER_FUNCTION, SHADOWED_BINDING_CATEGORY),
+    (A_BUILTIN_OPERATOR, SHADOWED_BINDING_CATEGORY),
+    (THE_RESERVED_WORD, RESERVED_NAME_CATEGORY),
+    ("the parameter of this shape", SHADOWED_BINDING_CATEGORY),
+)
+
+# A free name is one the program does not already use and the language
+# does not already mean: the two boolean literals are values, not names,
+# and `probe` is the function these programs declare. The generator
+# found both edges, so they are named here rather than hidden.
+NOT_FREE = frozenset(
+    {
+        THE_LET_PARAMETER,
+        THE_MATCHED_PARAMETER,
+        THE_OTHER_FUNCTION,
+        A_BUILTIN_OPERATOR,
+        THE_RESERVED_WORD,
+        "probe",
+        "true",
+        "false",
+    }
+)
+
+_free_names = st.text(
+    alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=8
+).filter(lambda name: name not in NOT_FREE)
 
 
-@pytest.mark.parametrize("source,name,refusal", _binder_cases())
+def _program_of(shape: str, name: str) -> str:
+    return _let_binding(name) if shape == "let" else _pattern_variable(name)
+
+
+def _parameter_of(shape: str) -> str:
+    return THE_LET_PARAMETER if shape == "let" else THE_MATCHED_PARAMETER
+
+
+@given(
+    shape=st.sampled_from(sorted(SHAPES)),
+    taken=st.sampled_from(TAKEN_NAMES),
+    free=_free_names,
+)
 def test_a_binder_is_refused_exactly_when_its_name_is_taken(
-    source: str, name: str, refusal: str | None
+    shape: str, taken: tuple[str, str], free: str
 ):
-    """For every binder name: the program is invalid, with the refusal
-    the taken name earns, exactly when the name is already visible or is
-    the reserved word; otherwise it is accepted with no diagnostic."""
-    response = _check(source)
+    """For every drawn binder name: the program is invalid, with the
+    refusal the taken name earns, exactly when the name is already
+    visible or is the reserved word; a freshly drawn name that the
+    program does not bind is accepted with no diagnostic."""
+    name, refusal = taken
+    if name == "the parameter of this shape":
+        name = _parameter_of(shape)
 
-    if refusal is None:
-        assert response["status"] == "completed", (
-            f"a binding named {name!r}, which hides nothing and is not reserved, was "
-            f"not accepted: {response}. Only a taken name may be refused."
-        )
-        assert response.get("diagnostics") in (None, []), (
-            f"a binding named {name!r} was accepted with diagnostics {response}. A "
-            "program that breaks no rule carries no diagnostic."
-        )
-        return
+    response = _check(_program_of(shape, name))
 
     assert response["status"] == "invalid_program", (
-        f"a binding named {name!r}, which is already taken, was not refused: "
+        f"a {shape} binding named {name!r}, which is already taken, was not refused: "
         f"{response}. A binder may not take a name that is already visible, and may "
         "never be `result`."
     )
     assert _categories(response).count(refusal) == 1, (
-        f"a binding named {name!r} was answered with {_categories(response)} instead "
-        f"of exactly one {refusal!r}: {response}. One offending binder is one defect "
-        "with one repair; report it once, under the category that names the rule."
+        f"a {shape} binding named {name!r} was answered with "
+        f"{_categories(response)} instead of exactly one {refusal!r}: {response}. One "
+        "offending binder is one defect with one repair; report it once, under the "
+        "category that names the rule."
     )
     assert name in response["diagnostics"][0].get("reason", ""), (
         f"the refusal does not name the binder {name!r}: {response}. Name the binder "
         "the reader must rename."
+    )
+
+    accepted = _check(_program_of(shape, free))
+
+    assert accepted["status"] == "completed", (
+        f"a {shape} binding named {free!r}, which hides nothing and is not reserved, "
+        f"was not accepted: {accepted}. Only a taken name may be refused."
+    )
+    assert accepted.get("diagnostics") in (None, []), (
+        f"a {shape} binding named {free!r} was accepted with diagnostics: {accepted}. "
+        "A program that breaks no rule carries no diagnostic."
     )
 
 
@@ -159,9 +189,9 @@ def _matching_colours(spellings: list[str]) -> str:
     )
 
 
-@pytest.mark.parametrize("clause_count", [2, 3, 4, 5])
+@given(clause_count=st.integers(min_value=2, max_value=6))
 def test_one_spelling_is_free_in_every_disjoint_clause(clause_count: int):
-    """For any number of clauses: all of them may bind the spelling
+    """For any drawn number of clauses: all of them may bind the spelling
     `tone`, because a clause variable is visible only in its own clause;
     but a clause that binds the parameter's name `c` is refused, so the
     acceptance is about disjoint clauses and not about accepting
@@ -202,9 +232,9 @@ def _nested_lets(names: list[str]) -> str:
     )
 
 
-@pytest.mark.parametrize("depth", [2, 8, 40])
+@given(depth=st.integers(min_value=2, max_value=8))
 def test_a_nested_let_may_not_rebind_an_enclosing_binding(depth: int):
-    """For any nesting depth: `let` forms that each bind a name of their
+    """For any drawn nesting depth: `let` forms that each bind a name of their
     own are accepted however deeply they nest, and the innermost one
     rebinding the outermost binding's name is refused, naming it."""
     distinct = [f"step-{index}" for index in range(depth)]

@@ -76,7 +76,7 @@ their observations fail because the rule does not exist yet, and the 16
 control observations beside them already pass, so no test is simply
 "refuse everything".
 
-Three laws are stated as parametrized property checks over chosen sets of cases, which sample each claim rather than prove it: a binder is refused
+Three laws are stated as generated property checks, each with its bounds written down, which sample the claim within them rather than prove it: a binder is refused
 exactly when its name is taken; a pattern variable is visible only in
 its own clause, however many clauses there are; and a nested `let` may
 bind its own name at any depth but not an enclosing one.

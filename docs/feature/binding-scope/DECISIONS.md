@@ -43,18 +43,32 @@ recursive-data refusal alone, as before. That refusal states that the
 functions were not checked, so no refusal about a function's binders may
 stand beside it.
 
-## "Generated" was the wrong word
+## The laws are generated checks, with their bounds written down
 
-The three laws are checked by parametrized property files over sets of
-cases written out by hand: five kinds of binder name across two binder
-shapes, clause counts 2 to 5, nesting depths 2, 8 and 40. They sample a
-universal claim; they neither enumerate every program nor generate
-random input. The wording was corrected in the test file and in the
-oracle, design and craft documents.
+The review asked for honest wording, because the first candidate called
+hand-written parametrized sets "generated" and "exhaustive". Correcting
+the wording was not enough: the delivery record refuses a law whose
+check is not a real property test. So the three laws are now generated
+properties, and the documents say what they actually sample:
 
-The tool-generated `docs/binding-scope/DECISIONS.md` still carries the
-earlier wording of that decision, because it is rendered from the
-recorded oracle; it is regenerated when that record is next revised.
+- binder names: one of the five taken names, one of the two binder
+  shapes, and, for the accepted half, a fresh lower-case name of 1 to 8
+  letters that neither the program nor the language already uses;
+- clause counts drawn between 2 and 6;
+- nesting depths drawn between 2 and 8.
+
+Generated checks are evidence, not proof: they sample these claims
+within those bounds and over no larger program.
+
+The generator earned its place immediately. It found two cases the
+hand-written sets had missed: a binder named `true`, which is a value
+and not a name at all, and a binder named `probe`, which is the function
+those very programs declare. Both are now named in the test file as
+names that are not free, instead of being hidden by a looser filter.
+
+The tool-rendered `docs/binding-scope/DECISIONS.md` carries the earlier
+wording of this decision, because it is rendered from the recorded
+oracle; it is regenerated when that record is next revised.
 
 ## What is still not claimed
 
