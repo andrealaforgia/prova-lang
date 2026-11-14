@@ -25,6 +25,7 @@ DIAGNOSTIC_CATEGORIES = (
     "non_exhaustive_match",
     checker.CYCLIC_DEPENDENCY,
     checker.DUPLICATE_DECLARATION,
+    checker.RECURSIVE_TYPE,
     "unknown_function",
     "malformed_value",
     "ill_typed_value",

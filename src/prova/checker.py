@@ -10,11 +10,19 @@ It also refuses a program whose functions depend on themselves. SPEC.md
 requires the combined dependency graph of function bodies and contracts
 to be acyclic, and excludes the calls an example makes to its own
 function from that graph.
+
+It refuses recursive data for the same reason: SPEC.md requires the
+type-dependency graph to be acyclic too, so a record field or a union
+payload that leads back to its own type belongs to a later profile. A
+program whose types lead back to themselves is answered with that
+refusal alone, because every check that follows the fields of a type
+ends only on acyclic types.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass
+from typing import ClassVar
 
 from prova import syntax
 from prova.values import ConstructorValue
@@ -26,6 +34,7 @@ BOOLEAN_OPERATORS = {"and", "or", "not"}
 
 CYCLIC_DEPENDENCY = "cyclic_dependency"
 DUPLICATE_DECLARATION = "duplicate_declaration"
+RECURSIVE_TYPE = "recursive_type"
 
 
 @dataclass(frozen=True)
@@ -33,7 +42,7 @@ class Diagnostic:
     category: str
     reason: str
     location: tuple[int, int] | None = None
-    cycle: "Cycle | None" = None
+    cycle: "DeclarationCycle | None" = None
 
 
 def listed(parts: tuple[str, ...]) -> str:
@@ -44,23 +53,26 @@ def listed(parts: tuple[str, ...]) -> str:
 
 
 @dataclass(frozen=True)
-class Cycle:
-    """The functions of one cycle in the dependency graph of a program,
+class DeclarationCycle:
+    """The declarations of one cycle in a dependency graph of a program,
     in the order the program declares them.
 
-    A cycle that names no function cannot be built: the refusal it
-    carries would not tell the reader which function to repair.
+    A cycle that names nothing cannot be built: the refusal it carries
+    would not tell the reader which declaration to repair. Each kind of
+    cycle says what it is a cycle of and which refusal it carries.
     """
 
     members: tuple[str, ...]
 
+    KIND: ClassVar[str] = "declaration"
+
     def __post_init__(self) -> None:
         if not self.members:
             raise ValueError(
-                "a cycle must name at least one function: this one was built "
+                f"a cycle must name at least one {self.KIND}: this one was built "
                 "with no member, so the refusal it carries would not say which "
-                "function to repair; build it from the functions the dependency "
-                "search found depending on each other"
+                f"{self.KIND} to repair; build it from the {self.KIND}s the "
+                "dependency search found depending on each other"
             )
 
     def names(self) -> tuple[str, ...]:
@@ -68,6 +80,14 @@ class Cycle:
 
     def described(self) -> str:
         return listed(self.members)
+
+
+@dataclass(frozen=True)
+class Cycle(DeclarationCycle):
+    """The functions of one cycle in the dependency graph of function
+    bodies and contracts."""
+
+    KIND: ClassVar[str] = "function"
 
     def diagnostic(self) -> Diagnostic:
         return Diagnostic(
@@ -77,6 +97,35 @@ class Cycle:
             "contracts to be acyclic, so the tool cannot promise that such a "
             "call ends; remove one of the calls that closes the cycle (a call "
             "an example makes to its own function is not part of the graph)",
+            cycle=self,
+        )
+
+
+@dataclass(frozen=True)
+class TypeCycle(DeclarationCycle):
+    """The declared types of one cycle in the type-dependency graph: the
+    types whose record fields and union payloads lead back to each
+    other."""
+
+    KIND: ClassVar[str] = "type"
+
+    def described(self) -> str:
+        return listed(tuple(repr(member) for member in self.members))
+
+    def _leads_back_to(self) -> str:
+        return "itself" if len(self.members) == 1 else "each other"
+
+    def diagnostic(self) -> Diagnostic:
+        return Diagnostic(
+            RECURSIVE_TYPE,
+            f"the declared field types of {self.described()} lead back to "
+            f"{self._leads_back_to()}: core-0 requires the type-dependency graph "
+            "to be acyclic, so this is recursive data, which belongs to a later "
+            "profile and is not a fault of the program; keep the type for a "
+            "profile that declares recursive data, or give the field that closes "
+            "the cycle a type that does not lead back. The functions of this "
+            "program were not checked, because every check that follows the "
+            "fields of a type is defined only on acyclic types",
             cycle=self,
         )
 
@@ -150,6 +199,13 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
                         field_type,
                         f"union {type_decl.name!r} variant {variant.name!r} field {field_name!r}",
                     )
+
+    recursive = [cycle.diagnostic() for cycle in _type_cycles_in(program)]
+    if recursive:
+        # Every check below follows the fields of a type -- whether a
+        # match covers its scrutinee, whether a value has the shape its
+        # type declares -- and those walks only end on acyclic types.
+        return diagnostics + recursive
 
     for function in program.functions.values():
         for param_name, param_type in function.signature.params:
@@ -232,6 +288,27 @@ def _cycles_in(program: syntax.Program) -> list[Cycle]:
         name: _callees_of(program.functions[name], program) for name in declared
     }
     return [Cycle(members) for members in _cycles_among(declared, edges)]
+
+
+def _type_cycles_in(program: syntax.Program) -> list[TypeCycle]:
+    """Every set of declared types whose fields lead back to each other,
+    one `TypeCycle` per set, ordered by where the program declares them.
+
+    A field whose declared type the program never declares is no edge:
+    `check_program` already reports it as an unknown type.
+    """
+    declared = list(program.types)
+    edges = {
+        name: [
+            held
+            for held in dict.fromkeys(
+                field_type for _, field_type in _declared_fields(program.types[name])
+            )
+            if held in program.types
+        ]
+        for name in declared
+    }
+    return [TypeCycle(members) for members in _cycles_among(declared, edges)]
 
 
 def _cycles_among(
