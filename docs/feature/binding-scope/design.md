@@ -43,8 +43,9 @@ a rule that decides no type.
 
 **No formal model.** The rules are a pure function of one parsed
 program: no shared state, no multi-step protocol, no concurrency and no
-crash window. Three generated properties carry the laws instead (binder
-names, clause counts, nesting depth).
+crash window. Three property files carry the laws instead, each parametrized over a
+chosen set of cases (binder names, clause counts, nesting depth); they
+sample a universal claim rather than prove it.
 
 **No prefactoring.** The new walk is added beside the existing ones; no
 existing function changes its signature, its result or its behaviour.
