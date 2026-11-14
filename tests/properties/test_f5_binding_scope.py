@@ -1,18 +1,23 @@
 """Property tests for feature F5's two laws about local bindings.
 
-LAW1 is a universal claim over binder names: a `let` binding or a
+LAW1 states a universal claim and checks it over the binder names
+below: a `let` binding or a
 pattern variable is accepted exactly when its name is not already
 visible where it is introduced (a parameter, a declared function, a
 builtin operator) and is not the reserved word `result`. Hand-picked
 examples cannot carry it: a rule that only compared a binder with the
 parameters, or that only looked at `let`, would pass them.
 
-LAW2 is a universal claim over clause counts: a pattern variable is
+LAW2 states a universal claim and checks it over four clause counts:
+a pattern variable is
 visible only inside its own clause, so one spelling may be bound by any
 number of disjoint clauses, however many there are.
 
-Both domains are finite and swept exhaustively, one parametrized case
-each, so no verdict depends on a seed.
+Both are parametrized over fixed sets this file writes out: the five
+kinds of binder name the rule distinguishes across two binder shapes,
+and the clause counts 2 to 5. That is a chosen sample of a universal
+claim, not an exhaustive sweep of every program and not random
+generation; no verdict depends on a seed, and no case is generated.
 
 Exercises the published `check` operation of the tool's request
 interface, with the categories it answers with, and no internal symbol

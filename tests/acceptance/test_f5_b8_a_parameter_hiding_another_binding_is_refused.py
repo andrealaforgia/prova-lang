@@ -38,7 +38,16 @@ def test_a_parameter_spelled_like_a_declared_function_is_refused():
     `offset` and the function it hides."""
     run = check(PARAMETER_HIDING_A_FUNCTION)
 
-    assert_refused(run, SHADOWED_BINDING_CATEGORY, ["offset", "function"])
+    assert_refused(
+        run,
+        SHADOWED_BINDING_CATEGORY,
+        ["offset", "function"],
+        at=(6, 7),
+        saying=(
+            "the parameter 'offset' of the function declared at line 6 column 7 "
+            "hides the declared function 'offset'"
+        ),
+    )
 
 
 def test_the_same_program_whose_parameter_is_free_is_accepted():
@@ -56,7 +65,16 @@ def test_a_signature_whose_second_parameter_repeats_the_first_is_refused():
     refusal names the parameter `edge`."""
     run = check(TWO_PARAMETERS_WITH_ONE_NAME)
 
-    assert_refused(run, SHADOWED_BINDING_CATEGORY, ["edge", "parameter"])
+    assert_refused(
+        run,
+        SHADOWED_BINDING_CATEGORY,
+        ["edge", "parameter"],
+        at=(1, 7),
+        saying=(
+            "the parameter 'edge' of the function declared at line 1 column 7 hides "
+            "the parameter 'edge' of the same function"
+        ),
+    )
 
 
 def test_the_same_signature_with_two_names_is_accepted():

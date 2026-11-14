@@ -131,6 +131,53 @@ PATTERN_VARIABLE_NAMED_HELD = """\
   (match b ((Box amount) amount)))
 """
 
+# --- two binders named `result` in one function
+
+A_PARAMETER_AND_A_LET_BOTH_NAMED_RESULT = """\
+(defn doubled
+  (sig ((result Int)) -> Int ! pure)
+  (examples (example (doubled 21) => 42))
+  (let ((result (* result 2))) result))
+"""
+
+# --- odd but parseable programs, and a recursive type beside a hiding let
+
+ODD_BUT_PARSEABLE_BINDERS = (
+    "a let that binds nothing",
+    """(defn probe
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (probe 1) => 1))
+  (let () n))
+""",
+    "a let whose binder is a number",
+    """(defn probe
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (probe 1) => 1))
+  (let ((1 2)) n))
+""",
+    "a let binding with one value too many",
+    """(defn probe
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (probe 1) => 1))
+  (let ((x 1 2)) x))
+""",
+    "a match with no clause",
+    """(defn probe
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (probe 1) => 1))
+  (match n))
+""",
+)
+
+A_RECURSIVE_TYPE_BESIDE_A_HIDING_LET = """\
+(deftype Node (record (value Int) (next Node)))
+
+(defn fare
+  (sig ((cents Int)) -> Int ! pure)
+  (examples (example (fare 100) => 110))
+  (let ((cents (+ cents 10))) cents))
+"""
+
 # --- `result` read where only a postcondition may read it, and the same
 # --- program that reads it in its postcondition only
 
@@ -147,6 +194,14 @@ RESULT_READ_IN_A_POSTCONDITION_ONLY = """\
   (sig ((n Int)) -> Int ! pure)
   (requires (> n 0))
   (ensures (= result (* n 2)))
+  (examples (example (doubled 21) => 42))
+  (* n 2))
+"""
+
+RESULT_READ_IN_A_PRECONDITION = """\
+(defn doubled
+  (sig ((n Int)) -> Int ! pure)
+  (requires (> result 0))
   (examples (example (doubled 21) => 42))
   (* n 2))
 """
@@ -202,6 +257,22 @@ ONE_CLAUSE_BINDING_THE_PARAMETER_NAME = """\
     (example (shade-of (Red 2)) => 2)
     (example (shade-of (Blue 9)) => 9))
   (match c ((Red c) c) ((Blue tone) tone)))
+"""
+
+# --- a `let` written inside an operator argument, and its twin
+
+LET_HIDING_A_PARAMETER_INSIDE_AN_ARGUMENT = """\
+(defn fare
+  (sig ((cents Int)) -> Int ! pure)
+  (examples (example (fare 1) => 3))
+  (+ (let ((cents 1)) cents) 2))
+"""
+
+LET_INSIDE_AN_ARGUMENT_WITH_ITS_OWN_NAME = """\
+(defn fare
+  (sig ((cents Int)) -> Int ! pure)
+  (examples (example (fare 1) => 3))
+  (+ (let ((one 1)) one) 2))
 """
 
 # --- a `let` that hides a builtin operator name, and its twin
@@ -264,18 +335,6 @@ def check(source: str) -> ToolRun:
     return run({"prova": "i1", "operation": "check", "source": source})
 
 
-def evaluate(source: str, function: str, arguments: list[str]) -> ToolRun:
-    return run(
-        {
-            "prova": "i1",
-            "operation": "evaluate",
-            "source": source,
-            "function": function,
-            "arguments": arguments,
-        }
-    )
-
-
 def discover() -> ToolRun:
     return run({"prova": "i1", "operation": "discover"})
 
@@ -308,10 +367,22 @@ def assert_accepted(run_result: ToolRun, why: str) -> None:
     )
 
 
-def assert_refused(run_result: ToolRun, category: str, naming: list[str]) -> None:
+def assert_refused(
+    run_result: ToolRun,
+    category: str,
+    naming: list[str],
+    at: tuple[int, int] | None = None,
+    saying: str | None = None,
+) -> None:
     """The program was refused as invalid with exactly one refusal of
-    `category`, that refusal names every word in `naming`, and it says
-    where the offending binder is."""
+    `category`, that refusal names every word in `naming`, it reports
+    the place of the construct its own sentence names, and, when `at`
+    is given, that place is exactly the line and column asked for.
+
+    The cross-check matters because the program carries no position for
+    a binder itself: a refusal must report the construct it says it is
+    reporting, never a different one.
+    """
     response = run_result.response()
     assert response.get("status") == "invalid_program", (
         f"a program whose binding breaks the {category!r} rule was not refused: "
@@ -332,10 +403,28 @@ def assert_refused(run_result: ToolRun, category: str, naming: list[str]) -> Non
             "the binding it hides."
         )
     location = refusals[0].get("location") or {}
-    assert location.get("line") and location.get("column"), (
+    line, column = location.get("line"), location.get("column")
+    assert line and column, (
         f"the refusal carries no place ({refusals[0]}), so a reader must search the "
-        "file for the binder. Report the line and column of the offending binder."
+        "file for the construct. Report the line and column of the construct that "
+        "introduces the offending binder."
     )
+    assert f"line {line} column {column}" in reason, (
+        f"the refusal reports line {line} column {column} but its sentence says "
+        f"something else: {reason!r}. The place reported and the place named must be "
+        "the same construct, or a reader is sent to the wrong line."
+    )
+    if at is not None:
+        assert (line, column) == at, (
+            f"the refusal points at line {line} column {column}, but the construct "
+            f"that introduces the binder is at line {at[0]} column {at[1]}: {reason!r}. "
+            "Report the place of that construct."
+        )
+    if saying is not None:
+        assert saying in reason, (
+            f"the refusal does not say {saying!r}, so it does not tell the reader "
+            f"what the binder hides and where: {reason!r}."
+        )
 
 # --- a parameter that hides a declared function, a signature whose
 # --- second parameter repeats the first, and the twin of each

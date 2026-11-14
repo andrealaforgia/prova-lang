@@ -19,6 +19,7 @@ from __future__ import annotations
 import pytest
 
 from _f5_binding_fixtures import (
+    A_PARAMETER_AND_A_LET_BOTH_NAMED_RESULT,
     LET_NAMED_RESULT,
     LET_NAMED_TOTAL,
     PARAMETER_NAMED_N,
@@ -28,6 +29,7 @@ from _f5_binding_fixtures import (
     RESERVED_NAME_CATEGORY,
     assert_accepted,
     assert_refused,
+    categories,
     check,
 )
 
@@ -64,3 +66,30 @@ def test_the_same_binder_under_another_name_is_accepted(source: str, why: str):
     nothing else changed, is accepted, so the refusals above are about
     the word `result` and not about the binder."""
     assert_accepted(check(source), why)
+
+
+def test_each_binder_named_result_is_refused_on_its_own():
+    """Given a function whose parameter is `result` and whose body also
+    binds `result` in a `let`, when the program is checked, then it is
+    invalid with 2 reserved-word refusals, 1 per binder: each is a
+    binder the reader must rename."""
+    response = check(A_PARAMETER_AND_A_LET_BOTH_NAMED_RESULT).response()
+
+    assert response.get("status") == "invalid_program", response
+    reserved = [
+        diagnostic
+        for diagnostic in response.get("diagnostics") or []
+        if diagnostic.get("category") == RESERVED_NAME_CATEGORY
+    ]
+    assert len(reserved) == 2, (
+        f"2 binders named `result` were answered with {categories(response)}: "
+        f"{response}. Each binder is one defect with one repair; report every one of "
+        "them, so the reader does not rename one and meet the next."
+    )
+    assert {
+        (diagnostic["location"]["line"], diagnostic["location"]["column"])
+        for diagnostic in reserved
+    } == {(1, 7), (4, 3)}, (
+        f"the 2 refusals do not point at the 2 binders: {reserved}. One is the "
+        "parameter of the function declared on line 2, the other the `let` on line 4."
+    )

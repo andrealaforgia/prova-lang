@@ -165,21 +165,60 @@ def _redeclared_builtin_diagnostic(declared: syntax.DeclaredName) -> Diagnostic:
 
 
 @dataclass(frozen=True)
+class BinderKind:
+    """One kind of binder, with the two sentences it owns: the construct
+    whose place the tool can report, and how an earlier binder of this
+    kind is named when a later one hides it.
+
+    The program carries no position for a binder itself, only for the
+    construct that introduces it, so a refusal says which construct it
+    is reporting instead of pretending to point at the name.
+    """
+
+    named: str
+    introduced_by: str
+    visible_as: str
+
+    def describes(self, name: str) -> str:
+        return f"the {self.named} {name!r}"
+
+    def already_bound(self, name: str) -> str:
+        return f"{self.describes(name)} {self.visible_as}"
+
+
+PARAMETER = BinderKind(
+    "parameter", "of the function declared at", "of the same function"
+)
+LET_BINDING = BinderKind(
+    "let binding", "introduced by the 'let' at", "that encloses it"
+)
+PATTERN_VARIABLE = BinderKind(
+    "pattern variable", "of the 'match' at", "of the same pattern"
+)
+
+
+@dataclass(frozen=True)
 class Binder:
     """One name a program introduces where a value is bound: a
     parameter, a sequential `let` binding or a pattern variable, with
-    the place a reader must go to rename it."""
+    the place of the construct that introduces it."""
 
     name: str
-    kind: str
+    kind: BinderKind
     line: int
     column: int
 
-    def place(self) -> str:
-        return f"line {self.line} column {self.column}"
-
     def described(self) -> str:
-        return f"the {self.kind} {self.name!r}"
+        return self.kind.describes(self.name)
+
+    def located(self) -> str:
+        return (
+            f"{self.described()} {self.kind.introduced_by} "
+            f"line {self.line} column {self.column}"
+        )
+
+    def already_bound(self) -> str:
+        return self.kind.already_bound(self.name)
 
 
 @dataclass(frozen=True)
@@ -193,7 +232,7 @@ class HiddenBinding:
     def diagnostic(self) -> Diagnostic:
         return Diagnostic(
             SHADOWED_BINDING,
-            f"{self.binder.described()} at {self.binder.place()} hides "
+            f"{self.binder.located()} hides "
             f"{self.hidden}: core-0 requires that a binding does not shadow a "
             "visible value binding, function or builtin, so a reader cannot tell "
             f"which {self.binder.name!r} a use means; rename "
@@ -212,13 +251,34 @@ class ReservedBinder:
     def diagnostic(self) -> Diagnostic:
         return Diagnostic(
             RESERVED_NAME,
-            f"{self.binder.described()} at {self.binder.place()} uses "
+            f"{self.binder.located()} uses "
             f"{RESERVED_FOR_POSTCONDITIONS!r}, which core-0 reserves: only a "
             f"postcondition may read {RESERVED_FOR_POSTCONDITIONS!r}, where it "
             "names the value the function returns, so no binder may use it; rename "
             f"{self.binder.described()} and read "
             f"{RESERVED_FOR_POSTCONDITIONS!r} in a postcondition only",
             (self.binder.line, self.binder.column),
+        )
+
+
+@dataclass(frozen=True)
+class ReservedRead:
+    """One read of `result` where nothing binds it: in a body or in a
+    precondition, where core-0 does not make it readable at all."""
+
+    line: int
+    column: int
+
+    def diagnostic(self) -> Diagnostic:
+        return Diagnostic(
+            RESERVED_NAME,
+            f"{RESERVED_FOR_POSTCONDITIONS!r} is read at line {self.line} column "
+            f"{self.column}, where nothing binds it: core-0 reserves "
+            f"{RESERVED_FOR_POSTCONDITIONS!r} for a postcondition, where it names "
+            "the value the function returns, and a body and a precondition run "
+            "before there is one; read it in a postcondition only, or read a name "
+            "the function binds",
+            (self.line, self.column),
         )
 
 
@@ -240,15 +300,23 @@ class VisibleNames:
                 return HiddenBinding(binder, described)
         return None
 
-    def also(self, binder: Binder) -> "VisibleNames":
-        return VisibleNames(self.introduced + ((binder.name, self._as(binder)),))
+    def holds(self, name: str) -> bool:
+        return any(bound == name for bound, _ in self.introduced)
 
-    def _as(self, binder: Binder) -> str:
-        if binder.kind == "parameter":
-            return f"the parameter {binder.name!r} of the same function"
-        if binder.kind == "pattern variable":
-            return f"the pattern variable {binder.name!r} bound earlier in the same pattern"
-        return f"the {binder.kind} {binder.name!r} that encloses it"
+    def also(self, binder: Binder) -> "VisibleNames":
+        return VisibleNames(self.introduced + ((binder.name, binder.already_bound()),))
+
+    def with_the_returned_value(self) -> "VisibleNames":
+        """The same scope, plus the one name a postcondition may read."""
+        return VisibleNames(
+            self.introduced
+            + (
+                (
+                    RESERVED_FOR_POSTCONDITIONS,
+                    "the value the function returns",
+                ),
+            )
+        )
 
 
 def _introduce(
@@ -277,7 +345,7 @@ def _pattern_binders(pattern: object, line: int, column: int) -> list[Binder]:
     spelling is one entry.
     """
     if isinstance(pattern, syntax.PatVar):
-        return [Binder(pattern.name, "pattern variable", line, column)]
+        return [Binder(pattern.name, PATTERN_VARIABLE, line, column)]
     if isinstance(pattern, syntax.PatConstructor):
         return [
             binder
@@ -302,7 +370,7 @@ def _binder_refusals_in(expression: object, visible: VisibleNames) -> list[Diagn
         scope = visible
         for name, bound_expression in expression.bindings:
             found += _binder_refusals_in(bound_expression, scope)
-            binder = Binder(name, "let binding", expression.line, expression.column)
+            binder = Binder(name, LET_BINDING, expression.line, expression.column)
             refusals, scope = _introduce(binder, scope)
             found += refusals
         return found + _binder_refusals_in(expression.body, scope)
@@ -319,7 +387,14 @@ def _binder_refusals_in(expression: object, visible: VisibleNames) -> list[Diagn
             found += _binder_refusals_in(clause.body, scope)
         return found
 
-    if is_dataclass(expression) and not isinstance(expression, type):
+    if isinstance(expression, syntax.NameRef):
+        if expression.name == RESERVED_FOR_POSTCONDITIONS and not visible.holds(
+            expression.name
+        ):
+            return [ReservedRead(expression.line, expression.column).diagnostic()]
+        return []
+
+    if is_dataclass(expression):
         return [
             diagnostic
             for field in fields(expression)
@@ -372,15 +447,18 @@ def _binding_diagnostics(program: syntax.Program) -> list[Diagnostic]:
     declarations = _program_scope(program)
     places = _declared_places(program)
     for function in program.functions.values():
-        line, column = places.get(function.name, (0, 0))
+        line, column = places[function.name]
         scope = declarations
         for parameter_name, _ in function.signature.params:
             refusals, scope = _introduce(
-                Binder(parameter_name, "parameter", line, column), scope
+                Binder(parameter_name, PARAMETER, line, column), scope
             )
             diagnostics += refusals
-        for expression in (*function.requires, *function.ensures, function.body):
+        for expression in (*function.requires, function.body):
             diagnostics += _binder_refusals_in(expression, scope)
+        postcondition_scope = scope.with_the_returned_value()
+        for expression in function.ensures:
+            diagnostics += _binder_refusals_in(expression, postcondition_scope)
     return diagnostics
 
 
@@ -406,7 +484,6 @@ def _declaration_diagnostics(program: syntax.Program) -> list[Diagnostic]:
 
 def check_program(program: syntax.Program) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = _declaration_diagnostics(program)
-    diagnostics += _binding_diagnostics(program)
     known_types = BUILTIN_TYPES | set(program.types)
 
     def check_type_name(type_name: str, where: str) -> None:
@@ -433,6 +510,8 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
         # match covers its scrutinee, whether a value has the shape its
         # type declares -- and those walks only end on acyclic types.
         return diagnostics + recursive
+
+    diagnostics += _binding_diagnostics(program)
 
     for function in program.functions.values():
         for param_name, param_type in function.signature.params:
@@ -793,9 +872,17 @@ def _infer(
     if isinstance(expr, syntax.NameRef):
         if expr.name in env:
             return env[expr.name]
-        diagnostics.append(
-            Diagnostic("unbound_name", f"unbound name {expr.name!r}", (expr.line, expr.column))
-        )
+        if expr.name != RESERVED_FOR_POSTCONDITIONS:
+            # A read of the reserved word carries its own refusal, which
+            # says why the name is unreadable here; reporting it as an
+            # unbound name as well would offer a second repair.
+            diagnostics.append(
+                Diagnostic(
+                    "unbound_name",
+                    f"unbound name {expr.name!r}",
+                    (expr.line, expr.column),
+                )
+            )
         return None
 
     if isinstance(expr, syntax.Let):

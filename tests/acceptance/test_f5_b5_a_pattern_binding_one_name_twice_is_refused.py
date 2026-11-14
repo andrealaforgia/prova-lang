@@ -30,7 +30,16 @@ def test_a_pattern_that_binds_one_name_to_both_fields_is_refused():
     and the refusal names `n`."""
     run = check(PATTERN_BINDING_ONE_NAME_TWICE)
 
-    assert_refused(run, SHADOWED_BINDING_CATEGORY, ["n", "pattern"])
+    assert_refused(
+        run,
+        SHADOWED_BINDING_CATEGORY,
+        ["n", "pattern"],
+        at=(6, 3),
+        saying=(
+            "the pattern variable 'n' of the 'match' at line 6 column 3 hides the "
+            "pattern variable 'n' of the same pattern"
+        ),
+    )
 
 
 def test_the_same_pattern_with_two_names_is_accepted():
