@@ -336,3 +336,44 @@ def assert_refused(run_result: ToolRun, category: str, naming: list[str]) -> Non
         f"the refusal carries no place ({refusals[0]}), so a reader must search the "
         "file for the binder. Report the line and column of the offending binder."
     )
+
+# --- a parameter that hides a declared function, a signature whose
+# --- second parameter repeats the first, and the twin of each
+
+PARAMETER_HIDING_A_FUNCTION = """\
+(defn offset
+  (sig () -> Int ! pure)
+  (examples (example (offset) => 1))
+  1)
+
+(defn raise-by
+  (sig ((offset Int)) -> Int ! pure)
+  (examples (example (raise-by 3) => 13))
+  (+ offset 10))
+"""
+
+PARAMETER_WITH_ITS_OWN_NAME = """\
+(defn offset
+  (sig () -> Int ! pure)
+  (examples (example (offset) => 1))
+  1)
+
+(defn raise-by
+  (sig ((amount Int)) -> Int ! pure)
+  (examples (example (raise-by 3) => 13))
+  (+ amount 10))
+"""
+
+TWO_PARAMETERS_WITH_ONE_NAME = """\
+(defn gap
+  (sig ((edge Int) (edge Int)) -> Int ! pure)
+  (examples (example (gap 9 4) => 0))
+  (- edge edge))
+"""
+
+TWO_PARAMETERS_WITH_TWO_NAMES = """\
+(defn gap
+  (sig ((edge Int) (other Int)) -> Int ! pure)
+  (examples (example (gap 9 4) => 5))
+  (- edge other))
+"""

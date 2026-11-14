@@ -6,7 +6,7 @@ A program is refused when one of its bindings takes a name that is
 already in use where the binding appears, and when any binder uses the
 word `result`, which only a postcondition may read.
 
-Nine promises were read out of the request:
+Ten promises were read out of the request and the owner's answer:
 
 | | Promise |
 |---|---|
@@ -19,6 +19,7 @@ Nine promises were read out of the request:
 | P7 | The same name in two disjoint `match` clauses is accepted. |
 | P8 | The tool publishes the two new refusals in its own manifest. |
 | P9 | The programs the project ships stay accepted. |
+| P10 | A parameter that hides a declared function, or an earlier parameter of its own signature, makes the program invalid. |
 
 Everything else in the request is an instruction about the delivery (the
 branch, the commit message, the parallel work), not a behaviour of the
@@ -40,9 +41,14 @@ tool, and is recorded as such.
   binding cannot hide them; the operators (`+ - * < <= > >= = and or
   not`) are the only builtins reachable where a value binding is
   visible, so they are what the rule protects.
-- **A parameter is a binder too.** The authority lists parameters among
-  the bindings the rule governs, so a parameter that hides a declared
-  function, or that is named `result`, is refused as well.
+- **A parameter is a binder too (the owner's answer).** The request's
+  outcome sentence stops at `let` bindings and pattern variables, while
+  the authority's line 145 lists parameters among the bindings the rule
+  governs. The owner was asked and chose the wider reading: a parameter
+  may hide neither a declared function nor an earlier parameter of its
+  own signature, and a parameter named `result` is refused. One
+  acceptance test observes each of those two cases, with a twin that
+  differs only in the parameter's name and stays accepted.
 - **The manifest is updated.** The request names `checker.py` and tests,
   but F3 and F4 both published their new category in the tool's
   manifest, and a category the manifest hides cannot be relied on.
@@ -63,12 +69,12 @@ which stays allowed. The suite was green before anything was written.
 
 ## What was built and proved
 
-Nine acceptance test files and one property file, all driving the real
+Ten acceptance test files and one property file, all driving the real
 `prova` command or its published request interface, no internal symbol
-of the checker. They were run against the tree as it is today: 21 of
-them fail because the rule does not exist yet, and the 12 control
-observations beside them already pass, so no test is simply "refuse
-everything".
+of the checker. They were run against the tree as it is today: 28 of
+their observations fail because the rule does not exist yet, and the 16
+control observations beside them already pass, so no test is simply
+"refuse everything".
 
 Three laws are stated as generated properties: a binder is refused
 exactly when its name is taken; a pattern variable is visible only in
