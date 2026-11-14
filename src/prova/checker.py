@@ -1,14 +1,20 @@
-"""Whole-program static checking: declarations, scope and nominal typing.
+"""Whole-program static checking: declarations, scope, nominal typing and
+the acyclic dependency rule.
 
 Reports every referenced type, constructor and name as it resolves them,
 and infers the nominal type of every expression (including both branches
 of an `if` and every `match` clause, reached or not) to catch a type
 error anywhere in the program, not only ones a call happens to exercise.
+
+It also refuses a program whose functions depend on themselves. SPEC.md
+requires the combined dependency graph of function bodies and contracts
+to be acyclic, and excludes the calls an example makes to its own
+function from that graph.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 
 from prova import syntax
 from prova.values import ConstructorValue
@@ -18,12 +24,55 @@ NUMERIC_OPERATORS = {"+", "-", "*"}
 COMPARISON_OPERATORS = {"<", "<=", ">", ">="}
 BOOLEAN_OPERATORS = {"and", "or", "not"}
 
+CYCLIC_DEPENDENCY = "cyclic_dependency"
+
 
 @dataclass(frozen=True)
 class Diagnostic:
     category: str
     reason: str
     location: tuple[int, int] | None = None
+    cycle: "Cycle | None" = None
+
+
+@dataclass(frozen=True)
+class Cycle:
+    """The functions of one cycle in the dependency graph of a program,
+    in the order the program declares them.
+
+    A cycle that names no function cannot be built: the refusal it
+    carries would not tell the reader which function to repair.
+    """
+
+    members: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.members:
+            raise ValueError(
+                "a cycle must name at least one function: this one was built "
+                "with no member, so the refusal it carries would not say which "
+                "function to repair; build it from the functions the dependency "
+                "search found depending on each other"
+            )
+
+    def names(self) -> tuple[str, ...]:
+        return self.members
+
+    def described(self) -> str:
+        if len(self.members) == 1:
+            return self.members[0]
+        return f"{', '.join(self.members[:-1])} and {self.members[-1]}"
+
+    def diagnostic(self) -> Diagnostic:
+        return Diagnostic(
+            CYCLIC_DEPENDENCY,
+            f"the program depends on itself through {self.described()}: core-0 "
+            "requires the combined dependency graph of function bodies and "
+            "contracts to be acyclic, so the tool cannot promise that such a "
+            "call ends; remove one of the calls that closes the cycle (a call "
+            "an example makes to its own function is not part of the graph)",
+            cycle=self,
+        )
 
 
 def check_program(program: syntax.Program) -> list[Diagnostic]:
@@ -80,7 +129,127 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
                 _check_value(arg, program, where, diagnostics)
             _check_value(example.expected, program, where, diagnostics)
 
+    diagnostics.extend(cycle.diagnostic() for cycle in _cycles_in(program))
+
     return diagnostics
+
+
+def _calls_in(expression: object) -> list[syntax.Call]:
+    """Every call written anywhere inside `expression`.
+
+    The walk follows the structure of the parsed nodes instead of a list
+    of node kinds, so a kind added to the grammar later cannot escape the
+    dependency rule by being forgotten here. Its depth is the depth of
+    the expression, as `_infer`'s already is.
+    """
+    found: list[syntax.Call] = []
+    if isinstance(expression, syntax.Call):
+        found.append(expression)
+    if is_dataclass(expression) and not isinstance(expression, type):
+        for field in fields(expression):
+            found.extend(_calls_in(getattr(expression, field.name)))
+    elif isinstance(expression, (tuple, list)):
+        for item in expression:
+            found.extend(_calls_in(item))
+    return found
+
+
+def _callees_of(function: syntax.Function, program: syntax.Program) -> list[str]:
+    """The declared functions `function` depends on: the ones it calls in
+    its body and in its contract clauses.
+
+    Its declared examples are never read. An example names its own
+    function by construction, and SPEC.md excludes those calls from the
+    graph. A call to a function the program does not declare is not an
+    edge either; `_infer` already reports it as an unbound name.
+    """
+    expressions = [function.body, *function.requires, *function.ensures]
+    called = [
+        call.name for expression in expressions for call in _calls_in(expression)
+    ]
+    return [name for name in dict.fromkeys(called) if name in program.functions]
+
+
+def _cycles_in(program: syntax.Program) -> list[Cycle]:
+    """Every set of functions that depend on each other, one `Cycle` per
+    set, ordered by where the program declares them.
+
+    The search is iterative on purpose. A recursive one would end the
+    process with a `RecursionError` on a program with more functions than
+    Python allows nested calls, which is the very failure this rule
+    exists to remove.
+    """
+    declared = list(program.functions)
+    rank_of = {name: rank for rank, name in enumerate(declared)}
+    edges = {
+        name: _callees_of(program.functions[name], program) for name in declared
+    }
+
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on_stack: set[str] = set()
+    pending: list[str] = []
+    components: list[list[str]] = []
+    counter = 0
+
+    def enter(name: str) -> None:
+        nonlocal counter
+        index[name] = low[name] = counter
+        counter += 1
+        pending.append(name)
+        on_stack.add(name)
+
+    for root in declared:
+        if root in index:
+            continue
+        enter(root)
+        work = [(root, iter(edges[root]))]
+        while work:
+            node, remaining = work[-1]
+            descended = False
+            for callee in remaining:
+                if callee not in index:
+                    enter(callee)
+                    work.append((callee, iter(edges[callee])))
+                    descended = True
+                    break
+                if callee in on_stack:
+                    low[node] = min(low[node], index[callee])
+            if descended:
+                continue
+            work.pop()
+            if work:
+                low[work[-1][0]] = min(low[work[-1][0]], low[node])
+            if low[node] == index[node]:
+                components.append(_component_from(pending, on_stack, node))
+
+    return sorted(
+        (
+            Cycle(tuple(sorted(component, key=lambda name: rank_of[name])))
+            for component in components
+            if _is_a_cycle(component, edges)
+        ),
+        key=lambda cycle: rank_of[cycle.names()[0]],
+    )
+
+
+def _component_from(pending: list[str], on_stack: set[str], root: str) -> list[str]:
+    component: list[str] = []
+    while True:
+        member = pending.pop()
+        on_stack.discard(member)
+        component.append(member)
+        if member == root:
+            return component
+
+
+def _is_a_cycle(component: list[str], edges: dict[str, list[str]]) -> bool:
+    """A set of functions that depend on each other: either more than one
+    function, or a single function that calls itself."""
+    if len(component) > 1:
+        return True
+    only = component[0]
+    return only in edges[only]
 
 
 def _check_contract_clause_is_bool(

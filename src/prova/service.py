@@ -23,6 +23,7 @@ DIAGNOSTIC_CATEGORIES = (
     "type_mismatch",
     "arity_mismatch",
     "non_exhaustive_match",
+    checker.CYCLIC_DEPENDENCY,
     "unknown_function",
     "malformed_value",
     "ill_typed_value",
@@ -106,6 +107,8 @@ def _diagnostic_dict(diagnostic: checker.Diagnostic) -> dict:
     if diagnostic.location is not None:
         line, column = diagnostic.location
         entry["location"] = {"line": line, "column": column}
+    if diagnostic.cycle is not None:
+        entry["cycle"] = list(diagnostic.cycle.names())
     return entry
 
 
