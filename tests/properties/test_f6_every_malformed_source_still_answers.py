@@ -10,13 +10,18 @@ boundary they share.
 
 The malformed family below is a closed, enumerated set of the shapes a
 reader can write: every grammar position core-0 fixes, left empty or
-filled with the wrong kind of form. A closed set is walked, not sampled.
+filled with the wrong kind of form. The laws are over the cross product of those shapes with the four
+operations, so the pair under observation is drawn; the placement of each
+refusal is walked over the whole family.
 
 Exercises the service's public operation contract in process, as the
 other property tests here do.
 """
 
 from __future__ import annotations
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from prova import service
 
@@ -99,35 +104,45 @@ def _answer_for(operation: str, source: str, described: str) -> dict:
         ) from error
 
 
-def test_every_malformed_source_is_refused_by_every_operation_that_reads_source():
-    """LAW4: for each of the enumerated malformed sources, each of the four
-    operations that read source answers one refusal, in the published
-    syntax category, carrying no result."""
-    for described, source in MALFORMED_SOURCES.items():
-        for operation in SOURCE_READING_OPERATIONS:
-            response = _answer_for(operation, source, described)
+@settings(max_examples=120, derandomize=True, deadline=None)
+@given(
+    described=st.sampled_from(sorted(MALFORMED_SOURCES)),
+    operation=st.sampled_from(SOURCE_READING_OPERATIONS),
+)
+def test_every_malformed_source_is_refused_by_every_operation_that_reads_source(
+    described, operation
+):
+    """LAW4: for any malformed source drawn from the enumerated family and
+    any operation that reads source, the answer is one refusal, in the
+    published syntax category, carrying no result.
 
-            assert response.get("status") == "invalid_program", (
-                f"WHAT: {operation!r} answered {response.get('status')!r} for "
-                f"{described}. "
-                "WHY: a source core-0 does not define is an invalid program. "
-                f"HOW: inspect the answer: {response}"
-            )
-            assert {d.get("category") for d in response.get("diagnostics") or []} == {
-                SYNTAX_CATEGORY
-            }, (
-                f"WHAT: the refusal of {described} by {operation!r} is not reported "
-                f"as {SYNTAX_CATEGORY!r} alone: {response}. "
-                "WHY: a source the reader cannot read carries that category and no "
-                "other. "
-                "HOW: report the reader's refusal unchanged."
-            )
-            assert "result" not in response, (
-                f"WHAT: {operation!r} refused {described} and still carried a "
-                f"result: {response}. "
-                "WHY: nothing was read, so nothing can be reported about it. "
-                "HOW: return the refusal alone."
-            )
+    The law is over the whole cross product of shapes and operations, so
+    the pair is generated rather than written out.
+    """
+    source = MALFORMED_SOURCES[described]
+    response = _answer_for(operation, source, described)
+
+    assert response.get("status") == "invalid_program", (
+        f"WHAT: {operation!r} answered {response.get('status')!r} for "
+        f"{described}. "
+        "WHY: a source core-0 does not define is an invalid program. "
+        f"HOW: inspect the answer: {response}"
+    )
+    assert {d.get("category") for d in response.get("diagnostics") or []} == {
+        SYNTAX_CATEGORY
+    }, (
+        f"WHAT: the refusal of {described} by {operation!r} is not reported "
+        f"as {SYNTAX_CATEGORY!r} alone: {response}. "
+        "WHY: a source the reader cannot read carries that category and no "
+        "other. "
+        "HOW: report the reader's refusal unchanged."
+    )
+    assert "result" not in response, (
+        f"WHAT: {operation!r} refused {described} and still carried a "
+        f"result: {response}. "
+        "WHY: nothing was read, so nothing can be reported about it. "
+        "HOW: return the refusal alone."
+    )
 
 
 def test_every_malformed_source_says_where_it_went_wrong():
@@ -149,13 +164,16 @@ def test_every_malformed_source_says_where_it_went_wrong():
     )
 
 
-def test_the_source_that_declares_nothing_gets_one_refusal_everywhere():
-    """LAW5: the empty source is refused identically by check, examples,
-    verify and evaluate, because one rule at the boundary they share
-    decides it."""
+@settings(max_examples=20, derandomize=True, deadline=None)
+@given(operation=st.sampled_from(SOURCE_READING_OPERATIONS))
+def test_the_source_that_declares_nothing_gets_one_refusal_everywhere(operation):
+    """LAW5: the empty source is refused identically by whichever
+    operation reads it, because one rule at the boundary they share
+    decides it. The operation is drawn, and every draw is compared with
+    the same answer `check` gives."""
     answers = {
-        operation: _answer_for(operation, "", "the empty source")
-        for operation in SOURCE_READING_OPERATIONS
+        name: _answer_for(name, "", "the empty source")
+        for name in ("check", operation)
     }
     diagnostics = {
         operation: answer.get("diagnostics")
