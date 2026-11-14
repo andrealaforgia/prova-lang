@@ -1,7 +1,12 @@
-"""Acceptance test for I1.S1.B3: `build` and `verify` are recognized I1
-operations that are deliberately refused as unavailable, never attempted --
-as distinct from a request naming an operation the tool does not recognize
-at all.
+"""Acceptance test for I1.S1.B3: `build` is a recognized operation that is
+deliberately refused as unavailable, never attempted -- as distinct from a
+request naming an operation the tool does not recognize at all.
+
+`verify` was refused here in the same way until it learned to answer with
+the inventory of obligations a program owes; what it answers now, and that
+it attempts none of them, is stated in
+tests/acceptance/test_verify_lists_the_obligations_owed.py. A build stays
+closed while those obligations are not attempted.
 
 Drives only the `prova` command's real JSON stdin/stdout surface, per the
 I1 change plan. No imports from src/prova.
@@ -15,7 +20,7 @@ import subprocess
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-OPERATIONS = ["build", "verify"]
+OPERATIONS = ["build"]
 
 UNRECOGNIZED_OPERATION = "totally_bogus_xyz"
 
@@ -45,11 +50,11 @@ def _request(operation: str, source: str) -> dict:
         raise AssertionError(f"non-JSON response requesting {operation}: {proc.stdout!r}")
 
 
-def test_b3_build_and_verify_are_refused_as_explicit_unavailable_failures():
-    """Given the Owner requests the build operation or the verify
-    operation against the reservation source, when either request runs,
-    then the tool returns an explicit structured failure reporting the
-    operation as unavailable rather than attempting it."""
+def test_b3_build_is_refused_as_an_explicit_unavailable_failure():
+    """Given the Owner requests the build operation against the reservation
+    source, when the request runs, then the tool returns an explicit
+    structured failure reporting the operation as unavailable rather than
+    attempting it."""
     source = _reservation_source()
 
     for operation in OPERATIONS:
@@ -75,13 +80,13 @@ def test_b3_build_and_verify_are_refused_as_explicit_unavailable_failures():
         )
 
 
-def test_b3_build_and_verify_refusal_is_distinct_from_an_unrecognized_operation():
+def test_b3_build_refusal_is_distinct_from_an_unrecognized_operation():
     """Given the Owner requests an operation name the tool has never heard
-    of, when compared against the build and verify refusals, then the
+    of, when compared against the build refusal, then the
     unrecognized-operation failure is reported under a different diagnostic
-    category -- proving build and verify are known, declared-unavailable
-    operations rather than falling through the same generic catch-all that
-    handles garbage input."""
+    category -- showing build is a known, declared-unavailable operation
+    rather than falling through the same generic catch-all that handles
+    garbage input."""
     source = _reservation_source()
 
     bogus_response = _request(UNRECOGNIZED_OPERATION, source)

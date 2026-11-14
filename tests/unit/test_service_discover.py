@@ -29,11 +29,23 @@ def test_discover_reports_each_operation_availability():
         "examples": "available",
         "evaluate": "available",
         "discover": "available",
+        "verify": "available",
         "parse": "unavailable",
         "format": "unavailable",
-        "verify": "unavailable",
         "build": "unavailable",
     }
+
+
+def test_discover_says_what_an_available_verify_answers():
+    """`verify` is advertised as available because it answers the inventory
+    of obligations a program owes -- and the manifest says so, so that
+    "available" is not read as a claim that the obligations were attempted.
+    """
+    documentation = service.handle(DISCOVER)["result"]["documentation"]
+
+    assert "verify" in documentation, documentation
+    text = documentation["verify"].lower()
+    assert "not_attempted" in text and "inventory" in text, documentation["verify"]
 
 
 def test_advertised_availability_matches_what_the_service_answers():

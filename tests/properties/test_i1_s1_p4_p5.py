@@ -1,14 +1,14 @@
-"""I1.S1.P4 and I1.S1.P5: build/verify are refused, not attempted.
+"""I1.S1.P4 and I1.S1.P5: `build` is refused, not attempted.
 
-P4: given a well-formed `build` or `verify` request against the protected
-reservation source, the real public command returns a parseable structured
-refusal that names the requested operation, reports it unavailable, carries
-no successful result, and is a deliberate refusal of that named operation:
+P4: given a well-formed `build` request against the protected reservation
+source, the real public command returns a parseable structured refusal that
+names the requested operation, reports it unavailable, carries no
+successful result, and is a deliberate refusal of that named operation:
 the diagnostic identity differs from the response to an unrecognised
 operation name, and the execution trace shows the request reached the
 service dispatch.
 
-P5: the same two requests run under execution tracing (audit events for
+P5: the same request runs under execution tracing (audit events for
 process spawn and filesystem mutation, plus every Python function entered
 in the candidate). The trace must show zero entries into build/verify/
 solver-style work, the checked-evaluation stages, child processes and file
@@ -17,6 +17,12 @@ scripts that really do attempt the work: entering a build function, writing
 an executable and deleting it again, spawning a child process, and calling a
 verifier that fails and whose failure is then concealed by an "unavailable"
 answer.
+
+`verify` was refused in exactly this way until it learned to answer with
+the inventory of obligations a program owes. It is no longer refused, so it
+is not asserted here; that it answers the list and attempts none of it is
+stated in tests/acceptance/test_verify_lists_the_obligations_owed.py and
+tests/properties/test_obligation_inventory_laws.py.
 
 Evidence limit: the trace sees Python function entries and CPython audit
 events; native code that mutates files without an audit event is not seen.
@@ -31,7 +37,7 @@ import pytest
 from _prova_client import load_reservation_source
 from _trace_client import attempted_work, run_traced
 
-OPERATIONS = ["build", "verify"]
+OPERATIONS = ["build"]
 STATUS_VOCABULARY = {
     "completed", "unsupported", "invalid_input", "invalid_program",
     "resource_exhausted", "tool_failure", "unavailable",

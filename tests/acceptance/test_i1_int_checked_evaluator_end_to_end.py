@@ -67,10 +67,12 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
     """Given the reservation program, when the Owner checks it, evaluates
     `step` on a fresh input, runs its declared examples, and then submits an
     invalid entry state, a wrong `step` body and an ill-typed program, and
-    finally asks for build and verify, then: the good program is accepted and
-    evaluated correctly with every example passing; each bad case is rejected
-    under its own category with no successful result; build and verify are
-    refused as unavailable; and nothing claims verification or a build."""
+    finally asks what must still be shown about the program and for a built
+    artefact, then: the good program is accepted and evaluated correctly with
+    every example passing; each bad case is rejected under its own category
+    with no successful result; the obligations are listed and none of them
+    attempted; build is refused as unavailable; and nothing claims
+    verification or a build."""
     source = _reservation_source()
     raw_outputs: list[str] = []
 
@@ -130,11 +132,18 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
     # The three rejections are distinguishable by category.
     assert len({"precondition_violation", "postcondition_violation", "type_mismatch"}) == 3
 
-    # 7. Build and verify are refused as unavailable, never attempted.
-    for operation in ("build", "verify"):
-        refused = call({"operation": operation, "source": source})
-        assert refused.get("operation") == operation, refused
-        assert refused.get("status") == "unavailable", refused
+    # 7. What must still be shown about the program is listed, attempted by
+    #    nothing; a build is still refused as unavailable, never attempted.
+    owed = call({"operation": "verify", "source": source})
+    assert owed.get("operation") == "verify", owed
+    assert owed.get("status") == "completed", owed
+    obligations = ((owed.get("result") or {}).get("inventory") or {}).get("obligations") or []
+    assert obligations, f"the answer lists nothing the program owes: {owed}"
+    assert {entry.get("result") for entry in obligations} == {"not_attempted"}, owed
+
+    refused = call({"operation": "build", "source": source})
+    assert refused.get("operation") == "build", refused
+    assert refused.get("status") == "unavailable", refused
 
     # 8. Nothing in the whole session claims verification, proof or a build.
     for raw in raw_outputs:
