@@ -194,6 +194,13 @@ They are the cheapest next work, because `core-0` and `check` already exist.
 1. **Recursion is accepted and crashes the tool** (2.14). A function that calls
    itself passes `check`. `evaluate` then raises an uncaught `RecursionError`.
    SPEC.md requires rejecting it at check time.
+   *Fixed by feature F2.* `check` now refuses a program whose bodies and
+   contracts depend on themselves, with the category `cyclic_dependency` naming
+   the functions of the cycle, and no operation reaches the evaluator with such
+   a program. Probes T17, T18 and T19 agree after the change and disagreed
+   before it (`uv run python docs/spec-trace/probe.py`: 34 of 53 scored probes
+   agree, against 31 of 53 at commit `f2bbb73`). The table above is left as it
+   was measured at `533271a` and is not re-scored here.
 2. **Duplicate function names are accepted silently** (2.3). The second definition
    replaces the first and the program evaluates with it.
 3. **Seven more `check` gaps share a fix location.** Cyclic types (2.2),

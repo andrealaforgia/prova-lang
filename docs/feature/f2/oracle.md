@@ -69,15 +69,20 @@ case, accepted and refused alike.
   client exits 3 (service unavailable). The naming choices below were
   decided locally and are open for the person to change.
 
-## Still open (questions for the person)
+## Three choices, put to the person and settled
 
-1. The name of the new diagnostic category. The tests currently use
-   `cyclic_dependency`.
-2. Whether the refusal should carry the members of the cycle in a
-   machine-readable field beside the human sentence, or in the sentence
-   alone. The tests currently expect both.
-3. Whether exiting 0 with a refusal is the wanted answer for a program the
-   tool refuses to run, where today the caller sees exit 1.
+These were put to the Owner at the pause after this step, before any code
+was written, and answered:
 
-Changing any of these means editing the tests and recording the oracle
-again before the code is written.
+1. The name of the new diagnostic category: **`cyclic_dependency`**.
+2. The shape of the refusal: **one diagnostic per cycle, carrying the
+   members in a machine-readable `cycle` field** beside the sentence that
+   also names them.
+3. The exit code for a refused program: **0**, with the refusal in the
+   response.
+
+The tests already used all three, so none of them had to change.
+
+## Still open
+
+Nothing from this step.
