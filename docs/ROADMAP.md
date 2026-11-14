@@ -1141,3 +1141,26 @@ I changed nothing. These are proposals for the Owner.
 | P4 | SPEC.md lines 612-613 | SPEC.md names reservations as the first recommended conformance target. `examples/hour-clock.prova` is a smaller, working `core-0` program with one event and one action, and it is already the cheaper first machine target. Propose naming the hour clock as the first target and reservations as the second. This changes no semantics for either. |
 | P5 | `README.md` lines 9-12, 20 | The README says "There is no compiler, test runner, build system, CI pipeline" and points to `docs/RELAY.md` as required reading. All four exist now and Relay is dropped. Propose updating it, and pointing at this roadmap instead. |
 | P6 | `docs/EXPECTATIONS.md` lines 38-51 | E1 to E11 are good acceptance themes and I mapped features to them. E12 (does Prova help LLMs?) is an experiment after a working compiler, and Q8 defines nothing yet. Propose stating plainly that E12 and Q8 are out of scope until increment 5 is finished, so nobody treats them as compiler work. |
+
+
+---
+
+## 8. Owner decisions (recorded 14 November 2026)
+
+The Owner approved every recommendation in this roadmap:
+
+| ID | Decision |
+|---|---|
+| D1 | Solver: a pinned Z3 |
+| D2 | `build` produces generated Python |
+| D3 | Runtime values travel in the s-expression text form already tested |
+| D4 | Bootstrap language stays Python 3.12 |
+| D5 | Budgets: 1 MiB input, 10 s, 512 MiB memory, 1 MiB output, measured on CI first |
+| D6 | The machine descriptor is a separate versioned JSON document |
+| D7 | The product owner's recommendation stands (see section 5) |
+| F1 | Accepted as a guard-only feature on its injected-fault evidence. The `nwstep` oracle gate has no declaration for a green-by-design oracle; that is a tool gap, not a Prova defect. |
+| F2 | Category `cyclic_dependency`; one diagnostic per cycle with a `cycle` field; refusal exits 0 |
+
+Features blocked only by D1-D6 are now READY. This is the Owner's approval of the
+product owner's recommendations as written in section 5. Details of each option are
+there.
