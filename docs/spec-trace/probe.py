@@ -84,7 +84,13 @@ probe("C6", "233", "wrong example expected value reported failed", lambda: (any(
 probe("C7", "209-210", "calls in contracts must meet callee preconditions (static)", rej(fn(name="g", mid="(requires (> n 0))", ex="(examples (example (g 1) => 1))") + fn(mid="(ensures (= (g result) 1))", ex="(examples (example (f 1) => 1))")))
 probe("C8", "204-205", "reports identify omitted/trivial contracts", lambda: ("omitted" in json.dumps(check(OK)).lower() or "trivial" in json.dumps(check(OK)).lower(), "check response has no omitted/trivial contract report"))
 # --- tooling
-probe("S1", "465-470", "verify advertised unavailable and refused", lambda: (service.handle({"operation": "verify"})["status"] == "unavailable", ""))
+def _verify_inventory_ok():
+    r = service.handle({"operation": "verify", "source": OK})
+    obs = ((r.get("result") or {}).get("inventory") or {}).get("obligations") or []
+    text = json.dumps(r).lower()
+    ok = r.get("status") == "completed" and bool(obs) and {o.get("result") for o in obs} == {"not_attempted"} and "proved" not in text and "verified" not in text
+    return ok, f"{len(obs)} obligations"
+probe("S1", "286-290", "verify lists obligations, all not_attempted, never claims proved or verified", _verify_inventory_ok)
 probe("S2", "465-470", "parse advertised unavailable and refused", lambda: (service.handle({"operation": "parse"})["status"] == "unavailable", ""))
 probe("S3", "291-293", "build fails closed, publishes nothing", lambda: (service.handle({"operation": "build"})["status"] == "unavailable", ""))
 probe("S4", "472-474", "diagnostics carry source revision", lambda: ("source_revision" in json.dumps(check(fn(body="true"))) or "revision" in json.dumps(check(fn(body="true"))), str(check(fn(body="true"))["diagnostics"])))
