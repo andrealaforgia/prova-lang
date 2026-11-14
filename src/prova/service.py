@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import hashlib
 
-from prova import checker, evaluator, syntax
+from prova import checker, evaluator, obligations, syntax
 from prova.reader import ReaderError, read_program
 from prova.values import render
 
-AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover")
-UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "verify", "build"})
+AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify")
+UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "build"})
 
 DIAGNOSTIC_CATEGORIES = (
     "syntax",
@@ -47,6 +47,8 @@ def handle(request: dict) -> dict:
             request.get("function"),
             request.get("arguments", []),
         )
+    if operation == "verify":
+        return _run_verify(request.get("source", ""))
     if operation == "discover":
         return _run_discover()
     if operation in UNAVAILABLE_OPERATIONS:
@@ -89,6 +91,11 @@ def _run_discover() -> dict:
                     "A completed evaluate response means the function's postconditions "
                     "were checked and held for the supplied input; it is not a proof "
                     "for all inputs."
+                ),
+                "verify": (
+                    "A completed verify response is an inventory only: it lists the "
+                    "obligations the program owes and attempts none of them, so every "
+                    "entry's result is not_attempted. This tool has no solver."
                 ),
             },
             "resource_limits": {
@@ -138,6 +145,40 @@ def _run_check(source: str) -> dict:
         "claim": {"kind": "static_check", "scope": "this input"},
         "source_digest": _source_digest(source),
         "diagnostics": [],
+    }
+
+
+def _run_verify(source: str) -> dict:
+    """The obligations the program owes, every one of them not attempted.
+
+    Reads nothing but `source`, writes nothing and keeps nothing: asking
+    twice changes neither the answer nor anything else.
+    """
+    try:
+        forms = read_program(source)
+        program = syntax.parse_program(forms)
+    except (ReaderError, syntax.SyntaxError_) as error:
+        return {
+            "operation": "verify",
+            "status": "invalid_program",
+            "diagnostics": [{"category": "syntax", "reason": error.message}],
+        }
+
+    diagnostics = checker.check_program(program)
+    if diagnostics:
+        return {
+            "operation": "verify",
+            "status": "invalid_program",
+            "diagnostics": [_diagnostic_dict(d) for d in diagnostics],
+        }
+
+    return {
+        "operation": "verify",
+        "status": "completed",
+        "claim": {"kind": "obligation_inventory", "scope": "this input"},
+        "source_digest": _source_digest(source),
+        "diagnostics": [],
+        "result": {"inventory": obligations.inventory_for(program).as_dict()},
     }
 
 

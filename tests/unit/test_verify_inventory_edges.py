@@ -81,7 +81,13 @@ def test_a_program_that_does_not_check_is_refused_instead_of_listed():
         "obligation is listed, and the Owner should read one vocabulary for that. "
         "HOW: report the check's own diagnostics unchanged."
     )
-    assert "unknown_function" in {d["category"] for d in refused["diagnostics"]}, refused
+    assert "unbound_name" in {d["category"] for d in refused["diagnostics"]}, (
+        "WHAT: the call to a function the program never declares was not reported as "
+        f"an unbound name: {refused}. "
+        "WHY: that is the category the whole-program check gives it, and verify must "
+        "speak the same vocabulary. "
+        "HOW: compare with the check operation's answer for the same source."
+    )
 
 
 def test_listing_what_verify_owes_did_not_make_build_answer():

@@ -23,7 +23,7 @@ machine layer and the executable do not exist.**
 | Read, parse, type-check `core-0` | Works for well-formed programs | `docs/spec-trace.md` §1-§3; 772 tests pass in 65 s (I ran `uv run pytest -q tests`) |
 | Refuse ill-formed `core-0` programs | Half missing | 14 Missing rows in `docs/spec-trace.md`; 22 of 53 probes disagree with SPEC.md (I ran `uv run python docs/spec-trace/probe.py`) |
 | Run a program and check its contracts on one input | Works | `src/prova/evaluator.py:100-116`; `examples/hour-clock.prova` runs (see below) |
-| `verify-0` | Not started | `docs/spec-trace.md` §5: every row Not started except the fail-closed refusal |
+| `verify-0` | Inventory only, nothing attempted | `docs/spec-trace.md` §5: `verify` lists the obligations a program owes, every one `not_attempted`; no encoding and no solver exist |
 | `machine-0` | Not started | `docs/spec-trace.md` §7: every row Not started |
 | `build`, `parse`, `format` | Advertised unavailable and refused | `src/prova/service.py:15`, probes S1-S3 |
 | Resource budgets | None | `src/prova/service.py:92-95` reports `"enforced": false` |

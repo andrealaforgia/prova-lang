@@ -89,18 +89,20 @@ split or merge rows, so the totals are a guide and not a precise measurement.
 
 ## 5. `verify-0` (lines 241-318)
 
-Nothing in this section exists. `verify` is advertised as unavailable.
+`verify` answers with the inventory of obligations a program owes and attempts none
+of them: every entry reads `not_attempted`. Nothing else in this section exists --
+no encoding, no solver, no other result value and no aggregate result.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| 5.1 | Precondition obligation for every potentially evaluated call | Not started | code |
-| 5.2 | Body-to-postcondition, example-validity, definedness and termination records | Not started | code |
+| 5.1 | Precondition obligation for every potentially evaluated call | Partial | listed, never attempted: one entry per call under the condition that reaches it; `tests/acceptance/test_verify_lists_the_obligations_owed.py` |
+| 5.2 | Body-to-postcondition, example-validity, definedness and termination records | Partial | all four listed per function and per declared example, never attempted; `tests/properties/test_obligation_inventory_laws.py` |
 | 5.3 | Encoding of Booleans, linear integer arithmetic and non-recursive data | Not started | no solver chosen (Q3) |
 | 5.4 | Out-of-fragment obligations return `unknown` with a reason | Not started | code |
 | 5.5 | Documented translation and soundness argument | Not started | code |
-| 5.6 | Result dimensions: `proved`, `disproved`, `unknown`, `not_attempted`; execution status; claim kind; scope | Not started | `claim.kind` exists but only as `static_check`, `evaluation`, `examples` |
+| 5.6 | Result dimensions: `proved`, `disproved`, `unknown`, `not_attempted`; execution status; claim kind; scope | Partial | `not_attempted` is the result every obligation carries and `claim.kind` now also reads `obligation_inventory`; the other result values and the execution-status dimension do not exist |
 | 5.7 | Provenance: digests, claim version, compiler/solver versions | Partial | only `source_digest` (probe S8) |
-| 5.8 | Aggregate `verified` needs a complete obligation inventory | Not started | code |
+| 5.8 | Aggregate `verified` needs a complete obligation inventory | Partial | the inventory exists and covers every function, example and call of a `core-0` program; no aggregate result of any kind is produced |
 | 5.9 | Disproof needs a validated source-level witness | Not started | code |
 | 5.10 | `build` fails closed while verification is incomplete | Done | probe S3, `tests/acceptance/test_s1_*` (fails closed because it is unavailable) |
 | 5.11 | Requirement integrity: claim identities and revisions, weakening disclosed | Not started | process only, no tooling |
@@ -168,23 +170,25 @@ Row 9.4 is counted as Done although it only holds at run time.
 | Area | Done | Partial | Missing | Not started | Deferred | Rows |
 |---|---|---|---|---|---|---|
 | `core-0`: syntax, types, evaluation, contracts, purity (sections 1-4, 6) | 22 | 4 | 13 | 4 | 3 | 46 |
-| `verify-0` (section 5) | 1 | 1 | 0 | 9 | 0 | 11 |
+| `verify-0` (section 5) | 1 | 5 | 0 | 5 | 0 | 11 |
 | `machine-0` (section 7) | 0 | 0 | 0 | 5 | 1 | 6 |
 | Tooling and runtime (section 8) | 4 | 7 | 1 | 1 | 0 | 13 |
 | Reservation conformance example (section 9) | 4 | 0 | 0 | 1 | 0 | 5 |
-| **All** | **31** | **12** | **14** | **20** | **4** | **81** |
+| **All** | **31** | **16** | **14** | **16** | **4** | **81** |
 
 How to read this.
 - **`core-0`:** 22 of 43 live rows are Done (51%), and 26 of 43 (60%) are Done or Partial.
   The 13 Missing rows are mostly small `check` rules (see the defect list below).
-- **`verify-0`:** about 0%. Only the fail-closed `build` refusal counts.
+- **`verify-0`:** no obligation has ever been attempted, so nothing here is Done beyond
+  the fail-closed `build` refusal. What exists is the inventory: the tool now says what
+  would have to be shown, which is the list the encoder and solver rows will work from.
 - **`machine-0`:** 0%. The roles and obligations around `step` do not exist.
 - **Equal weighting misleads.** One `verify-0` row, such as the solver encoding, is far
   more work than one `check` rule. The row counts do not measure effort.
 - **Overall:** 31 of 77 live rows are Done (40%). My earlier "10-15%" was too low if
   counted by rows and too high if counted by effort. Neither figure is the right one.
-  A better claim is: the `core-0` front end is about half conformant, and the verifier
-  and state-machine layers have not started.
+  A better claim is: the `core-0` front end is about half conformant, the verifier knows
+  what it owes but attempts none of it, and the state-machine layer has not started.
 
 ## Defects found by this trace
 
