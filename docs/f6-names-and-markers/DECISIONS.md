@@ -1,0 +1,18 @@
+# nwstep decisions
+
+kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: none
+
+## design (revision 1, STALE: an earlier step was recorded again after it; record it again or say why it still holds)
+
+- **reuse_decision**: Reused: SyntaxError_ as the one refusal the reader raises, with the line and column it already carries; the published syntax diagnostic category, because SPEC.md places all seven rules in its lexical rules and core grammar and that category already means source the tool cannot read as a program; the SPECIAL_FORMS and OPERATORS sets already in syntax.py, so the reserved words are composed from them instead of written out a second time; the shape of the existing DeclaredName value, so the new values read like their siblings. New: ValueName, TypeName, MarkerToken and AtLeastOne, because no existing unit owns the spelling of a name or a marker. DeclaredName is the nearest candidate and does not fit: it is built after a declaration is parsed, it covers functions, types, constructors and fields but never a parameter, and it owns whether a name is declared twice, not how a name is spelled. Keeping the two questions in two owners leaves one decider for each. Nothing is added to checker.py, so the parallel delivery's scope and binder logic is untouched.
+- **prefactoring_reason**: The four operations that read source each build their own syntax diagnostic dictionary from the same two fields, so the response shape is decided in four places. A first commit extracts those four literals into one builder and changes no behaviour: the same category and the same reason come back, no test is edited and the suite stays green. Only then does the behaviour commit add the location to that single builder, so the place arrives in all four answers at once instead of being added four times.
+
+## oracle (revision 2)
+
+- **decisions**:
+  - S34: A source that declares nothing is refused wherever a program is read, which is every operation that takes source, because the grammar says a program is one or more declarations and the four operations all build the same tree; the existing unit test only requires that such an operation does not answer unavailable, and an invalid program is not unavailable, so it keeps passing.
+  - DEC1: All seven rules are reported in the published syntax category instead of a new one, because the specification places every one of them in its lexical rules and core grammar and the syntax category already means source the tool cannot read as a program; a new category would split one meaning in two and oblige every caller to learn a word for the same defect.
+  - DEC2: A syntax refusal now carries the location the error already holds, because the outcome asks for the refusal at the place it appears; this adds a field to a response and removes nothing, so no caller that reads the old fields breaks.
+  - DEC3: The reserved-word and name-shape rules are applied to declared function names, parameter names, type names and constructor names only. Field names are a value-name position too, but no criterion names them and the parallel delivery owns the result name in binding positions, so widening there stays out of this change.
+  - DEC4: Type references inside a signature or a field keep their present answer, an unknown-type refusal from the checker, because no criterion asks for a spelling rule on a use of a name and existing tests observe that answer.
+  - DEC5: Jev was asked the two open semantic questions (which category carries the new refusals, and which component owns the empty-program rule) and answered typesafe: unavailable, because TYPESAFE_API_KEY is absent from the environment; both questions were then decided locally in DEC1 and in the owner decision for S34.
