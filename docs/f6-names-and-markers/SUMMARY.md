@@ -241,7 +241,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 ## Observed side effects (git, BASE to HEAD)
 
 - A docs/f6-names-and-markers/DECISIONS.md (+18 -0 lines)
-- A docs/f6-names-and-markers/SUMMARY.md (+619 -0 lines)
+- A docs/f6-names-and-markers/SUMMARY.md (+620 -0 lines)
 - A docs/f6-names-and-markers/TRACE.md (+6 -0 lines)
 - A docs/feature/f6-names-and-markers/craft.md (+66 -0 lines)
 - A docs/feature/f6-names-and-markers/design.md (+90 -0 lines)
@@ -257,7 +257,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - A tests/acceptance/test_f6_b5_a_source_declaring_nothing_is_refused.py (+66 -0 lines)
 - A tests/acceptance/test_f6_b6_the_shipped_programs_still_check.py (+43 -0 lines)
 - M tests/properties/test_f3_duplicate_declarations.py (+4 -1 lines)
-- A tests/properties/test_f6_every_malformed_source_still_answers.py (+177 -0 lines)
+- A tests/properties/test_f6_every_malformed_source_still_answers.py (+195 -0 lines)
 - A tests/properties/test_f6_name_and_marker_spelling.py (+134 -0 lines)
 - M tests/unit/test_verify_inventory_edges.py (+29 -12 lines)
 
@@ -272,6 +272,9 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - f017243 [F6] cover the pattern a constructor position must hold
 - 5ac07fb [F6] record the delivery beside the change
 - 7948627 [F6] regenerate the record after the design step was recorded again
+- 12fe06b [F6] regenerate the record after the craft step was recorded again
+- f16931c Narrow the diagnostic-location row to what the tool really does
+- 73d7e7f [F6] state the totality laws as the generated properties they are
 
 ## 4. oracle: Frame the work and write the oracle (revision 2)
 
@@ -618,3 +621,51 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ```
 - **scorecard**: `uv run python -m compileall -q src/prova tests` exited 0 in 0.058s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment, so the client exited 3 when the two open semantic questions (which category carries the new refusals, which component owns the empty-program rule) were sent; both were then decided locally, in design decision DEC1 and in the owner's Option A answer
+
+## 7. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the four owners the design named are the four values built, and no fifth decider appeared: ValueName, TypeName, MarkerToken and AtLeastOne in src/prova/syntax.py, with one syntax-diagnostic builder in src/prova/service.py:124; checker.py stayed untouched as the design said
+  - D2: fixed:the reserved words are composed from the SPECIAL_FORMS and OPERATORS sets already in the module instead of a second list, and the four source-reading operations build their refusal in one place after the prefactor commit; the one duplication left, syntax.BUILTIN_TYPE_NAMES against checker.BUILTIN_TYPES, carries a comment at its definition naming why it waits for the file's owner, and is recorded as a follow-up in the handoff
+  - D3: pass - every rule is decided at the reader-to-tree boundary in syntax.py, which depends on reader.py only; service.py depends on syntax and never the other way, and no response shape reached the reader
+  - D4: fixed:a misspelled name cannot be built at all, because the refusal is in the constructor and not at each call site: src/prova/syntax.py:44 for a value name and :86 for a type name, so no misspelled name reaches the typed tree; the open bypass is a Function value built by hand, which no path in this tool does
+  - D5: pass - each new value holds one reason to change and names it from the grammar, the longest being MarkerToken.demand at src/prova/syntax.py:146; the break from the two-instance rule is deliberate and shared with the sibling DeclaredName, because a refusal needs the place it stands at (role, text, line, column)
+  - D6: n/a: no pattern was introduced: the change is four value objects with smart constructors and one builder, and the nearest pattern candidate, a visitor over the tree, would add a layer no accepted outcome reads
+  - D7: pass - the names come from the language the specification speaks (value name, type name, marker token, declaration, example, clause, effect) and none from mechanics; the refusals are stated in the same words a reader of SPEC.md uses
+  - D8: pass - no filesystem, process, clock or transport entered syntax.py; the reader hands it nodes and it hands back a tree or a refusal, and the only I/O in the change is the tests reading the shipped programs
+  - D9: fixed:every acceptance test drives the installed command over its real JSON stdin and stdout, at tests/acceptance/_f6_spelling_fixtures.py:212, and imports nothing from src/prova; the property tests use the service's public operation contract in process, as the sibling property tests do
+  - D10: pass - each test name is a sentence about what a reader of a program gets (a function named as a reserved word is refused, the shipped programs still check) and carries no production symbol, layer term or process id
+  - D11: pass - the shared fixtures own the programs and the readers of a refusal once, and each test states only its own stimulus and observation; no helper owns a whole scenario
+  - D12: fixed:three generated properties state the laws over spellings and markers no table can carry, at tests/properties/test_f6_name_and_marker_spelling.py:92, each with its expected verdict computed from the specification and not from the tool; the closed sets, the reserved words and the malformed family, are walked exhaustively instead, at tests/properties/test_f6_every_malformed_source_still_answers.py:47
+  - D13: pass - nine consecutive runs of the eight F6 files all gave 33 passed, median 2.22 s and slowest run 2.30 s, with no flake; the one test above the unit budget, 0.93 to 1.04 s, starts the real command once per reserved word and is listed with that reason in docs/feature/f6-names-and-markers/craft.md
+  - D14: pass - each test adds an observation no other makes: one refusal per rule with its own accepted twin, the enumerated family for totality, and the three properties for the laws; no property repeats a finite example's pair
+  - D15: fixed:every refusal says what failed, why it matters and how to repair it, with the offending spelling quoted and its place carried, for example src/prova/syntax.py:699 for a missing grammar position and :62 for a reserved word; each assertion message in the new tests is worded the same way
+  - D16: n/a: no model for the spelling rules: they name no shared state, no multi-step protocol, no concurrency and no crash window; each is a total function from one source text to one answer, and the laws it does claim are checked by the generated properties and the enumerated family
+  - D17: fixed:the specification trace row about diagnostic locations claimed Done while recursive_type and unbound_type still carry none, and was narrowed to Partial with that reason in f16931c, documents only; oracle.md names the promises added after the first review, and craft.md states the test cost, the probe and what is still open
+- **independent_review**:
+  - REV1 | reviewer=implementation-review | findings=7, verdict REJECT at 070f06c | resolution=all 7 fixed in a96b17f, f017243
+  - REV2 | reviewer=implementation-review | findings=1, verdict REJECT at f017243 (6 of 7 verified: 3800 fuzz requests 0 exceptions, 10/10 guard deletions red, 890 passed) | resolution=spec-trace row 8.6 narrowed to Partial in f16931c, documents only, checked by owner
+
+## 8. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - Two expectations written before the empty-program rule contradicted it and were corrected with the owner's authorisation, minimally and in their own commit.
+- **not_verified**:
+  - The duplication between syntax.BUILTIN_TYPE_NAMES and checker.BUILTIN_TYPES is not resolved: the same three builtin type names are declared in two modules, because checker.py belongs to the delivery running beside this one. Reconciling them is one line once that file is free, and a comment at the definition says so.
+  - Four forms are still accepted with text silently dropped, as they are on the branch point: (deftype T (record (x Int)) extra), (requires), (ensures) and (if true 1 2 3). They are not crashes and no rule of this feature covers them; refusing a form that carries more than the grammar fixes is a rule of its own.
+  - recursive_type and unbound_type diagnostics still carry no location, so only reader and syntax refusals say where they happened. The specification trace row about diagnostic locations is Partial for that reason.
+  - Whether the spelling rules hold for every name position of the language: field names are a value-name position too and are not read for their spelling here, and a use of a type name keeps the checker's unknown-type answer. Both are recorded design decisions, not measurements.
+  - The Jev question service was never reached: its key is absent from this environment, so the two open semantic questions were decided locally and recorded instead of being put to it.
+  - No formal model was written or run. The spelling rules name no shared state, no protocol and no crash window, so the claim rests on the generated properties and the enumerated family, which are evidence and not proof.
+  - The malformed family is an enumerated set of twenty-nine shapes, not an exhaustive search of every source text. A shape nobody wrote down could still be read raw somewhere, and the ten guard deletions show only that each guard the change added is load-bearing.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit 73d7e7fcb2ffc002cb21ed157b6c31c5bf7a5019
+  - no checks declared
+
+## Not backed by the diff
+
+- A program is now refused when it spells a name or a marker other than core-0 defines it: a reserved word as a function name, a function or parameter starting with a capital, a type or constructor starting lower-case, a constructor named for a builtin type, an arrow or effect marker that is not the one the grammar fixes, a source that declares nothing, and an examples clause with no example.: a guarantee names no test function of the change
+- Each refusal is answered in the published syntax category, says what is wrong and how to repair it, and carries the line and column it stands at, built in the one place every operation that reads source calls.: a guarantee names no test function of the change
+- The same reader is now total: every grammar position it fixes is read through one owner that refuses what is missing or of the wrong kind, so the malformed signature that used to end the command in a traceback, and twenty-eight further truncated or mangled shapes, now come back as one answer.: a guarantee names no test function of the change
+- Four values own the rules, each refusing its invalid spelling at construction, so no misspelled name reaches the typed tree; the checker was not touched.: a guarantee names no test function of the change
+- Checked through the installed command's real JSON surface for each rule with its accepted twin, by generated properties for the spelling, marker and totality laws, by an enumerated family of malformed shapes read by all four source-reading operations, and by the three shipped programs, which still check.: a guarantee names no test function of the change
