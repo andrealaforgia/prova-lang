@@ -181,21 +181,29 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
-- A docs/feature/binding-scope/design.md (+94 -0 lines)
+- A docs/binding-scope/DECISIONS.md (+18 -0 lines)
+- A docs/binding-scope/SUMMARY.md (+504 -0 lines)
+- A docs/binding-scope/TRACE.md (+6 -0 lines)
+- A docs/feature/binding-scope/DECISIONS.md (+78 -0 lines)
+- A docs/feature/binding-scope/craft.md (+71 -0 lines)
+- A docs/feature/binding-scope/design.md (+95 -0 lines)
 - A docs/feature/binding-scope/oracle.md (+89 -0 lines)
-- M src/prova/checker.py (+227 -0 lines)
+- M src/prova/checker.py (+317 -3 lines)
 - M src/prova/service.py (+2 -0 lines)
-- A tests/acceptance/_f5_binding_fixtures.py (+379 -0 lines)
-- A tests/acceptance/test_f5_b1_a_let_hiding_a_parameter_is_refused.py (+46 -0 lines)
+- A tests/acceptance/_f5_binding_fixtures.py (+468 -0 lines)
+- A tests/acceptance/test_f5_b10_a_recursive_type_is_still_answered_alone.py (+52 -0 lines)
+- A tests/acceptance/test_f5_b11_odd_but_parseable_binders_are_answered.py (+66 -0 lines)
+- A tests/acceptance/test_f5_b1_a_let_hiding_a_parameter_is_refused.py (+77 -0 lines)
 - A tests/acceptance/test_f5_b2_a_pattern_variable_hiding_a_function_is_refused.py (+46 -0 lines)
-- A tests/acceptance/test_f5_b3_a_binder_named_result_is_refused.py (+66 -0 lines)
-- A tests/acceptance/test_f5_b4_result_read_outside_a_postcondition_is_refused.py (+69 -0 lines)
-- A tests/acceptance/test_f5_b5_a_pattern_binding_one_name_twice_is_refused.py (+40 -0 lines)
+- A tests/acceptance/test_f5_b3_a_binder_named_result_is_refused.py (+95 -0 lines)
+- A tests/acceptance/test_f5_b4_result_read_outside_a_postcondition_is_refused.py (+80 -0 lines)
+- A tests/acceptance/test_f5_b5_a_pattern_binding_one_name_twice_is_refused.py (+49 -0 lines)
 - A tests/acceptance/test_f5_b6_one_spelling_in_two_clauses_is_accepted.py (+43 -0 lines)
 - A tests/acceptance/test_f5_b7_the_manifest_publishes_the_new_categories.py (+57 -0 lines)
-- A tests/acceptance/test_f5_b8_a_parameter_hiding_another_binding_is_refused.py (+68 -0 lines)
+- A tests/acceptance/test_f5_b8_a_parameter_hiding_another_binding_is_refused.py (+86 -0 lines)
+- A tests/acceptance/test_f5_b9_a_binding_hiding_a_builtin_operator_is_refused.py (+54 -0 lines)
 - A tests/acceptance/test_f5_char1_shipped_programs_still_check.py (+87 -0 lines)
-- A tests/properties/test_f5_binding_scope.py (+224 -0 lines)
+- A tests/properties/test_f5_binding_scope.py (+259 -0 lines)
 
 ## Commits (git log, BASE to HEAD)
 
@@ -203,6 +211,10 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - a8f08e8 [F5] a parameter hides nothing either, by the owner's reading
 - 1442fa2 [F5] record where the binding rules will live
 - 1370f04 [F5] refuse a binding that hides another, and keep result for postconditions
+- e765700 [F5] keep the delivery's record beside the change
+- b8d0b54 [F5] say which construct a refusal points at, and refuse reading result
+- 99c1672 [F5] record what the review changed, and stop calling the checks generated
+- 0072c11 [F5] let the laws draw their own input
 
 ## 2. oracle: Frame the work and write the oracle (revision 2)
 
@@ -426,7 +438,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   28 failed, 16 passed in 1.32s
   ```
 
-## 3. design: Find the owners and design the change (revision 1)
+## 7. design: Find the owners and design the change (revision 3)
 
 - **owners**:
   - a binding may not hide a name already visible => new: src/prova/checker.py has no owner for lexical scope; the rule arrives as a value that carries its own refusal, beside the F2, F3 and F4 rules
@@ -454,51 +466,101 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - INV1 | Every refusal of this rule names the binder, what it hides and the line and column where the binder is written | witness=src/prova/checker.py:HiddenBinding | bypass=none
   - INV2 | A binder is refused as reserved exactly when it introduces the name result; reading result where no binder introduces it stays the unbound-name refusal the tool already gives | witness=src/prova/checker.py:ReservedBinder | bypass=none
   - INV3 | A pattern variable is visible only inside its own clause, so no clause sees the bindings of a sibling clause, while the variables of one pattern are visible to each other and a repeat is refused | witness=src/prova/checker.py:VisibleNames | bypass=none
-  - INV4 | Every category this rule can answer with is published by the manifest, so a caller can read the vocabulary from the tool | witness=src/prova/service.py:DIAGNOSTIC_CATEGORIES | bypass=none
-  - INV5 | The rule changes no type decision and no other refusal: a program that breaks none of these rules gets the answer it gets today | witness=src/prova/checker.py:check_program | bypass=none
+  - INV4 | Every refusal this rule reports carries one of the two published categories, because the only three units that build one are HiddenBinding, ReservedBinder and ReservedRead, and the manifest lists both names | witness=src/prova/checker.py:ReservedRead | bypass=the manifest is a separate literal list in service.py, so a third category added later would need its own line there; only the acceptance test that reads the manifest catches that
+  - INV5 | The rule changes no type decision and no other refusal: a program that breaks none of these rules gets the answer it gets today, because the only thing added to the pipeline is this walk | witness=src/prova/checker.py:_binding_diagnostics | bypass=none
 - **prefactoring**: no
 - **prefactoring_reason**: The existing code needs no preparation. The rule is a walk over the parsed program that returns its own refusals, added beside the declaration rule, the function-cycle rule and the type-cycle rule in check_program, exactly as F2, F3 and F4 were added; no existing function changes its signature, its result or its behaviour, and no primitive has to be wrapped first because the new values are built from the names and places syntax already carries.
 
-## 4. craft: Craft the change (revision 1)
+## 8. craft: Craft the change (revision 3)
 
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 91.742s
-  - tests (read from the run): 901 passed in 91.62s
-  - slowest: 5.75s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 3.77s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 3.30s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 2.85s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 2.34s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 1.68s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  - slowest: 1.41s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.31s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 1.22s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  - slowest: 1.21s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 96.336s
+  - tests (read from the run): 899 passed in 96.21s
+  - slowest: 6.03s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 4.02s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 3.48s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 2.93s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 2.48s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 1.70s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 1.42s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  - slowest: 1.39s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.38s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  - slowest: 1.24s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
   ```text
-  ........................................................................ [  7%]
-  ........................................................................ [ 15%]
-  ........................................................................ [ 23%]
-  ........................................................................ [ 31%]
-  ........................................................................ [ 39%]
-  ........................................................................ [ 47%]
-  ........................................................................ [ 55%]
-  ........................................................................ [ 63%]
-  ........................................................................ [ 71%]
-  ........................................................................ [ 79%]
-  ........................................................................ [ 87%]
-  ........................................................................ [ 95%]
-  .....................................                                    [100%]
+  ........................................................................ [  8%]
+  ........................................................................ [ 16%]
+  ........................................................................ [ 24%]
+  ........................................................................ [ 32%]
+  ........................................................................ [ 40%]
+  ........................................................................ [ 48%]
+  ........................................................................ [ 56%]
+  ........................................................................ [ 64%]
+  ........................................................................ [ 72%]
+  ........................................................................ [ 80%]
+  ........................................................................ [ 88%]
+  ........................................................................ [ 96%]
+  ...................................                                      [100%]
   ============================= slowest 10 durations =============================
-  5.75s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  3.77s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  3.30s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  2.85s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  2.34s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  1.68s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  1.41s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.31s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  1.22s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  1.21s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  901 passed in 91.62s (0:01:31)
+  6.03s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  4.02s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  3.48s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  2.93s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  2.48s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  1.70s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  1.42s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  1.39s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.38s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1.24s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  899 passed in 96.21s (0:01:36)
   ```
-- **scorecard**: `uv run python -m compileall -q src` exited 0 in 0.031s
+- **scorecard**: `uv run python -m compileall -q src` exited 0 in 0.037s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment, so jev_decide.py exited 3 before sending anything; the category, builtin-scope and parameter questions were settled locally against SPEC.md lines 145-149 and the F3 and F4 code. No linter or type checker is configured in this project (nothing in pyproject.toml and no .nwave config), so the scorecard compiles the package instead.
+
+## 9. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - what landed is what the design named: the kind value at src/prova/checker.py:168, the scope at src/prova/checker.py:286, the two refusals at src/prova/checker.py:225 and src/prova/checker.py:245, one walk at src/prova/checker.py:438 wired in at src/prova/checker.py:514; no other owner changed
+  - D2: pass - one owner per fact: the visible names at src/prova/checker.py:286, the builtin operators reused from syntax.OPERATORS at src/prova/checker.py:414, the two category names defined once at src/prova/checker.py:38 and published once at src/prova/service.py:29; _infer and _pattern_bindings still own every type decision
+  - D3: pass - the rule returns Diagnostic values and knows nothing of JSON or the command; service turns them into the response at its own unchanged boundary: src/prova/checker.py:438
+  - D4: fixed:a binder is no longer a string with a stringly kind: src/prova/checker.py:168 is a three-instance choice owning its two sentences and src/prova/checker.py:201 carries the construct's place, so a refusal cannot be built without them; src/prova/checker.py:322 answers with refusals and the following scope, never a boolean
+  - D5: pass - small cohesive values, no setter, at most three fields: src/prova/checker.py:225 holds the binder and what it hides and owns its sentence, src/prova/checker.py:265 holds only a place, src/prova/checker.py:286 holds one collection and answers about it
+  - D6: pass - no pattern imposed; the shape is the one F2, F3 and F4 use in this file, a frozen value carrying its refusal, with an immutable scope answering a new scope instead of mutating: src/prova/checker.py:286
+  - D7: pass - every name comes from the authority's own language (binder, parameter, let binding, pattern variable, visible, reserved) and each refusal quotes the core-0 sentence it enforces: src/prova/checker.py:245
+  - D8: pass - no filesystem, process, clock or environment is read: the rule is a pure function of one parsed program: src/prova/checker.py:438
+  - D9: pass - eleven of the twelve test files drive the real prova command over its JSON surface (tests/acceptance/_f5_binding_fixtures.py:334, used at tests/acceptance/test_f5_b1_a_let_hiding_a_parameter_is_refused.py:32); the property file uses only the published request interface and category strings, and no test imports a checker symbol
+  - D10: pass - each name is a sentence about what a reader of the language gets, for example at tests/acceptance/test_f5_b1_a_let_hiding_a_parameter_is_refused.py:32; no production symbol, layer word or process id in any name
+  - D11: pass - the programs and the readers of a refusal live once in the shared fixtures, and tests/acceptance/_f5_binding_fixtures.py:370 states what, why and how for every failure, including the cross-check that the place reported is the place the sentence names
+  - D12: fixed:the three laws now draw their cases instead of listing them, with the bounds in the module docstring: binder names and a generated free name at tests/properties/test_f5_binding_scope.py:129 and tests/properties/test_f5_binding_scope.py:111, clause counts 2 to 6 at tests/properties/test_f5_binding_scope.py:193, nesting depths 2 to 8 at tests/properties/test_f5_binding_scope.py:236; the generator at once found a binder named true and one named probe, both now named as not free
+  - D13: pass - the twelve F5 files ran nine times in a row, all green, median 1.16 s and slowest 1.18 s; the three generated properties draw 100 cases each and still finish in 0.15 s, and no test sleeps or reads a clock (tests/properties/test_f5_binding_scope.py:129)
+  - D14: pass - each file takes one criterion with its control twin, and no finite example repeats a pair the laws already draw (tests/properties/test_f5_binding_scope.py:193)
+  - D15: fixed:every refusal now names the construct whose place the program carries, what it hides and which binder to rename (src/prova/checker.py:225, src/prova/checker.py:265), and every test failure message names expected and actual with the repair (tests/acceptance/_f5_binding_fixtures.py:370)
+  - D16: pass - no model: no shared state, no multi-step protocol, no concurrency and no crash window, the rule being a pure function of one parsed program; the laws are sampled by the generated properties instead (tests/properties/test_f5_binding_scope.py:129)
+  - D17: fixed:the documents now state what the properties draw and within which bounds, and docs/feature/binding-scope/DECISIONS.md records what was read before refusing a read of result, that no older expectation was narrowed, and that the tool-rendered DECISIONS.md keeps the earlier wording until the oracle record is revised
+- **independent_review**:
+  - REV1 | reviewer=impl-review-f5 | findings=REJECT at e765700 with 12 findings | resolution=F1-F11 fixed in b8d0b54 and 99c1672; F12 is pre-existing in syntax.py and out of scope
+  - REV2 | reviewer=impl-review-f5 | findings=APPROVE at 99c1672 with 1 residual finding | resolution=the dead evaluate() helper was already deleted in b8d0b54; delta 0072c11 is tests and documents only, generated laws; code unchanged since the approved 99c1672, checked by owner
+
+## 10. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - Taking a name that is already there is refused with a sentence that says what is hidden and which construct to go to; taking or reading result outside a postcondition is refused on its own account.
+  - A clause is read in the scope of the whole match, so disjoint clauses still share a spelling, and a let initializer is read before its own binding.
+  - Both refusals are published in the manifest, as the three rules before them are.
+  - The reader should know two things about the wording of a refusal.
+- **not_verified**:
+  - A refusal cannot point at a binder own place: syntax.py carries positions for constructs only, and that file is owned by a parallel delivery, so it was deliberately not changed. The refusal names the construct it reports instead.
+  - The manifest is a separate literal list in service.py: a third category added later would need its own line there, and only the acceptance test that reads the manifest would catch its absence.
+  - The three laws are generated within stated bounds (five taken names over two binder shapes with a generated free name, clause counts 2 to 6, nesting depths 2 to 8). That is evidence over those bounds, not a proof, and no larger program was drawn.
+  - This project configures no linter and no type checker, so the scorecard only compiles the package. No style, type or dead-code claim is made.
+  - The remote question service was never reached in this environment (no key in the process, the client exited 3), so the choice of two categories and the reading of builtin as the operator names carry local judgment plus the owner recorded answer about parameters.
+  - A pre-existing crash in syntax.py on some malformed let and match forms is untouched and belongs to its own owner; only forms this tool can parse were observed here.
+  - No source-blind examination has run. The independent review covers the code as of the approved commit; the later delta changes tests and documents only, checked by the owner.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit 0072c1123413dec8e96378f6904fe5fe5129cda2
+  - no checks declared
+
+## Not backed by the diff
+
+- A binding may no longer hide a name that is already visible where it stands, and the word result is kept for postconditions.: a guarantee names no test function of the change
+- A parameter, a sequential let binding and a pattern variable are all read in the scope they stand in: the declared functions and the builtin operators, then the parameters, then each enclosing let binding, then the variables of their own pattern.: a guarantee names no test function of the change
+- It names the construct that introduces a binder, not the binder itself, because the parsed program carries no position for a binder; and a read of result is answered as the reserved word rather than as an unbound name, which no earlier test observed, so nothing older was narrowed.: a guarantee names no test function of the change
+- The rule runs only once the types are known to be acyclic, so a program with recursive data is still answered with that refusal alone.: a guarantee names no test function of the change
