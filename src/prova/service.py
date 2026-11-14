@@ -123,6 +123,17 @@ def _diagnostic_dict(diagnostic: checker.Diagnostic) -> dict:
     return entry
 
 
+def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> dict:
+    """The one diagnostic a source the tool cannot read as a core-0
+    program carries.
+
+    Every operation that reads source answers through this builder, so a
+    source refused by the reader comes back the same way whichever
+    operation met it.
+    """
+    return {"category": "syntax", "reason": error.message}
+
+
 def _run_check(source: str) -> dict:
     try:
         forms = read_program(source)
@@ -131,7 +142,7 @@ def _run_check(source: str) -> dict:
         return {
             "operation": "check",
             "status": "invalid_program",
-            "diagnostics": [{"category": "syntax", "reason": error.message}],
+            "diagnostics": [_syntax_diagnostic(error)],
         }
 
     diagnostics = checker.check_program(program)
@@ -164,7 +175,7 @@ def _run_verify(source: str) -> dict:
         return {
             "operation": "verify",
             "status": "invalid_program",
-            "diagnostics": [{"category": "syntax", "reason": error.message}],
+            "diagnostics": [_syntax_diagnostic(error)],
         }
 
     diagnostics = checker.check_program(program)
@@ -193,7 +204,7 @@ def _run_examples(source: str) -> dict:
         return {
             "operation": "examples",
             "status": "invalid_program",
-            "diagnostics": [{"category": "syntax", "reason": error.message}],
+            "diagnostics": [_syntax_diagnostic(error)],
         }
 
     diagnostics = checker.check_program(program)
@@ -251,7 +262,7 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
         return {
             "operation": "evaluate",
             "status": "invalid_program",
-            "diagnostics": [{"category": "syntax", "reason": error.message}],
+            "diagnostics": [_syntax_diagnostic(error)],
         }
 
     diagnostics = checker.check_program(program)
