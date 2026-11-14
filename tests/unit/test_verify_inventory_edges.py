@@ -16,25 +16,42 @@ def _ask(operation: str, source: str) -> dict:
     return service.handle({"prova": "i1", "operation": operation, "source": source})
 
 
-def test_a_program_with_nothing_in_it_owes_nothing_and_says_so():
-    """Given an empty program, when the Owner asks what must be shown, then
-    the answer is an inventory of no obligations -- which reads differently
-    from the refusal an unreadable program gets.
+def test_a_program_that_owes_nothing_says_so_and_the_empty_source_is_refused():
+    """Given a readable program that declares one type and no function, when
+    the Owner asks what must be shown, then the answer is an inventory of no
+    obligations -- while a source that declares nothing at all is refused,
+    as is an unreadable one, and neither of those carries an inventory.
 
     still passes if: the tool answered an empty inventory for everything --
-    the unreadable program in the same test must not get one.
+    the empty source and the unreadable program in the same test must not
+    get one.
     """
-    empty = _ask("verify", "")
-    assert empty["status"] == "completed", empty
-    inventory = empty["result"]["inventory"]
+    nothing_owed = _ask("verify", "(deftype Point (record (x Int)))\n")
+    assert nothing_owed["status"] == "completed", nothing_owed
+    inventory = nothing_owed["result"]["inventory"]
     assert inventory["obligations"] == [], (
-        "WHAT: an empty program was reported as owing "
+        "WHAT: a program declaring one type and no function was reported as owing "
         f"{len(inventory['obligations'])} obligations. "
-        "WHY: a program that declares nothing owes nothing. "
-        f"HOW: inspect the answer: {empty}"
+        "WHY: a program that declares no function owes nothing. "
+        f"HOW: inspect the answer: {nothing_owed}"
     )
     assert inventory["totals"]["obligations"] == 0, inventory
     assert inventory["totals"]["attempted"] == 0, inventory
+
+    empty = _ask("verify", "")
+    assert empty["status"] == "invalid_program", (
+        "WHAT: a source that declares nothing at all was answered with "
+        f"{empty['status']!r}. "
+        "WHY: a core-0 program is one or more declarations, so there is nothing to "
+        "list the obligations of. "
+        f"HOW: inspect the answer: {empty}"
+    )
+    assert {d["category"] for d in empty["diagnostics"]} == {"syntax"}, empty
+    assert "result" not in empty, (
+        f"WHAT: a refused source still carried a result: {empty}. "
+        "WHY: nothing was declared, so nothing can be owed. "
+        "HOW: return the refusal alone."
+    )
 
     unreadable = _ask("verify", "(defn broken")
     assert unreadable["status"] == "invalid_program", (
@@ -50,7 +67,7 @@ def test_a_program_with_nothing_in_it_owes_nothing_and_says_so():
         "WHY: nothing was read, so nothing can be owed. "
         "HOW: return the refusal alone."
     )
-    assert unreadable["status"] != empty["status"], (empty, unreadable)
+    assert unreadable["status"] != nothing_owed["status"], (nothing_owed, unreadable)
 
 
 def test_a_program_that_does_not_check_is_refused_instead_of_listed():

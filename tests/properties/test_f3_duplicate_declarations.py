@@ -32,7 +32,10 @@ FUNCTION_NAMES = ["total", "doubled"]
 TYPE_NAMES = ["Money", "Invoice"]
 FIELD_NAMES = ["amount", "count"]
 
-_functions = st.lists(st.sampled_from(FUNCTION_NAMES), min_size=0, max_size=3)
+# a core-0 program is one or more declarations, so every drawn program
+# declares at least one function: a source with no declaration at all is
+# refused for that, which is a different law from this one.
+_functions = st.lists(st.sampled_from(FUNCTION_NAMES), min_size=1, max_size=3)
 _records = st.lists(
     st.tuples(
         st.sampled_from(TYPE_NAMES),
