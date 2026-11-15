@@ -8,7 +8,8 @@ condition, independently of how the tool works them out.
 
 LAW1 every function owes one contract-definedness, one body-to-postcondition
      and one structural-termination entry, every declared example owes a
-     validity entry, and every call owes a precondition entry.
+     validity entry, and every call owes a precondition entry. The
+     structural-termination entry counts the calls that function makes.
 LAW2 no obligation is ever reported as anything but `not_attempted`, the
      counts partition the list, and no word in the answer reports work done.
 LAW3 the same source always owes exactly the same list, in the same order.
@@ -38,14 +39,31 @@ CLAIM_WORD = re.compile(
 PER_FUNCTION_KINDS = ("contract_definedness", "body_postcondition", "structural_termination")
 
 # Where a call sits in each body shape, and the condition that reaches it
-# there. `None` means the shape places no call at all.
+# there. `None` means the shape places no call at all. Every position a
+# core-0 body can put a call in appears here, so a position that stopped
+# being walked would take its obligation out of the answer.
 BODY_SHAPES = {
     "plain": None,
     "call": ("body", "true"),
     "unreachable": ("body/then", "false"),
     "guarded": ("body/then", "(> n 0)"),
+    "else-arm": ("body/else", "(not (> n 0))"),
     "matched": ("body/case[0]", "(matches (> n 0) true)"),
+    "scrutinee": ("body/scrutinee", "true"),
+    "let-bound": ("body/bind[0]", "true"),
+    "if-condition": ("body/cond/arg[0]", "true"),
+    "field-target": ("body/target/arg[0]", "true"),
 }
+
+# The record the `field-target` shape reads a field of. Declared only by the
+# programs that need it, so every other generated program is unchanged.
+POINT_DECLARATION = "(deftype Point (record (x Int)))"
+
+# One function per body shape, in a single program, so that every call
+# position is exercised whatever the generator happens to draw.
+EVERY_BODY_SHAPE = ("plain",) + tuple(
+    shape for shape in sorted(BODY_SHAPES) if BODY_SHAPES[shape] is not None
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -106,13 +124,20 @@ def _body_text(plan: FunctionPlan, index: int) -> str:
         "call": f"({called} n)",
         "unreachable": f"(if false ({called} n) n)",
         "guarded": f"(if (> n 0) ({called} n) n)",
+        "else-arm": f"(if (> n 0) n ({called} n))",
         "matched": f"(match (> n 0)\n    (true ({called} n))\n    (false n))",
+        "scrutinee": f"(match ({called} n)\n    (0 n)\n    (_ n))",
+        "let-bound": f"(let ((m ({called} n))) m)",
+        "if-condition": f"(if (> ({called} n) 0) n n)",
+        "field-target": f"(.x (Point ({called} n)))",
     }[plan.body_shape]
 
 
 def render_program(plans: tuple[FunctionPlan, ...]) -> str:
     """The source text of the program the plan describes."""
     blocks = []
+    if any(plan.body_shape == "field-target" for plan in plans):
+        blocks.append(POINT_DECLARATION)
     for index, plan in enumerate(plans):
         name = _name(index)
         lines = [f"(defn {name}", "  (sig ((n Int)) -> Int ! pure)"]
@@ -147,6 +172,17 @@ def owed_identities(plans: tuple[FunctionPlan, ...]) -> set[str]:
         if placed is not None:
             owed.add(f"call_precondition:{name}:{placed[0]}")
     return owed
+
+
+def owed_direct_calls(plans: tuple[FunctionPlan, ...]) -> dict[str, int]:
+    """How many calls the plan says each function makes, by function name."""
+    counted = {}
+    for index, plan in enumerate(plans):
+        made = 1 if plan.requires == "call" else 0
+        if BODY_SHAPES[plan.body_shape] is not None:
+            made += 1
+        counted[_name(index)] = made
+    return counted
 
 
 def owed_call_conditions(plans: tuple[FunctionPlan, ...]) -> dict[str, str]:
@@ -241,6 +277,18 @@ def test_every_function_example_and_call_owes_its_entry(plans):
         "WHY: a call's obligation is owed under the condition that reaches it. "
         f"HOW: the program was:\n{source}"
     )
+    counted = {
+        entry["function"]: entry["direct_calls"]
+        for entry in entries
+        if entry["kind"] == "structural_termination"
+    }
+    assert counted == owed_direct_calls(plans), (
+        f"WHAT: the ending entries say the functions make {counted} calls, not "
+        f"{owed_direct_calls(plans)}. "
+        "WHY: a function ends because the calls it makes are acyclic, so the entry "
+        "must count the calls the program actually writes. "
+        f"HOW: the program was:\n{source}"
+    )
     for kind in PER_FUNCTION_KINDS:
         owners = [entry["function"] for entry in entries if entry["kind"] == kind]
         assert sorted(owners) == sorted(_name(i) for i in range(len(plans))), (
@@ -249,6 +297,72 @@ def test_every_function_example_and_call_owes_its_entry(plans):
             "not it declares a contract. "
             f"HOW: the program was:\n{source}"
         )
+
+
+def test_a_call_in_every_position_a_body_can_hold_owes_its_entry():
+    """LAW1, every position at once. Given one program that puts a call in
+    each position a body can hold -- both arms of an `if` and its condition,
+    a let binding, a match scrutinee, a match clause and the target of a
+    field read -- when the Owner asks what must be shown, then every one of
+    those calls owes its own entry under the condition that reaches it, and
+    the program owes nothing else.
+
+    The generator above draws these shapes too, but it draws only some of
+    them in any one run; this program holds all of them at once, so a
+    position the tool stopped walking cannot slip through unseen.
+
+    still passes if: the tool reported only the first call it found inside a
+    function -- every function here makes at most one call. The program in
+    tests/acceptance/test_verify_lists_the_obligations_owed.py that makes
+    four calls from one function closes that.
+    """
+    plans = tuple(
+        FunctionPlan(
+            requires="none",
+            declares_postcondition=False,
+            example_count=1,
+            body_shape=shape,
+        )
+        for shape in EVERY_BODY_SHAPE
+    )
+    source = render_program(plans)
+    entries = _obligations(ask_what_is_owed(source), source)
+
+    identities = {entry["id"] for entry in entries}
+    expected = owed_identities(plans)
+    assert identities == expected, (
+        f"WHAT: missing {sorted(expected - identities)}, unexpected "
+        f"{sorted(identities - expected)}. "
+        "WHY: a call owes its precondition entry wherever in the body it sits; a "
+        "position that is not walked drops real work out of the list. "
+        f"HOW: the program was:\n{source}"
+    )
+
+    reported = {
+        entry["id"]: entry["path_condition"]
+        for entry in entries
+        if entry["kind"] == "call_precondition"
+    }
+    assert reported == owed_call_conditions(plans), (
+        f"WHAT: the conditions reaching the calls are {reported}, not "
+        f"{owed_call_conditions(plans)}. "
+        "WHY: each of these calls is reached under the condition its own position "
+        "puts in front of it. "
+        f"HOW: the program was:\n{source}"
+    )
+
+    counted = {
+        entry["function"]: entry["direct_calls"]
+        for entry in entries
+        if entry["kind"] == "structural_termination"
+    }
+    assert counted == owed_direct_calls(plans), (
+        f"WHAT: the ending entries say the functions make {counted} calls, not "
+        f"{owed_direct_calls(plans)}. "
+        "WHY: a call in a condition, a binding or a scrutinee is as much a call as "
+        "one in a branch. "
+        f"HOW: the program was:\n{source}"
+    )
 
 
 @settings(derandomize=True, max_examples=25, deadline=None)

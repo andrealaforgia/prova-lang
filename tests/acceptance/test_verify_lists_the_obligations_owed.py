@@ -79,6 +79,44 @@ REACHABLE_CALL_SOURCE = UNREACHABLE_CALL_SOURCE.replace(
     "(if false (tiny n) 0))", "(if true (tiny n) 0))"
 )
 
+# A program whose calls sit under more than one condition at once: three
+# match clauses, the last of which matches anything, and an `if` inside a
+# `let` inside the second clause. `pick` calls `tiny` four times.
+NESTED_CONDITIONS_SOURCE = """(defn tiny
+  (sig ((n Int)) -> Int ! pure)
+  (requires (> n 0))
+  (examples (example (tiny 1) => 1))
+  n)
+
+(defn pick
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (pick 1) => 1))
+  (match n
+    (0 (tiny n))
+    (1 (let ((m n)) (if (> n 5) (tiny n) (tiny m))))
+    (_ (tiny n))))
+"""
+
+# The condition that reaches each of those four calls, read by hand from
+# the program above: a clause is reached when no earlier clause matched and
+# this one does, and the clause that matches anything adds no condition of
+# its own.
+NESTED_CONDITIONS = {
+    "call_precondition:pick:body/case[0]": "(matches n 0)",
+    "call_precondition:pick:body/case[1]/in/then": (
+        "(and (not (matches n 0)) (matches n 1) (> n 5))"
+    ),
+    "call_precondition:pick:body/case[1]/in/else": (
+        "(and (not (matches n 0)) (matches n 1) (not (> n 5)))"
+    ),
+    "call_precondition:pick:body/case[2]": (
+        "(and (not (matches n 0)) (not (matches n 1)))"
+    ),
+}
+
+# The calls each function of that program makes, counted by hand.
+NESTED_DIRECT_CALLS = {"tiny": 0, "pick": 4}
+
 
 def _hour_clock_source() -> str:
     path = REPO_ROOT / "examples" / "hour-clock.prova"
@@ -261,6 +299,58 @@ def test_a_call_that_can_never_run_still_owes_its_obligation():
         "WHY: the condition reported must be the one that actually reaches the call, "
         "not a fixed word. "
         f"HOW: inspect the entry: {reachable[0]}"
+    )
+
+
+def test_a_call_behind_several_conditions_is_owed_under_all_of_them():
+    """Given a program whose calls sit behind three match clauses and an
+    `if` inside a `let`, when the Owner asks what must be shown, then each
+    call carries every condition on the way to it, joined into one
+    condition, in the order the program writes them.
+
+    still passes if: the tool reported these four conditions and dropped a
+    call somewhere else in the program -- the identity of every obligation
+    this program owes is read in the laws test beside this one.
+    """
+    entries = _of_kind(
+        _obligations(_run("verify", NESTED_CONDITIONS_SOURCE)), "call_precondition"
+    )
+    reported = {entry.get("id"): entry.get("path_condition") for entry in entries}
+
+    assert reported == NESTED_CONDITIONS, (
+        f"WHAT: the conditions reaching the calls are {reported}, not the "
+        f"{len(NESTED_CONDITIONS)} the program writes: {NESTED_CONDITIONS}. "
+        "WHY: an obligation is owed under the condition that reaches it, and here "
+        "several conditions stand in front of each call at once: a clause is reached "
+        "only when no earlier clause matched, and a branch only when its own test "
+        "holds. Reporting one of them, or reporting a condition for the clause that "
+        "matches anything, misstates what has to be shown. "
+        f"HOW: read the program and compare clause by clause:\n"
+        f"{NESTED_CONDITIONS_SOURCE}"
+    )
+
+
+def test_the_ending_entry_says_how_many_calls_the_function_makes():
+    """Given the same program, when the Owner reads the entry that says a
+    function ends, then it counts the calls that function makes: four for
+    the one that calls, none for the one that calls nothing.
+
+    still passes if: the tool counted the calls of the whole program for
+    every function -- the function that makes no call is read here too, and
+    it must be reported as making none.
+    """
+    entries = _of_kind(
+        _obligations(_run("verify", NESTED_CONDITIONS_SOURCE)), "structural_termination"
+    )
+    counted = {entry.get("function"): entry.get("direct_calls") for entry in entries}
+
+    assert counted == NESTED_DIRECT_CALLS, (
+        f"WHAT: the ending entries report {counted} calls, not the "
+        f"{NESTED_DIRECT_CALLS} the program writes. "
+        "WHY: a function ends structurally because the calls it reaches are acyclic, "
+        "so the Owner is told how many calls that claim is about; a fixed number "
+        "tells them nothing about this program. "
+        f"HOW: count the calls in:\n{NESTED_CONDITIONS_SOURCE}"
     )
 
 
