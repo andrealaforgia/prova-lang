@@ -1240,3 +1240,11 @@ there.
   category), never a traceback. Pre-existing; raised by the F15 review. Deliver it
   together with the lone-surrogate source crash above as one small robustness
   delivery (R2).
+- **Three more inputs that end in a traceback (robustness delivery R3).** Found by the
+  R2 review and executor, all older than R2: (1) an integer the evaluator computes that
+  is too large to write (for example four nested multiplications of 1000-digit
+  literals) ends in `ValueError` from `values.render`; (2) a budget environment
+  variable set to a 5000-digit number ends in `ValueError` at `budgets.py:176`; (3) a
+  request whose JSON nests about 20000 arrays deep ends in `RecursionError` inside
+  the JSON reader. Also decide whether `operation` holding a surrogate is echoed back
+  unchanged (it is today). Each should answer one JSON response.
