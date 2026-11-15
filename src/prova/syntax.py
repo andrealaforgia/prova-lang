@@ -623,6 +623,20 @@ class Program:
     functions: dict[str, Function] = field(default_factory=dict)
     declarations: Declarations = Declarations()
 
+    def in_source_order(self) -> tuple[object, ...]:
+        """Every declaration this program holds, in the order the source
+        writes them.
+
+        The lookup tables above keep types and functions apart, and a
+        source may write the two interleaved, so the order is read from
+        the place each declaration stands at. Asked of the program
+        rather than worked out by whoever holds one: a reader of the two
+        tables that sorted them itself would be a second answer to one
+        question, and two readers could disagree about one source.
+        """
+        declared = (*self.types.values(), *self.functions.values())
+        return tuple(sorted(declared, key=lambda one: (one.line, one.column)))
+
 
 def resolve_constructor(constructor: str, program: Program) -> tuple[str, tuple[tuple[str, str], ...]] | None:
     """The declared type name owning `constructor` and its field

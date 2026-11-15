@@ -264,7 +264,9 @@ def tree_of(program: syntax.Program, comments: tuple[Comment, ...]) -> dict:
     written above everything belongs to the first declaration and not to
     the program itself.
     """
-    declarations = tuple(_declaration(declared, program) for declared in _in_source_order(program))
+    declarations = tuple(
+        _declaration(declared, program) for declared in program.in_source_order()
+    )
     standing = AttachedComments(comments)
     root = PublishedNode("program", Place(1, 1), (("declarations", declarations),))
     published = root.published(standing)
@@ -274,14 +276,6 @@ def tree_of(program: syntax.Program, comments: tuple[Comment, ...]) -> dict:
             _comment(written).published(standing) for written in left_over
         ]
     return published
-
-
-def _in_source_order(program: syntax.Program) -> tuple[object, ...]:
-    """Every declaration of `program`, in the order the source writes
-    them: the lookup tables keep types and functions apart, and a source
-    may write them interleaved."""
-    declared = (*program.types.values(), *program.functions.values())
-    return tuple(sorted(declared, key=lambda one: (one.line, one.column)))
 
 
 def _comment(written: Comment) -> PublishedNode:
