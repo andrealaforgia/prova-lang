@@ -154,15 +154,66 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
+- A conformance/format/clauses.canonical.prova (+10 -0 lines)
+- A conformance/format/clauses.prova (+5 -0 lines)
+- A conformance/format/comments.canonical.prova (+11 -0 lines)
+- A conformance/format/comments.prova (+7 -0 lines)
+- A conformance/format/integers.canonical.prova (+6 -0 lines)
+- A conformance/format/integers.prova (+4 -0 lines)
+- A conformance/format/nested.canonical.prova (+32 -0 lines)
+- A conformance/format/nested.prova (+9 -0 lines)
+- A conformance/format/shapes.canonical.prova (+15 -0 lines)
+- A conformance/format/shapes.prova (+5 -0 lines)
+- A docs/canonical-format/DECISIONS.md (+22 -0 lines)
+- A docs/canonical-format/SUMMARY.md (+663 -0 lines)
+- A docs/canonical-format/TRACE.md (+5 -0 lines)
+- A docs/feature/format/design.md (+138 -0 lines)
+- A docs/feature/format/oracle.md (+108 -0 lines)
+- A docs/r2-two-crashes/DECISIONS.md (+15 -0 lines)
+- A docs/r2-two-crashes/SUMMARY.md (+398 -0 lines)
+- A docs/r2-two-crashes/TRACE.md (+5 -0 lines)
+- M src/prova/__main__.py (+29 -0 lines)
+- A src/prova/formatter.py (+449 -0 lines)
+- M src/prova/manifest.py (+30 -1 lines)
 - M src/prova/reader.py (+74 -0 lines)
-- M src/prova/service.py (+121 -39 lines)
+- M src/prova/service.py (+176 -43 lines)
+- M src/prova/syntax.py (+14 -0 lines)
+- M src/prova/tree.py (+3 -9 lines)
+- A tests/acceptance/_f15_format_fixtures.py (+123 -0 lines)
+- M tests/acceptance/_r1_robustness_fixtures.py (+13 -2 lines)
+- A tests/acceptance/test_f15_b1_formatting_twice_answers_the_same_text.py (+69 -0 lines)
+- A tests/acceptance/test_f15_b2_every_comment_is_kept_once_and_in_order.py (+98 -0 lines)
+- A tests/acceptance/test_f15_b3_an_integer_is_written_one_way_only.py (+76 -0 lines)
+- A tests/acceptance/test_f15_b4_the_canonical_text_means_what_the_source_meant.py (+94 -0 lines)
+- A tests/acceptance/test_f15_b5_a_source_that_is_not_a_program_gets_no_text.py (+83 -0 lines)
+- A tests/acceptance/test_f15_b6_the_manifest_offers_formatting.py (+83 -0 lines)
+- A tests/acceptance/test_f15_b7_the_published_pairs_are_what_formatting_answers.py (+94 -0 lines)
 - A tests/acceptance/test_r2_b1_a_text_that_cannot_be_written_as_utf8_is_refused.py (+195 -0 lines)
-- A tests/acceptance/test_r2_b2_an_integer_literal_past_the_digit_limit_is_refused.py (+221 -0 lines)
-- A tests/properties/test_r2_p1_a_surrogate_or_a_long_run_of_digits_is_answered.py (+338 -0 lines)
+- A tests/acceptance/test_r2_b2_an_integer_literal_past_the_digit_limit_is_refused.py (+229 -0 lines)
+- A tests/acceptance/test_r2_b3_a_number_in_the_request_too_long_to_read_is_refused.py (+111 -0 lines)
+- A tests/properties/_f15_written_programs.py (+313 -0 lines)
+- M tests/properties/_r1_mangled_requests.py (+11 -1 lines)
+- A tests/properties/test_f15_laws.py (+140 -0 lines)
+- A tests/properties/test_r2_p1_a_surrogate_or_a_long_run_of_digits_is_answered.py (+396 -0 lines)
+- A tests/unit/test_reader_counts_the_digits_of_an_atom.py (+36 -0 lines)
+- M tests/unit/test_service_discover.py (+1 -1 lines)
 
 ## Commits (git log, BASE to HEAD)
 
-- 89f6657 Refuse half a character and an over-long run of digits
+- a70d68e Let a program say in which order it was written
+- 2521c0f Say how a program is written out, before anything writes one
+- 0fd99dc Decide who answers what a program looks like written out
+- 5423800 Write a program out the one way it is written
+- fed7e5b Say that writing a program out is something the tool does
+- 3996221 Catch a number whose sign is dropped
+- 8fab76d Stop a part that needs several lines being squeezed onto one
+- 1c994a6 Say what keeps the rule, and what the reader is owed
+- 2ffc5f1 Refuse half a character and an over-long run of digits
+- 96195ed Record what was decided, what was proved and what was not
+- 7109998 Hand the formatter the characters of a submitted text
+- 53690f7 Count the digits of a text that has none as none
+- b9d7026 Answer a request whose own number is too long to read
+- ffbee38 Ask every operation and every named text for the same two facts
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
@@ -396,3 +447,52 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ```
 - **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.138s
 - **typesafe**: unavailable: the client exited 3 because TYPESAFE_API_KEY is absent from this environment; the 3 questions it would have carried (the category for an over-long literal, the one place the UTF-8 rule is enforced, and whether an arguments element follows the same rule) were decided locally and recorded as S23, DEC2 and DEC3
+
+## 3. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the change follows the structure the request names: a field this tool cannot read is refused by name as R1 malformed_request does, the digit limit is one object holding one number as the nesting limit beside it is, and the command answers an unreadable request itself as F14 does
+  - D2: pass - the UTF-8 rule lives only in SubmittedText.read, the digit limit only in DigitLimit, the number the discover answer documents is read from that same object, and the two senders of a request in the tests now share one place that sends the text
+  - D3: pass - reader.py knows nothing about requests, service.py keeps the request reader and __main__.py keeps what only the command can answer; the one new import, of the declared digit limit, points inward
+  - D4: pass - src/prova/service.py:311 - SourceRevision.of takes a SubmittedText, so the one hashing site cannot be reached with a text that has no bytes. The honest claim is centralised construction, not a proof: Python still lets a caller build one around any text by hand
+  - D5: pass - src/prova/reader.py:95 - DigitLimit holds one number and answers three questions about it, SubmittedText holds one text and one rule, and _unreadable_number at src/prova/__main__.py:77 holds one refusal; none grew a second responsibility
+  - D6: n/a: no pattern was introduced; the change reuses the value object and smart constructor shapes this repository already writes
+  - D7: pass - the new types speak the words of the domain, a submitted text and a digit limit, and each owns its own refusal rather than leaving a service to decide it
+  - D8: pass - no infrastructure entered the change: nothing new reads the clock, the filesystem or the environment
+  - D9: pass - tests/acceptance/test_r2_b1_a_text_that_cannot_be_written_as_utf8_is_refused.py:66 - every acceptance case drives the prova command through its standard input and output and imports no production symbol; the one unit test added asks the reader for a count, where the public port cannot reach a text no tokenizer writes
+  - D10: pass - each test name says the behaviour in the words of a caller, as in test_a_number_of_4301_digits_beside_the_source_is_answered_not_raised
+  - D11: pass - the new files reuse the existing fixtures _r1_robustness_fixtures and _r1_mangled_requests, and the raw-text sender was extracted there rather than copied into the new files
+  - D12: pass - tests/properties/test_r2_p1_a_surrogate_or_a_long_run_of_digits_is_answered.py:341 - the digit law is generated over 1 to 6000 digits in 4 integer positions, derandomised, and the surrogate law now asks the field and the position of an argument as well as of the source
+  - D13: pass - the 5 new files were run nine times in a row after the review fixes: 19 tests passed every time, median 1.65s and slowest 1.65s, so no case is flaky and none is near the budget
+  - D14: pass - the control cases were folded into the tests that carry the new behaviour, and the two position assertions of the generated law were folded into one shared assertion
+  - D15: pass - src/prova/reader.py:131 - the refusal says what (the literal is 4301 digits and the tool reads 1000), why (a longer run meets the 4300-digit refusal of the interpreter itself) and how (write at most 1000 digits, and read that length from what discover documents); the refusal for a number of the request itself says where such an integer belongs instead
+  - D16: n/a: the change adds no state, no protocol, no concurrency and no crash behaviour; it is one refusal decided from the text of one request, so no formal model pays here
+  - D17: fixed: the documents are generated from the journal and never hand written, and they are generated again after the last record of this run and committed, so the copy a reviewer reads states the records as they stand at the end, including the three crashes found and not fixed
+- **independent_review**:
+  - REV1 | reviewer=rev-r2 | findings=6 (verdict APPROVE at 7109998, notes only) | resolution=F1 F5 F6 fixed after the review, F2 F3 stated as limits, F4 ratified by the owner as DEC3
+
+## 4. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - Two inputs that ended in a traceback are now answered.
+  - Two notes are stated limits and not defects: an operation field holding half a character is echoed back in the answer as the JSON writer escapes it, and half a character in a field name, an unknown field or a nested value is accepted as before because nothing reads it.
+  - Three crashes found beside the two asked for are left for the owner, named below.
+- **not_verified**:
+  - Three pre-existing crashes found and not fixed, each reproduced by hand through the command and none covered by a test: an integer the evaluator computes, as three multiplications over 1000-digit literals, ends in ValueError from values.render; a budget variable set to a 5000-digit number ends in ValueError at budgets.py line 176; a request whose JSON nests about 20000 arrays deep ends in RecursionError inside the JSON reader. Each needs a decision this delivery does not own: which limit governs a value too large to write, a number read from the environment, and the depth of the request text itself.
+  - The two stated limits were observed only in the shapes named: the operation field was seen echoed back in its escaped form, and the unread places were seen accepted. No test pins either, so a later change could move them silently.
+  - The digit limit is documented in the discover answer and is not among the published resource limits. That a caller actually finds it there was not observed with a real client; only that the entry carries the number.
+  - Nothing was measured about the time or the memory a 1000-digit literal costs in checking or evaluation; only that it is answered exactly.
+  - Jev was not reachable in this run: the client exited 3 because TYPESAFE_API_KEY is absent, so every supported question was decided locally and recorded as a decision.
+  - Mutation evidence covers only the three refusals that were deliberately weakened and seen to fail their tests. The rest of the change has no mutation run behind it.
+  - The branch was rebased by the coordinator; I verified the whole suite on the rebased tree but ran no comparison against the behaviour of the newer main beyond that suite.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit ffbee381c4f989d785528c12692c905f99ad6a1f
+  - no checks declared
+
+## Not backed by the diff
+
+- A text a request carries that cannot be written as UTF-8 is refused by the one value object every text field is built through, naming the field and the character position; the revision of a source is taken from that object, so the hashing site that raised cannot be reached with a text that has no bytes.: a guarantee names no test function of the change
+- An integer literal is read up to 1000 digits, counted in the one place a text becomes a number, so every operation and every argument meets the same located refusal; the length is documented in the discover answer rather than published as a third resource limit, because an existing acceptance test pins the published limits to two names and no existing test may be edited.: a guarantee names no test function of the change
+- A literal of exactly 1000 digits is still answered and kept exact.: a guarantee names no test function of the change
+- After the independent review, three notes were fixed: a number written in the request JSON itself, too long for the reader that reads the request, is now answered as an unreadable request instead of escaping the handler; the count of the digits of a text that has none is no longer minus one; and the checks now ask every operation for both lengths and ask the generated law for the field and position of an argument as well as of a source.: a guarantee names no test function of the change
+- Weakening each of those three refusals was observed to fail the tests that guard it.: a guarantee names no test function of the change
