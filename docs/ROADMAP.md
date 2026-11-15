@@ -1225,3 +1225,11 @@ there.
   cannot be encoded as UTF-8 with `invalid_input` naming the field, at the request
   reader that already refuses a wrong-kind `source`. Pre-existing; raised by the F11
   review.
+- **`format` attaches a comment to the following syntax node (SPEC.md line 63).**
+  F15 attaches a comment to the following declaration, as its acceptance criterion 2
+  says, and hoists a comment written inside a function body up to the next declaration.
+  `parse` (F12) attaches a comment to the first node that follows it, at any depth, as
+  SPEC.md line 63 says. A later delivery should make `format` follow the SPEC (a rule is
+  needed for a comment that precedes a part inside a form written on one line), then
+  recompute the hand-written `conformance/format/` pairs. The Owner chose to ship the
+  criterion first. (15 November 2026.)
