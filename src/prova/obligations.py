@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prova import syntax
+from prova import encoding, syntax
 
 # What an obligation stands as, and what happened to the attempt to
 # settle it: SPEC.md lines 270-284 keep the two apart and give each its
@@ -156,23 +156,41 @@ class Obligation:
     def identity(self) -> str:
         return f"{self.kind}:{self.function}:{self.site.text()}"
 
+    # Which refusal of the reference semantics confirms a candidate
+    # counterexample to this obligation. `nothing` means no input can
+    # refute it: the kinds a rule of the profile settles are never
+    # disproved, so nothing is ever replayed for them.
+    confirmed_by = "nothing"
+
     def to_show(self) -> str:
         raise NotImplementedError("each kind of obligation says what it owes")
 
     def detail(self) -> dict:
         return {}
 
-    def as_dict(self) -> dict:
+    def claim_in(self, program: syntax.Program):
+        """This obligation as a claim a solver can be asked, as a
+        construct the translation does not cover, or as a rule of the
+        profile that settles it without one.
+
+        Each kind states its own claim: what may be assumed about the
+        inputs that reach it, and the one thing to be shown there.
+        """
+        return encoding.attempted(lambda: self._claim(program))
+
+    def _claim(self, program: syntax.Program):
+        raise NotImplementedError("each kind of obligation states its own claim")
+
+    def as_dict(self, finding) -> dict:
         entry = {
             "id": self.identity,
             "kind": self.kind,
             "function": self.function,
             "site": self.site.text(),
             "to_show": self.to_show(),
-            "result": NOT_ATTEMPTED,
-            "execution_status": UNSUPPORTED,
         }
         entry.update(self.detail())
+        finding.written_into(entry)
         return entry
 
 
@@ -184,8 +202,10 @@ class CallPrecondition(Obligation):
     callee: str
     precondition_clauses: int
     path_condition: PathCondition
+    call: syntax.Call
 
     kind = "call_precondition"
+    confirmed_by = "precondition"
 
     def to_show(self) -> str:
         return (
@@ -193,12 +213,56 @@ class CallPrecondition(Obligation):
             f"whenever the condition that reaches the call is true"
         )
 
+    def _in_scope_at_the_call(self, function, translation) -> dict:
+        """What the call can name where it stands: the parameters of the
+        function always, and its answer where the call stands in what the
+        function promises.
+
+        Only a postcondition may read `result` in core-0, so the answer
+        is in scope there and nowhere else; a call in a precondition or
+        in the body names the parameters alone.
+        """
+        bound = translation.parameters_of(function)
+        if not self.site.segments[0].startswith("ensures"):
+            return bound
+        return {**bound, "result": translation.term_of(function.body, bound)}
+
     def detail(self) -> dict:
         return {
             "callee": self.callee,
             "precondition_clauses": self.precondition_clauses,
             "path_condition": self.path_condition.text(),
         }
+
+    def _claim(self, program: syntax.Program):
+        """The arguments this call passes meet the callee's precondition
+        wherever the condition that reaches the call holds.
+
+        The condition that reaches it is assumed, not shown: it is what
+        makes a call behind a test provable where the same call with
+        nothing in front of it is not.
+        """
+        function = program.functions[self.function]
+        callee = program.functions[self.callee]
+        translation = encoding.Translation(program)
+        bound = self._in_scope_at_the_call(function, translation)
+        return encoding.Claim(
+            encoding.Shapes.of(program),
+            encoding.variables_of(function),
+            tuple(
+                translation.condition_of(clause, bound)
+                for clause in self.path_condition.clauses
+            ),
+            translation.conjunction_of(
+                callee.requires,
+                {
+                    parameter.name: translation.term_of(argument, bound)
+                    for parameter, argument in zip(
+                        callee.signature.params, self.call.args
+                    )
+                },
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -208,6 +272,7 @@ class BodyPostcondition(Obligation):
     postcondition_clauses: int
 
     kind = "body_postcondition"
+    confirmed_by = "postcondition"
 
     def to_show(self) -> str:
         return (
@@ -218,14 +283,34 @@ class BodyPostcondition(Obligation):
     def detail(self) -> dict:
         return {"postcondition_clauses": self.postcondition_clauses}
 
+    def _claim(self, program: syntax.Program):
+        """What the body answers meets what the function promises, for
+        every input of the declared types that meets its precondition."""
+        function = program.functions[self.function]
+        translation = encoding.Translation(program)
+        bound = translation.parameters_of(function)
+        answered = translation.term_of(function.body, bound)
+        return encoding.Claim(
+            encoding.Shapes.of(program),
+            encoding.variables_of(function),
+            tuple(
+                translation.term_of(clause, bound) for clause in function.requires
+            ),
+            translation.conjunction_of(
+                function.ensures, {**bound, "result": answered}
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class ExampleValidity(Obligation):
     """A declared example is a valid example of its own function."""
 
     ordinal: int
+    example: syntax.Example
 
     kind = "example_validity"
+    confirmed_by = "example"
 
     def to_show(self) -> str:
         return (
@@ -235,6 +320,39 @@ class ExampleValidity(Obligation):
 
     def detail(self) -> dict:
         return {"ordinal": self.ordinal}
+
+    def _claim(self, program: syntax.Program):
+        """The arguments of this example meet the precondition, and what
+        the function answers over them is the value the example states.
+
+        The arguments are closed values, so this claim is about no
+        variable at all.
+        """
+        function = program.functions[self.function]
+        translation = encoding.Translation(program)
+        supplied = {
+            parameter.name: translation.term_of_value(argument)
+            for parameter, argument in zip(
+                function.signature.params, self.example.args
+            )
+        }
+        return encoding.Claim(
+            encoding.Shapes.of(program),
+            (),
+            (),
+            encoding.Term.all_of(
+                (
+                    translation.conjunction_of(function.requires, supplied),
+                    encoding.Term.built(
+                        encoding.EQUALS,
+                        (
+                            translation.term_of(function.body, supplied),
+                            translation.term_of_value(self.example.expected),
+                        ),
+                    ),
+                )
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -254,6 +372,19 @@ class ContractDefinedness(Obligation):
     def detail(self) -> dict:
         return {"contract_clauses": self.contract_clauses}
 
+    def _claim(self, program: syntax.Program):
+        return encoding.ByRuleOfTheProfile(
+            "every operation core-0 has is defined for every value of its "
+            "declared types: the profile has no division and no other partial "
+            "primitive, field selection is resolved from the operand's "
+            "nominal type by the checker that accepted this program, and "
+            "every match it contains was shown exhaustive. The one thing a "
+            "clause could still fail to be defined at is a call whose "
+            "precondition does not hold, and each of those calls is a "
+            "call_precondition obligation of its own, listed and settled "
+            "separately. No solver was asked about this entry"
+        )
+
 
 @dataclass(frozen=True)
 class StructuralTermination(Obligation):
@@ -271,6 +402,15 @@ class StructuralTermination(Obligation):
 
     def detail(self) -> dict:
         return {"direct_calls": self.direct_calls}
+
+    def _claim(self, program: syntax.Program):
+        return encoding.ByRuleOfTheProfile(
+            "the combined dependency graph of bodies and contracts must be "
+            "acyclic in core-0, and the checker that accepted this program "
+            "refuses any program whose graph has a cycle. Every call this "
+            "function can reach therefore ends, and so does it. No solver "
+            "was asked about this entry"
+        )
 
 
 # --- the inventory ---------------------------------------------------------
@@ -299,18 +439,66 @@ class Inventory:
                 "arises, as the walk over requires, ensures and the body does."
             )
 
-    def as_dict(self) -> dict:
-        entries = [obligation.as_dict() for obligation in self.obligations]
+    def as_dict(self, findings: dict) -> dict:
+        """Every obligation beside what became of it.
+
+        One finding per obligation, by identity. An obligation with none
+        refuses loudly rather than being written out as though nothing
+        were owed for it: nothing may be silently skipped, and a list
+        that quietly dropped an entry is the one way this answer could
+        mislead without saying anything false.
+        """
+        self._refuse_an_obligation_with_no_finding(findings)
+        entries = [
+            obligation.as_dict(findings[obligation.identity])
+            for obligation in self.obligations
+        ]
+        settled = [entry for entry in entries if entry["result"] != NOT_ATTEMPTED]
         return {
             "obligations": entries,
             "totals": {
                 "obligations": len(entries),
-                "attempted": 0,
-                "not_attempted": len(entries),
+                "attempted": len(settled),
+                "not_attempted": len(entries) - len(settled),
                 "by_kind": self._by_kind(),
+                "by_result": self._by_result(entries),
             },
-            "note": NOTHING_WAS_ATTEMPTED,
+            "note": self._note(entries, settled),
         }
+
+    def _refuse_an_obligation_with_no_finding(self, findings: dict) -> None:
+        missing = [
+            obligation.identity
+            for obligation in self.obligations
+            if obligation.identity not in findings
+        ]
+        if not missing:
+            return
+        raise ValueError(
+            f"WHAT: {missing} are obligations of this program with nothing "
+            "said about what became of them. "
+            "WHY: an answer that lists an obligation and says nothing about "
+            "it reads as one nobody owes; nothing may be silently skipped. "
+            "HOW: settle every obligation of the inventory, or carry a "
+            "finding saying why it was not attempted."
+        )
+
+    def _by_result(self, entries: list) -> dict:
+        counted: dict[str, int] = {}
+        for entry in entries:
+            counted[entry["result"]] = counted.get(entry["result"], 0) + 1
+        return {result: counted[result] for result in sorted(counted)}
+
+    def _note(self, entries: list, settled: list) -> str:
+        if not settled:
+            return NOTHING_WAS_ATTEMPTED
+        return (
+            f"{len(settled)} of the {len(entries)} obligations of this "
+            "program were put to a solver or settled by a rule of core-0, "
+            "and each entry says which. A result of 'proved' is a statement "
+            "about this revision of this source and nothing else; read the "
+            "disclosure beside the inventory for what it rests on."
+        )
 
     def _by_kind(self) -> dict:
         counted: dict[str, int] = {}
@@ -338,8 +526,10 @@ def _owed_by(function: syntax.Function, program: syntax.Program) -> list[Obligat
         BodyPostcondition(function.name, Site(("body",)), len(function.ensures))
     )
     owed.extend(
-        ExampleValidity(function.name, Site((f"example[{ordinal}]",)), ordinal)
-        for ordinal in range(len(function.examples))
+        ExampleValidity(
+            function.name, Site((f"example[{ordinal}]",)), ordinal, example
+        )
+        for ordinal, example in enumerate(function.examples)
     )
     owed.append(
         StructuralTermination(function.name, Site(("calls",)), len(calls))
@@ -432,7 +622,7 @@ def _call_obligation(
             "refusal instead of a list."
         )
     return CallPrecondition(
-        function.name, site, call.name, len(callee.requires), reached_under
+        function.name, site, call.name, len(callee.requires), reached_under, call
     )
 
 

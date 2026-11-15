@@ -199,18 +199,30 @@ def _refusals(source: str, arguments: list) -> set:
     return {d.get("category") for d in (answer.get("diagnostics") or [])}
 
 
+# How far past the smallest number a function accepts the law reaches:
+# the first few, and distances far past any machine word, because Int is
+# the mathematical integers here and a translation that quietly made it
+# a machine number would agree with the evaluator only near zero.
+THE_DISTANCES = (0, 1, 2, 41, 10**18, 10**30, 10**60)
+
+
 @given(
     plan=st.sampled_from(_EVERY_PLAN),
-    distance=st.integers(min_value=0, max_value=40),
-    second=st.integers(min_value=0, max_value=40),
+    distance=st.one_of(
+        st.sampled_from(THE_DISTANCES), st.integers(min_value=0, max_value=40)
+    ),
+    second=st.one_of(
+        st.sampled_from(THE_DISTANCES), st.integers(min_value=0, max_value=40)
+    ),
 )
-@settings(max_examples=20, deadline=None, derandomize=True)
+@settings(max_examples=25, deadline=None, derandomize=True)
 def test_what_is_proved_is_never_contradicted_by_running_the_program(
     plan, distance, second
 ):
     """LAW1: given a program whose promise came back proved, when the
-    same tool runs it over whole numbers it accepts, then it never
-    refuses the call for that promise."""
+    same tool runs it over whole numbers it accepts -- the smallest ones
+    and numbers far past any machine word -- then it never refuses the
+    call for that promise."""
     asks, promise, body = plan
     source = _program(asks, promise, body)
     if _entry(source)["result"] != "proved":

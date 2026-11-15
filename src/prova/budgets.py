@@ -575,6 +575,15 @@ class Budgets:
     def time_exhausted_by(self, elapsed: int) -> "Exhaustion | None":
         return self._of(TimeBudget).exhausted_by(elapsed)
 
+    def time_left_after(self, elapsed: int) -> int:
+        """How many of this run's milliseconds are still unspent.
+
+        Asked by a stage that hands work to something which takes a
+        deadline of its own, so that work cannot outlive the budget the
+        whole run is measured against.
+        """
+        return max(0, self._of(TimeBudget).maximum - elapsed)
+
     def memory_exhausted_by(self, taken: int) -> "Exhaustion | None":
         return self._of(MemoryBudget).exhausted_by(taken)
 
@@ -615,6 +624,10 @@ class Run:
                 exhausted = self.budgets.memory_exhausted_by(taken.bytes_taken)
         if exhausted is not None:
             raise BudgetExhausted(exhausted)
+
+    def milliseconds_left(self) -> int:
+        """How long this run may still spend, read afresh from the clock."""
+        return self.budgets.time_left_after(self._elapsed_milliseconds())
 
     def stop_if_source_too_large(self, source: str) -> None:
         """Stop this run before any rule of the language is read over a

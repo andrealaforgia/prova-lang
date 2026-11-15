@@ -10,11 +10,14 @@ from dataclasses import dataclass
 
 from prova import (
     checker,
+    discharge,
+    encoding,
     evaluator,
     formatter,
     manifest,
     obligations,
     provenance,
+    solving,
     syntax,
     tree,
 )
@@ -680,6 +683,26 @@ def _run_discover() -> dict:
                 CONTRACT_REPORT_OPERATIONS
             ),
             "tree_schema": tree.SCHEMA.published(),
+            "encoding": {
+                "version": encoding.VERSION,
+                "primitives": encoding.published_primitives(),
+                "documented_in": encoding.DOCUMENTED_IN,
+                "fragment": (
+                    "What the translation covers: quantifier-free reasoning "
+                    "over the booleans, linear arithmetic over the unbounded "
+                    "whole numbers of core-0, the non-recursive records and "
+                    "unions it declares, and the expansion of calls, which "
+                    "cannot be cyclic in this profile. Multiplication only "
+                    "where one operand is written as a literal. An obligation "
+                    "needing anything else -- a let binding, a pattern "
+                    "carrying patterns of its own, the product of two unknown "
+                    "numbers -- is answered 'unknown' with that reason and is "
+                    "never translated. The meaning of every primitive above, "
+                    "and why settling one of these claims settles the claim "
+                    "the source makes, is written out in the document named "
+                    "here."
+                ),
+            },
             "diagnostic_schemas": {
                 category: checker.DIAGNOSTIC_KINDS[category].published()
                 for category in DIAGNOSTIC_CATEGORIES
@@ -770,13 +793,22 @@ def _run_discover() -> dict:
                     "its claim and its source revision alone."
                 ),
                 "verify": (
-                    "A completed verify response is an inventory only: it lists the "
-                    "obligations the program owes and attempts none of them, so every "
-                    "entry's result is not_attempted. This tool has no solver, which "
-                    "is also what every entry's execution_status says: 'unsupported', "
-                    "the word for an attempt nothing here could support. The two "
-                    "fields are read apart; the shape published under "
-                    "operation_schemas for 'verify' says the same."
+                    "A completed verify response is the inventory of the obligations "
+                    "the program owes, each beside what became of it. Under 'result' "
+                    "an entry stands as 'proved', 'disproved', 'unknown' or "
+                    "'not_attempted'; under 'execution_status' it says what happened "
+                    "to the attempt. The two are read apart: an entry nothing ran is "
+                    "not an entry nothing is owed for. An entry proved says under "
+                    "'discharged_by' whether a solver was asked or a rule of core-0 "
+                    "settled it, an entry left unsettled carries the reason, and an "
+                    "entry disproved carries an input that breaks it and that this "
+                    "tool refuses when it runs the program over it. Nothing is "
+                    "skipped: every obligation listed carries one of those words. The "
+                    "answer also carries 'trust', which says that a proved obligation "
+                    "rests on the solver's word and that this tool does not check it "
+                    "again; the solver and the translation it names are the ones under "
+                    "'stands_on'. The shape published under operation_schemas for "
+                    "'verify' says the same."
                 ),
             },
             "resource_limits": {
@@ -993,7 +1025,7 @@ def _source_digest(source: SubmittedText) -> str:
     return SourceRevision.of(source).rendered()
 
 
-def _stands_on() -> dict:
+def _stands_on(standing: provenance.SolverStanding | None = None) -> dict:
     """What a completed answer stands on: the digest of this tool and of
     the language it reads, and the versions behind both.
 
@@ -1005,7 +1037,9 @@ def _stands_on() -> dict:
     nothing it stands on, and a block there would say otherwise.
     """
     return provenance.Provenance.of(
-        THE_PROFILE, manifest.the_language_published()
+        THE_PROFILE,
+        manifest.the_language_published(),
+        standing if standing is not None else provenance.NO_SOLVER_IN_THIS_ANSWER,
     ).published()
 
 
@@ -1233,25 +1267,39 @@ def _run_check(source: SubmittedText, run: Run) -> dict:
 
 
 def _run_verify(source: SubmittedText, run: Run) -> dict:
-    """The obligations the program owes, every one of them not attempted.
+    """The obligations the program owes, each beside what became of it.
 
     Reads nothing but `source`, writes nothing and keeps nothing: asking
-    twice changes neither the answer nor anything else.
+    twice changes neither the answer nor anything else. Every obligation
+    is put to the solver or settled by a rule of core-0, and one that
+    could not be is unsettled with its reason -- none is skipped.
+
+    The answer discloses the word it takes from the solver, because a
+    reader told an obligation is proved and not told what that rests on
+    would take a trusted result for one this tool established itself
+    (SPEC.md lines 302-305).
     """
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("verify")
     program = checked
 
-    return {
+    owed = obligations.inventory_for(program)
+    settled = discharge.Discharge(program, solving.PinnedZ3(), run).settle(owed)
+
+    answer = {
         "operation": "verify",
         "status": "completed",
         "claim": {"kind": "obligation_inventory", "scope": "this input"},
         "source_digest": _source_digest(source),
-        "stands_on": _stands_on(),
+        "stands_on": _stands_on(settled.standing),
         "diagnostics": [],
-        "result": {"inventory": obligations.inventory_for(program).as_dict()},
+        "result": {"inventory": settled.inventory_of(owed)},
     }
+    disclosed = settled.disclosure()
+    if disclosed is not None:
+        answer["trust"] = disclosed
+    return answer
 
 
 def _run_parse(source: SubmittedText, run: Run) -> dict:

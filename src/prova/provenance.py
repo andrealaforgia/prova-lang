@@ -17,6 +17,8 @@ import json
 import platform
 from dataclasses import dataclass
 
+from prova import encoding, solving
+
 
 @dataclass(frozen=True)
 class Digest:
@@ -96,6 +98,75 @@ class Version:
 
 
 @dataclass(frozen=True)
+class SolverStanding:
+    """What one answer says about the solver behind it: the one it asked
+    with the version that answered, or the reason it asked none.
+
+    Built only by the two constructors below, so a standing that both
+    names a solver and gives a reason there is none -- or neither --
+    cannot be built, and no answer can report a solver it did not ask.
+    """
+
+    name: str | None = None
+    version: str | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.name is None) != (self.reason is None):
+            return
+        raise ValueError(
+            "WHAT: a solver standing is being built naming "
+            f"{self.name!r} and giving {self.reason!r} as the reason there is "
+            "none. "
+            "WHY: an answer says either which solver answered it or why none "
+            "did; both at once reports a solver nobody asked, and neither "
+            "leaves a reader unable to tell a trusted result from one this "
+            "tool reached alone. "
+            "HOW: build it with SolverStanding.asked or "
+            "SolverStanding.asked_none."
+        )
+
+    @classmethod
+    def asked(cls, name: str, version: str) -> "SolverStanding":
+        return cls(name=name, version=version)
+
+    @classmethod
+    def asked_none(cls, reason: str) -> "SolverStanding":
+        return cls(reason=reason)
+
+    def text(self) -> "str | None":
+        """The solver and its version as one text, or nothing when none
+        was asked. One place writes it: the versions an answer stands on
+        and the trust it discloses read the same characters."""
+        if self.name is None:
+            return None
+        return f"{self.name} {self.version}"
+
+    def solver_row(self) -> "Version":
+        if self.name is None:
+            return Version.does_not_apply(SOLVER, self.reason)
+        return Version.used(SOLVER, self.name, self.version)
+
+    def encoding_row(self) -> "Version":
+        if self.name is None:
+            return Version.does_not_apply(
+                ENCODING,
+                "this answer turned no obligation into the language of a "
+                "solver, so no translation stands behind it",
+            )
+        return Version.used(ENCODING, "core-0-to-smt", encoding.VERSION)
+
+
+# What an operation that asks no solver says about one. Every operation
+# but verify reads a program and answers about it without turning an
+# obligation into the language of a solver.
+NO_SOLVER_IN_THIS_ANSWER = SolverStanding.asked_none(
+    "this operation asks no solver: it reads a program and answers about it "
+    "without turning any obligation into the language of one"
+)
+
+
+@dataclass(frozen=True)
 class Versions:
     """Exactly the four things SPEC.md asks an answer to name, and
     nothing else.
@@ -124,21 +195,15 @@ class Versions:
         )
 
     @classmethod
-    def of_this_tool(cls) -> "Versions":
-        """The four as they stand in the process answering right now."""
+    def of_this_tool(cls, standing: SolverStanding) -> "Versions":
+        """The four behind the answer being built: the tool and the
+        runtime that produced it, and the translation and the solver as
+        this answer used them."""
         return cls(
             (
                 Version.used(COMPILER, "prova", _this_tools_version()),
-                Version.does_not_apply(
-                    ENCODING,
-                    "this tool turns no obligation into the language of a "
-                    "solver, so nothing here is encoded for one",
-                ),
-                Version.does_not_apply(
-                    SOLVER,
-                    "this tool has no solver and attempts none of the "
-                    "obligations it lists",
-                ),
+                standing.encoding_row(),
+                standing.solver_row(),
                 Version.used(
                     RUNTIME,
                     platform.python_implementation().lower(),
@@ -175,24 +240,61 @@ class Provenance:
     versions: Versions
 
     @classmethod
-    def of(cls, profile: dict, language: dict) -> "Provenance":
-        versions = Versions.of_this_tool()
+    def of(
+        cls, profile: dict, language: dict, standing: SolverStanding
+    ) -> "Provenance":
+        """What one answer stands on.
+
+        The digest is taken over the tool itself -- the profile, the
+        language and the components this tool is built of -- and not over
+        what this one answer used, so every answer of one installation
+        carries the same digest and a client can compare a kept answer
+        with the manifest it reads later. Which of those components this
+        answer really asked is said beside it, under `versions`.
+        """
         described = json.dumps(
             {
                 "profile": profile,
                 "language": language,
-                "versions": versions.published(),
+                "components": the_components(),
             },
             sort_keys=True,
             separators=(",", ":"),
         )
-        return cls(Digest.of(described), versions)
+        return cls(Digest.of(described), Versions.of_this_tool(standing))
 
     def published(self) -> dict:
         return {
             "dependency_digest": self.dependency_digest.rendered(),
             "versions": self.versions.published(),
         }
+
+
+def the_components() -> dict:
+    """What this installation of the tool is built of, whichever answer
+    is being built: the tool, the translation, the solver it is pinned to
+    and the runtime.
+
+    The solver is read from the installed package's metadata rather than
+    by loading the solver itself, so naming it costs no answer the time
+    of loading a solver it never asks.
+    """
+    return {
+        "compiler": f"prova {_this_tools_version()}",
+        "encoding": f"core-0-to-smt {encoding.VERSION}",
+        "solver": _the_solver_it_is_pinned_to(),
+        "runtime": (
+            f"{platform.python_implementation().lower()} "
+            f"{platform.python_version()}"
+        ),
+    }
+
+
+def _the_solver_it_is_pinned_to() -> str:
+    try:
+        return f"{solving.PACKAGE} {importlib.metadata.version(solving.PACKAGE)}"
+    except importlib.metadata.PackageNotFoundError:
+        return f"{solving.PACKAGE} is not installed beside this tool"
 
 
 def _this_tools_version() -> str:

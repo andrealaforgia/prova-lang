@@ -405,14 +405,33 @@ THE_OPERATIONS = Catalogue(
                     Field.when_completed(
                         "result",
                         "object",
-                        "the inventory of the obligations the program owes. "
-                        "Each entry says under 'result' where it stands as a "
-                        "statement, which is 'not_attempted' for every one of "
-                        "them, and under 'execution_status' what happened "
-                        "when something tried to settle it, which is "
-                        "'unsupported' because this tool has no solver. The "
-                        "two are read apart: an entry nothing ran is not an "
-                        "entry nothing is owed for",
+                        "the inventory of the obligations the program owes, "
+                        "each beside what became of it. Every entry says "
+                        "under 'result' where it stands as a statement -- "
+                        "'proved', 'disproved', 'unknown' or 'not_attempted' "
+                        "-- and under 'execution_status' what happened when "
+                        "something tried to settle it. The two are read "
+                        "apart: an entry nothing ran is not an entry nothing "
+                        "is owed for. An entry proved carries "
+                        "'discharged_by', which is 'solver' when one was "
+                        "asked and 'structure' when a rule of core-0 settled "
+                        "it; an entry left unsettled carries 'reason'; an "
+                        "entry disproved carries 'counterexample', an input "
+                        "of the declared types that breaks it and that this "
+                        "tool refuses when it runs the program over it",
+                    ),
+                    Field.when(
+                        "trust",
+                        "object",
+                        "when a solver was asked about at least one obligation",
+                        "what the word 'proved' rests on: under "
+                        "'trusted_from' what was trusted, under 'solver' and "
+                        "'encoding' the solver asked and the translation "
+                        "written for it, and under 'rechecked_by_this_tool' "
+                        "whether this tool checked that result again, which "
+                        "is false. SPEC.md lines 302-305 allow this tool to "
+                        "trust a solver's validity result only while it "
+                        "discloses that trust",
                     ),
                 ),
             ),

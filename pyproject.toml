@@ -3,7 +3,12 @@ name = "prova"
 version = "0.0.0"
 description = "Prova: a checked evaluator for core-0 programs"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    # The solver every proved obligation rests on, pinned exactly: the
+    # word "proved" is only as good as the version that said it, and an
+    # answer names this version beside its result.
+    "z3-solver==5.4.1.0",
+]
 
 [project.scripts]
 prova = "prova.__main__:main"

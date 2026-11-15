@@ -79,7 +79,7 @@ def test_the_answer_says_the_solver_is_trusted_and_not_checked_again():
     says what was trusted, names the same solver it stands on, and says
     this tool did not check that result again."""
     answer = completed(verify(A_PROGRAM), LABEL)
-    disclosed = (answer.get("result") or {}).get("trust") or {}
+    disclosed = answer.get("trust") or {}
 
     assert disclosed.get("trusted_from") == "solver", (
         f"WHAT: the answer discloses {disclosed} about what it trusts. "
