@@ -173,18 +173,46 @@ def test_a_chain_one_function_longer_than_the_limit_is_refused():
     )
 
 
-def test_a_long_chain_is_still_checked_and_its_obligations_still_listed():
-    """Given the chain of 600 functions, when a caller checks it or asks
-    what it owes, then it is accepted: the limit is on running a
-    program, and reading one is not running it.
-    """
-    source = chained_functions(A_CHAIN_THAT_USED_TO_CRASH)
+# A chain long enough that running it is far past the limit on how deep a
+# run may go, and whose settled inventory a caller can still be given
+# whole: 240 functions answer in about half a megabyte, where 600 answer
+# in about 1.3 and are withheld by the budget on the size of an answer.
+# Reading the chain is unaffected either way, which is what `check`
+# below shows over the longer one.
+A_CHAIN_WHOSE_ANSWER_FITS = 240
 
-    for operation in ("check", "verify"):
-        assert_accepted(
-            _run(operation, source, f"{operation} over a chain of 600 functions"),
-            f"a chain of 600 functions sent to {operation}",
-        )
+
+def test_a_long_chain_is_still_checked_and_its_obligations_still_listed():
+    """Given the chain of 600 functions, when a caller checks it, then it
+    is accepted: the limit is on running a program, and reading one is
+    not running it. And given a chain of 240, when a caller asks what it
+    owes, then that is answered too.
+
+    Asking what a program owes now settles each obligation and says what
+    became of it, so the answer carries more per entry than the list
+    alone did. A chain of 600 functions owes about 3000 obligations and
+    its answer passes the megabyte a caller may be given, which the
+    budget on the size of an answer withholds whole. That is a limit on
+    the size of an answer and not on how deep a run may go, which is
+    what this test is about: the shorter chain is just as far past the
+    depth limit and is answered.
+    """
+    assert_accepted(
+        _run(
+            "check",
+            chained_functions(A_CHAIN_THAT_USED_TO_CRASH),
+            "check over a chain of 600 functions",
+        ),
+        "a chain of 600 functions sent to check",
+    )
+    assert_accepted(
+        _run(
+            "verify",
+            chained_functions(A_CHAIN_WHOSE_ANSWER_FITS),
+            "verify over a chain of 240 functions",
+        ),
+        f"a chain of {A_CHAIN_WHOSE_ANSWER_FITS} functions sent to verify",
+    )
 
 
 def test_the_shipped_hour_clock_is_still_run():
