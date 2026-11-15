@@ -12,6 +12,10 @@ LAW3 the signature the manifest publishes for an operator is the one the
      tool keeps: a program applying the operator to operands of the
      published argument types is checked, and the same program with one
      operand of another type is refused with a type mismatch.
+LAW4 an answer a budget stopped from being written still carries every
+     field published as always present, and none published as present
+     when completed: a field no answer can lose is one no budget can
+     take away either.
 
 Drives the `prova` command over its JSON stdin/stdout surface, as the
 other property tests here do. No imports from src/prova. The manifest is
@@ -25,6 +29,7 @@ on which cases Hypothesis happens to draw.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 
 from hypothesis import given, settings
@@ -42,6 +47,16 @@ THE_OPERATIONS_AN_AGENT_MAY_CALL = (
     "verify",
     "parse",
 )
+
+# Every operation an agent may call, for the law that reads what is left
+# of an answer a budget stopped: `format` answers like the others and is
+# published like them, so a field it could lose would be lost unseen.
+EVERY_OPERATION_AN_AGENT_MAY_CALL = THE_OPERATIONS_AN_AGENT_MAY_CALL + ("format",)
+
+# An answer budget no answer of this tool fits in, lowered the way the
+# manifest publishes it. Every operation then answers the refusal the
+# tool gives when it cannot write the answer it had.
+A_LOWERED_ANSWER_BUDGET = {"PROVA_BUDGET_ANSWER_SIZE": "200"}
 
 # SPEC.md lines 178-189: the eleven operators of core-0, and the operand
 # each type of argument is written with in the programs below.
@@ -80,6 +95,22 @@ def _ask(request: dict) -> dict:
     assert proc.returncode == 0, (
         f"the tool exited {proc.returncode} for {request!r} instead of "
         f"answering: {proc.stderr[-500:]!r}"
+    )
+    return json.loads(proc.stdout)
+
+
+def _ask_under_a_lowered_answer_budget(request: dict) -> dict:
+    proc = subprocess.run(
+        ["prova"],
+        input=json.dumps(request),
+        capture_output=True,
+        text=True,
+        timeout=20.0,
+        env={**os.environ, **A_LOWERED_ANSWER_BUDGET},
+    )
+    assert proc.returncode == 0, (
+        f"the tool exited {proc.returncode} for {request!r} under a lowered "
+        f"answer budget instead of answering: {proc.stderr[-500:]!r}"
     )
     return json.loads(proc.stdout)
 
@@ -264,3 +295,48 @@ def test_the_published_signature_of_an_operator_is_the_one_the_tool_keeps(operat
         "published signature the tool does not keep lets an agent write a "
         "program the tool will not take."
     )
+
+
+@given(operation=st.sampled_from(EVERY_OPERATION_AN_AGENT_MAY_CALL))
+@settings(
+    max_examples=len(EVERY_OPERATION_AN_AGENT_MAY_CALL),
+    deadline=None,
+    derandomize=True,
+)
+def test_an_answer_a_budget_stopped_carries_what_is_published_as_always_there(
+    operation,
+):
+    """LAW4: an answer a budget stopped from being written carries every
+    field published as always present and none published as present when
+    completed.
+
+    A field published as always present is one a client may read without
+    looking at the status first. A budget can stop any answer of any
+    operation, so a field published that way and missing here would send
+    a client to read something that is not there.
+    """
+    shape = _shape_of(operation)
+
+    answer = _ask_under_a_lowered_answer_budget(_request_for(operation, shape))
+    published = shape["response"]["fields"]
+
+    assert answer["status"] != "completed", (
+        f"{operation!r} completed an answer under an answer budget of 200 "
+        f"characters: {answer}. This law reads what is left of an answer the "
+        "tool could not write, so it needs a budget no answer fits in."
+    )
+    for field, described in published.items():
+        if described["presence"] == "always":
+            assert field in answer, (
+                f"the answer of {operation!r} stopped by a budget carries no "
+                f"{field!r}, and the manifest publishes it in every answer: "
+                f"{answer}. A client reading it without looking at the status "
+                "first finds nothing there."
+            )
+        elif described["presence"] == "when completed":
+            assert field not in answer, (
+                f"the answer of {operation!r} has status {answer['status']!r} "
+                f"and carries {field!r}, which the manifest publishes as "
+                "'when completed': an answer the tool could not write would "
+                "appear to report something it never finished."
+            )

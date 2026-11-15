@@ -64,16 +64,6 @@ class Field:
     def when_completed(cls, name: str, kind: str, what: str) -> "Field":
         return cls(name, kind, WHEN_COMPLETED, what)
 
-    def always_there(self) -> "Field":
-        """The same field, carried under no condition.
-
-        An operation that either answers or does not answer at all, as
-        `discover` does, has nothing a condition could tell apart: a
-        field published there as 'when completed' would name a condition
-        a client can never see fail.
-        """
-        return Field(self.name, self.kind, ALWAYS, self.what)
-
     @classmethod
     def when(cls, name: str, kind: str, condition: str, what: str) -> "Field":
         """A field that is there under a condition of its own, written
@@ -376,14 +366,9 @@ THE_OPERATIONS = Catalogue(
                 (),
                 EVERY_ANSWER
                 + (
-                    Field.in_every_answer(
-                        "claim",
-                        "object",
-                        "what kind of statement this answer makes and how far "
-                        "it reaches",
-                    ),
-                    STANDS_ON.always_there(),
-                    Field.in_every_answer(
+                    CLAIM,
+                    STANDS_ON,
+                    Field.when_completed(
                         "result",
                         "object",
                         "this manifest: the profile, the operations, the "
