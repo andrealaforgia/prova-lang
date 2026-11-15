@@ -21,6 +21,76 @@ class ReaderError(Exception):
         self.column = column
 
 
+class TooDeeplyNested(Exception):
+    """A text nests one form inside another more deeply than this tool
+    reads.
+
+    Deliberately not a `ReaderError`: a text that nests too deep breaks
+    no rule of how core-0 is written, and answering it as a syntax
+    refusal would tell a reader to repair a program that may be
+    perfectly well formed. It carries the limit, the depth the text
+    reached and the place the form that went too deep stands at.
+    """
+
+    def __init__(self, message: str, line: int, column: int, limit: int, reached: int):
+        super().__init__(message)
+        self.message = message
+        self.line = line
+        self.column = column
+        self.limit = limit
+        self.reached = reached
+
+
+@dataclass(frozen=True)
+class NestingLimit:
+    """The greatest nesting this tool reads, and the name a caller reads
+    that number under.
+
+    One object holds the number. The reader asks it whether a depth has
+    passed it, and the manifest publishes the same object's number, so
+    what a caller is promised and what the tool does cannot drift apart.
+    """
+
+    maximum: int
+    name: str = "expression_nesting"
+
+    def passed_by(self, depth: int) -> bool:
+        return depth > self.maximum
+
+    def reason(self) -> str:
+        """Why the number is the number it is, for a caller that must
+        change its generator and is owed the reason."""
+        return (
+            f"reading one form inside another costs 2 interpreter frames per "
+            f"form, so {self.maximum} forms cost about {2 * self.maximum + 13} "
+            "of the 1000 frames Python allows by default: the refusal is "
+            "therefore reached with room to spare however deep the caller's "
+            "own stack already is. It is also far above any program written "
+            "to be read, the deepest shipped here standing 10 forms deep."
+        )
+
+    def refusal_at(self, depth: int, line: int, column: int) -> TooDeeplyNested:
+        return TooDeeplyNested(
+            f"the text nests {depth} forms deep and this tool reads "
+            f"{self.maximum}: it reads one form inside another by calling "
+            "itself once per form, and declares a maximum so that it refuses "
+            "here instead of exhausting the interpreter stack and answering "
+            "nothing at all; write the inner forms as separate 'let' bindings "
+            f"so that no form stands more than {self.maximum} forms inside the "
+            f"text, and read {self.maximum} from the {self.name!r} entry of "
+            "the resource limits the 'discover' operation publishes",
+            line,
+            column,
+            self.maximum,
+            depth,
+        )
+
+
+# How deep a text may nest, for every text this tool reads: the source
+# of a program and the value of an argument alike.
+READING_LIMIT = NestingLimit(128)
+
+
 @dataclass(frozen=True)
 class Atom:
     text: str
@@ -110,7 +180,16 @@ def read_program(text: str) -> list[object]:
     return forms
 
 
-def _read_form(tokens: list[_Token], pos: int, text: str = "") -> tuple[object, int]:
+def _read_form(
+    tokens: list[_Token], pos: int, text: str = "", enclosing: int = 0
+) -> tuple[object, int]:
+    """One form, read at `enclosing` forms already open around it.
+
+    The one place the depth of a text grows, so the one place the limit
+    is counted. Every text this tool reads passes through here, which is
+    why no later stage has to defend itself against a tree it cannot
+    walk.
+    """
     if pos >= len(tokens):
         line, column = end_of(text)
         raise ReaderError("unexpected end of input", line, column)
@@ -119,6 +198,9 @@ def _read_form(tokens: list[_Token], pos: int, text: str = "") -> tuple[object, 
         raise ReaderError("unexpected ')'", token.line, token.column)
     if token.kind == "atom":
         return Atom(token.text, token.line, token.column), pos + 1
+    depth = enclosing + 1
+    if READING_LIMIT.passed_by(depth):
+        raise READING_LIMIT.refusal_at(depth, token.line, token.column)
     items: list[object] = []
     open_token = token
     pos += 1
@@ -130,6 +212,6 @@ def _read_form(tokens: list[_Token], pos: int, text: str = "") -> tuple[object, 
         if tokens[pos].kind == ")":
             pos += 1
             break
-        node, pos = _read_form(tokens, pos, text)
+        node, pos = _read_form(tokens, pos, text, depth)
         items.append(node)
     return SList(tuple(items), open_token.line, open_token.column), pos

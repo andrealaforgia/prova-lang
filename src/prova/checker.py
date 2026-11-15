@@ -95,6 +95,12 @@ RECURSIVE_TYPE = "recursive_type"
 SHADOWED_BINDING = "shadowed_binding"
 RESERVED_NAME = "reserved_name"
 UNRELATED_EXAMPLE = "unrelated_example"
+# A text nested more deeply than this tool reads. Not a rule of core-0:
+# the program may be perfectly well formed, and the tool simply declares
+# how far it follows one form standing inside another (SPEC.md lines
+# 503-508). It is kept apart from every category above so that a budget
+# can never be read as a statement about what a program means.
+NESTING_LIMIT_EXCEEDED = "nesting_limit_exceeded"
 
 # The one name core-0 reserves: a postcondition reads it as the
 # function's return value, so no binder may take it.
@@ -259,6 +265,11 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
     "type_mismatch": DiagnosticKind(AboutTwoTypes),
     "arity_mismatch": DiagnosticKind(
         AboutTwoCounts, granularity=("expression", "declaration")
+    ),
+    NESTING_LIMIT_EXCEEDED: DiagnosticKind(
+        AboutTwoCounts,
+        points_into=("source", "argument"),
+        granularity=("token",),
     ),
     "non_exhaustive_match": DiagnosticKind(AboutASymbol),
     CYCLIC_DEPENDENCY: DiagnosticKind(
@@ -1213,7 +1224,8 @@ def _check_value(
 ) -> None:
     if not isinstance(value, ConstructorValue):
         return
-    if syntax.resolve_constructor_fields(value.constructor, program) is None:
+    declared = syntax.DeclaredConstructor.of(value.constructor, program)
+    if declared is None:
         diagnostics.append(
             Diagnostic(
                 "unbound_constructor",
@@ -1223,6 +1235,23 @@ def _check_value(
             )
         )
         return
+    if declared.disagrees_with(len(value.fields)):
+        diagnostics.append(
+            Diagnostic(
+                "arity_mismatch",
+                f"{value.constructor!r} in {where} is written with "
+                f"{len(value.fields)} value(s) and declares {declared.takes()} "
+                "field(s): a value supplies one closed value for each field its "
+                "type declares, so a value written with another number of them "
+                "has no value for a field a reader of it asks for and cannot be "
+                f"run; write it with {declared.takes()} value(s), or declare "
+                f"{declared.takes()} field(s) on {declared.owner!r}",
+                place,
+                about=AboutTwoCounts(
+                    value.constructor, declared.takes(), len(value.fields)
+                ),
+            )
+        )
     for field_value in value.fields:
         _check_value(field_value, program, where, diagnostics, place)
 

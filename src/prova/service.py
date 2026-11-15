@@ -9,7 +9,7 @@ import hashlib
 from dataclasses import dataclass
 
 from prova import checker, evaluator, obligations, syntax
-from prova.reader import ReaderError, end_of, read_program
+from prova.reader import READING_LIMIT, ReaderError, TooDeeplyNested, end_of, read_program
 from prova.values import render
 
 AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify")
@@ -26,6 +26,12 @@ UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "build"})
 # at all (SPEC.md lines 51-54, 191-196).
 UNSUPPORTED_STATUS = "unsupported"
 UNSUPPORTED_CONSTRUCT = "unsupported_construct"
+
+# What the tool answers when a budget it declares was passed while
+# reading the request. Kept apart from `invalid_program`: the text may
+# break no rule of core-0 at all, and SPEC.md line 505 requires that a
+# limit never silently become a bound on what a program may mean.
+RESOURCE_EXHAUSTED = "resource_exhausted"
 
 # Every status an answered request carries, and what each one tells a
 # caller. Published by the manifest, so the vocabulary is read from the
@@ -45,6 +51,11 @@ STATUSES = {
     "invalid_input": (
         "the source is a core-0 program, but a value or a function name the "
         "request supplies is not one that program takes"
+    ),
+    RESOURCE_EXHAUSTED: (
+        "a budget this tool declares was passed while reading the request, so "
+        "the tool stopped there; no rule of core-0 was read over what it had, "
+        "and the limit that was passed is published among the resource limits"
     ),
     "unavailable": "the operation is not one this tool answers yet",
 }
@@ -72,24 +83,26 @@ DIAGNOSTIC_CATEGORIES = tuple(checker.DIAGNOSTIC_KINDS)
 # does not answer attempts none of the work, which
 # tests/properties/test_i1_s1_p4_p5.py observes from outside by tracing
 # every module the process enters.
-def handle(request: dict) -> dict:
-    operation = request.get("operation")
+def handle(submitted: object) -> dict:
+    request = Request.read(submitted)
+    if isinstance(request, MalformedRequest):
+        return request.response_for(None)
+
+    operation = request.asks_for()
     if operation in SOURCE_READING_OPERATIONS:
-        source = request.get("source", "")
-        if not isinstance(source, str):
-            return _unreadable_source(operation, source)
-    if operation == "check":
-        return _run_check(request.get("source", ""))
-    if operation == "examples":
-        return _run_examples(request.get("source", ""))
-    if operation == "evaluate":
-        return _run_evaluate(
-            request.get("source", ""),
-            request.get("function"),
-            request.get("arguments", []),
-        )
-    if operation == "verify":
-        return _run_verify(request.get("source", ""))
+        source = request.source()
+        if isinstance(source, MalformedRequest):
+            return source.response_for(operation)
+        if operation == "check":
+            return _run_check(source)
+        if operation == "examples":
+            return _run_examples(source)
+        if operation == "verify":
+            return _run_verify(source)
+        asked = request.evaluation_asked()
+        if isinstance(asked, MalformedRequest):
+            return asked.response_for(operation)
+        return _run_evaluate(source, asked)
     if operation == "discover":
         return _run_discover()
     if operation in UNAVAILABLE_OPERATIONS:
@@ -104,43 +117,215 @@ def handle(request: dict) -> dict:
             ],
         }
     return {
-        "operation": operation,
+        "operation": request.names_as_written(),
         "status": "unavailable",
         "diagnostics": [
             {
                 "category": "unknown_operation",
-                "reason": f"operation {operation!r} is not recognized",
+                "reason": (
+                    f"operation {request.names_as_written()!r} is not recognized"
+                ),
             }
         ],
     }
 
 
-def _unreadable_source(operation: str, source: object) -> dict:
-    """The answer to a request whose `source` is not the text of a
-    program.
+@dataclass(frozen=True)
+class MalformedRequest:
+    """Every field of a request this tool could not read, each named
+    beside the reason it could not be read.
 
-    Read before anything else about the request, because every later
-    answer is about a text: the revision an answer carries is the
-    revision of those characters, and a value of another kind has none.
+    Several, because the fields are independent: a client that wrote
+    two of them wrongly learns about both in one answer rather than
+    repairing one and meeting the next. It holds nothing but the list,
+    so an answer about a request the tool never read cannot appear to
+    report on a program.
     """
-    return {
-        "operation": operation,
-        "status": "invalid_input",
-        "diagnostics": [
-            _diagnostic_dict(
-                checker.Diagnostic(
-                    "malformed_request",
-                    f"the 'source' field of the request holds "
-                    f"{type(source).__name__}, not the text of a program: this "
-                    "tool reads a program from the characters of that field, "
-                    "and a value of another kind holds no characters to read; "
-                    "send the program as one JSON string, writing a line break "
-                    "as \\n",
-                    about=checker.AboutASymbol("source"),
+
+    defects: tuple[tuple[str, str], ...]
+
+    @classmethod
+    def about(cls, field: str, reason: str) -> "MalformedRequest":
+        return cls(((field, reason),))
+
+    def and_also(self, other: "MalformedRequest") -> "MalformedRequest":
+        return MalformedRequest(self.defects + other.defects)
+
+    def response_for(self, operation: object) -> dict:
+        return {
+            "operation": operation,
+            "status": "invalid_input",
+            "diagnostics": [
+                _diagnostic_dict(
+                    checker.Diagnostic(
+                        "malformed_request",
+                        reason,
+                        about=checker.AboutASymbol(field),
+                    )
                 )
+                for field, reason in self.defects
+            ],
+        }
+
+
+@dataclass(frozen=True)
+class FunctionName:
+    """The name of a function a request asks this tool to call.
+
+    Built only by reading a request, and only from a JSON string, so a
+    step that takes one is reached with a name and never with a list or
+    a number. Python still lets a caller build one around any value by
+    hand; nothing in this tool does, and the one path that reads a
+    request refuses.
+    """
+
+    spelling: str
+
+    @classmethod
+    def read(cls, asked: object) -> "FunctionName | MalformedRequest":
+        if isinstance(asked, str):
+            return cls(asked)
+        return MalformedRequest.about(
+            "function",
+            f"the 'function' field of the request holds "
+            f"{type(asked).__name__}, not the name of a function: this tool "
+            "looks a function up by the name its program declares for it, and "
+            "a value of another kind names nothing to look up; send the "
+            "function as one JSON string, and read the names a program "
+            "declares by sending it to the 'check' operation first",
+        )
+
+
+@dataclass(frozen=True)
+class ArgumentTexts:
+    """The texts of the values a request supplies as arguments, one per
+    parameter the function declares.
+
+    Every element is known to be a text before the first of them is
+    read, so a list holding one number refuses by name rather than
+    breaking the reader on the way through.
+    """
+
+    texts: tuple[str, ...]
+
+    @classmethod
+    def read(cls, supplied: object) -> "ArgumentTexts | MalformedRequest":
+        if not isinstance(supplied, list):
+            return MalformedRequest.about(
+                "arguments",
+                f"the 'arguments' field of the request holds "
+                f"{type(supplied).__name__}, not a list of the texts of "
+                "values: this tool reads one value from each text, and a "
+                "value of another kind holds no list of texts to read; send "
+                "the arguments as a JSON list of strings, one string per "
+                "parameter the function declares, and an empty list when it "
+                "declares none",
             )
-        ],
-    }
+        unreadable = [
+            (
+                f"arguments[{place}]",
+                f"the argument at place {place} of the request holds "
+                f"{type(written).__name__}, not the text of a value: this "
+                "tool reads a value from the characters of each argument, "
+                "and a value of another kind holds no characters to read; "
+                "send that argument as one JSON string, writing the value "
+                "the way a program writes it, as \"(Clock 12)\" or \"7\"",
+            )
+            for place, written in enumerate(supplied)
+            if not isinstance(written, str)
+        ]
+        if unreadable:
+            return MalformedRequest(tuple(unreadable))
+        return cls(tuple(supplied))
+
+
+@dataclass(frozen=True)
+class EvaluationAsked:
+    """What a request asks an evaluation to do: which function, and with
+    which argument texts."""
+
+    function: FunctionName
+    arguments: ArgumentTexts
+
+
+@dataclass(frozen=True)
+class Request:
+    """The one reader of a field of a submitted request.
+
+    Nothing else in this tool reads a field, so a field holding a kind
+    of value the tool cannot use is refused once, by name, before any
+    work starts -- rather than by whichever step happened to reach for
+    it first, in whatever way that step happened to break.
+    """
+
+    submitted: dict
+
+    @classmethod
+    def read(cls, submitted: object) -> "Request | MalformedRequest":
+        if isinstance(submitted, dict):
+            return cls(submitted)
+        return MalformedRequest.about(
+            "request",
+            f"the request is {type(submitted).__name__}, not an object with "
+            "fields: this tool reads the operation to run, and what to run it "
+            "over, from named fields, and a value of another kind has none; "
+            "send one JSON object carrying at least an 'operation' field, and "
+            "read the operations this tool answers from the 'discover' "
+            "operation",
+        )
+
+    def names_as_written(self) -> object:
+        """The operation field exactly as the request wrote it, whatever
+        kind of value that is, so a refusal quotes back what was sent."""
+        return self.submitted.get("operation")
+
+    def asks_for(self) -> str | None:
+        """The operation this request asks for, or `None` when its
+        operation field holds no name at all.
+
+        A value of another kind names no operation this tool has, which
+        is the same thing a misspelled name says, so both get the same
+        answer and neither is read as a name by the steps below.
+        """
+        asked = self.names_as_written()
+        return asked if isinstance(asked, str) else None
+
+    def source(self) -> "str | MalformedRequest":
+        """The text of the program the request submits.
+
+        Read before anything else about the request, because every later
+        answer is about a text: the revision an answer carries is the
+        revision of those characters, and a value of another kind has
+        none.
+        """
+        written = self.submitted.get("source", "")
+        if isinstance(written, str):
+            return written
+        return MalformedRequest.about(
+            "source",
+            f"the 'source' field of the request holds "
+            f"{type(written).__name__}, not the text of a program: this tool "
+            "reads a program from the characters of that field, and a value "
+            "of another kind holds no characters to read; send the program as "
+            "one JSON string, writing a line break as \\n",
+        )
+
+    def evaluation_asked(self) -> "EvaluationAsked | MalformedRequest":
+        """Which function the request asks to call and with which
+        argument texts, or every field of the two that could not be read.
+
+        Both are read in one pass: they are independent, so a client
+        that wrote both wrongly is told about both at once.
+        """
+        function = FunctionName.read(self.submitted.get("function"))
+        arguments = ArgumentTexts.read(self.submitted.get("arguments", []))
+        if isinstance(function, MalformedRequest):
+            if isinstance(arguments, MalformedRequest):
+                return function.and_also(arguments)
+            return function
+        if isinstance(arguments, MalformedRequest):
+            return arguments
+        return EvaluationAsked(function, arguments)
 
 
 def _run_discover() -> dict:
@@ -193,8 +378,16 @@ def _run_discover() -> dict:
                 ),
             },
             "resource_limits": {
-                "enforced": False,
-                "reason": "no resource limits are enforced in I1",
+                "enforced": True,
+                "limits": {
+                    READING_LIMIT.name: {
+                        "maximum": READING_LIMIT.maximum,
+                        "unit": "nested forms",
+                        "status": RESOURCE_EXHAUSTED,
+                        "category": checker.NESTING_LIMIT_EXCEEDED,
+                        "reason": READING_LIMIT.reason(),
+                    }
+                },
             },
         },
     }
@@ -276,6 +469,28 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> checker.Diag
     return checker.Diagnostic("syntax", error.message, (error.line, error.column))
 
 
+def _too_deeply_nested_diagnostic(
+    refusal: TooDeeplyNested, text: str
+) -> checker.Diagnostic:
+    """The one diagnostic a text that nests past the limit carries,
+    whichever text it was.
+
+    It names the limit the way the manifest names it, carries the limit
+    beside the depth the text reached, and says which of the two texts a
+    request holds the place stands in, so a caller is never left opening
+    the wrong one.
+    """
+    return checker.Diagnostic(
+        checker.NESTING_LIMIT_EXCEEDED,
+        refusal.message,
+        (refusal.line, refusal.column),
+        about=checker.AboutTwoCounts(
+            READING_LIMIT.name, refusal.limit, refusal.reached
+        ),
+        points_into=text,
+    )
+
+
 def _out_of_profile_diagnostic(
     refusal: syntax.UnsupportedConstruct,
 ) -> checker.Diagnostic:
@@ -327,6 +542,12 @@ def _checked_program(source: str):
     revision = SourceRevision.of(source)
     try:
         program = syntax.parse_program(read_program(source))
+    except TooDeeplyNested as too_deep:
+        return Refusal(
+            RESOURCE_EXHAUSTED,
+            (_too_deeply_nested_diagnostic(too_deep, "source"),),
+            revision,
+        )
     except syntax.UnsupportedConstruct as outside:
         return Refusal(
             UNSUPPORTED_STATUS, (_out_of_profile_diagnostic(outside),), revision
@@ -445,13 +666,15 @@ def _declared_place(program, name: str) -> tuple[int, int]:
     raise KeyError(name)
 
 
-def _run_evaluate(source: str, function_name: object, argument_texts: list) -> dict:
+def _run_evaluate(source: str, asked: EvaluationAsked) -> dict:
     checked = _checked_program(source)
     if isinstance(checked, Refusal):
         return checked.response_for("evaluate")
     program = checked
     revision = SourceRevision.of(source)
 
+    function_name = asked.function.spelling
+    argument_texts = asked.arguments.texts
     function = program.functions.get(function_name)
     if function is None:
         return {
@@ -462,7 +685,7 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
                     checker.Diagnostic(
                         "unknown_function",
                         f"no function named {function_name!r}",
-                        about=checker.AboutASymbol(str(function_name)),
+                        about=checker.AboutASymbol(function_name),
                     ),
                     revision,
                 )
@@ -472,6 +695,16 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
     place = _declared_place(program, function.name)
     try:
         args = tuple(_parse_value_text(text) for text in argument_texts)
+    except TooDeeplyNested as too_deep:
+        return {
+            "operation": "evaluate",
+            "status": RESOURCE_EXHAUSTED,
+            "diagnostics": [
+                _diagnostic_dict(
+                    _too_deeply_nested_diagnostic(too_deep, "argument"), revision
+                )
+            ],
+        }
     except (ReaderError, syntax.SyntaxError_) as error:
         return {
             "operation": "evaluate",
