@@ -199,7 +199,16 @@ AN_UNCLOSED_OPERATOR_CALL = """\
   (+ cents cents)
 """
 
-EMPTY_SOURCE = ""
+# A whole valid program that writes no operator at all: the thing a rule
+# about operators must leave alone. (A source with nothing in it is not
+# that program: core-0 asks for at least one declaration, so an empty
+# source is refused for a reason of its own.)
+A_PROGRAM_WITH_NO_OPERATOR_IN_IT = """\
+(defn fare
+  (sig ((cents Int)) -> Int ! pure)
+  (examples (example (fare 100) => 100))
+  cents)
+"""
 
 
 @dataclass(frozen=True)

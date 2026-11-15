@@ -22,7 +22,7 @@ from _f7_operator_arity_fixtures import (
     ARITY_MISMATCH_CATEGORY,
     AN_UNCLOSED_OPERATOR_CALL,
     AN_UNKNOWN_OPERATOR_LIKE_NAME,
-    EMPTY_SOURCE,
+    A_PROGRAM_WITH_NO_OPERATOR_IN_IT,
     SUM_WITH_THREE_ARGUMENTS_ONE_OF_THEM_A_FLAG,
     TYPE_MISMATCH_CATEGORY,
     assert_accepted,
@@ -79,7 +79,12 @@ def test_an_unclosed_call_is_still_unreadable_text():
     )
 
 
-def test_a_program_with_nothing_in_it_is_still_accepted():
-    """Given an empty program, when it is checked, then it is accepted:
-    a program with no operator in it breaks no rule about operators."""
-    assert_accepted(check(EMPTY_SOURCE), "a program with nothing in it")
+def test_a_program_that_writes_no_operator_at_all_is_still_accepted():
+    """Given the function `fare` whose body is the parameter `cents`
+    and which writes no operator anywhere, when it is checked, then it
+    is accepted: a program with no operator in it breaks no rule about
+    operators."""
+    assert_accepted(
+        check(A_PROGRAM_WITH_NO_OPERATOR_IN_IT),
+        "a program that writes no operator at all",
+    )
