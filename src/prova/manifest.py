@@ -435,7 +435,24 @@ THE_OPERATIONS = Catalogue(
                 ),
             ),
         ),
-        Operation("parse", InACategory("parsing"), NotAnsweredYet()),
+        Operation(
+            "parse",
+            InACategory("parsing"),
+            answering(
+                SOURCE_READING_REQUEST,
+                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                + (
+                    Field.when_completed(
+                        "result",
+                        "object",
+                        "the syntax tree of the submitted program, "
+                        "written in the shape this manifest publishes under "
+                        "tree_schema: one node per part of the program, each "
+                        "saying what it is and where it stands",
+                    ),
+                ),
+            ),
+        ),
         Operation("format", InACategory("formatting"), NotAnsweredYet()),
         Operation("build", InACategory("building"), NotAnsweredYet()),
     )
