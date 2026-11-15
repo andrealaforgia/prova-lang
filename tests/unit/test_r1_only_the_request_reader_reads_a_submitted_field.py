@@ -80,9 +80,20 @@ def _looked_up_by_bare_name(module: ast.Module) -> list[tuple[int, str, str]]:
                 and isinstance(node.value, ast.Name)
                 and node.value.id in given
                 and isinstance(node.ctx, ast.Load)
+                and _names_a_field(node.slice)
             ):
                 found.append((node.lineno, node.value.id, "by key"))
     return found
+
+
+def _names_a_field(key: ast.AST) -> bool:
+    """Whether a subscript names a field rather than counts a place.
+
+    A step that takes the first of a list it was handed is reading a
+    sequence, not reaching into a mapping for a field nobody checked.
+    Only a written-out name is the act this law is about.
+    """
+    return isinstance(key, ast.Constant) and isinstance(key.value, str)
 
 
 def test_no_step_of_the_service_pulls_a_field_out_of_a_bare_mapping():
@@ -122,6 +133,30 @@ def test_the_check_sees_a_field_read_by_its_key_and_not_only_by_get():
         f"a step reading a field by its key was not found: {found}. The check "
         "above would then call the module clean while a field went unread by "
         "the one reader, which is the defect it exists to catch."
+    )
+
+
+def test_a_step_taking_the_first_of_a_list_it_was_handed_is_left_alone():
+    """Given a step written into the service module that takes the
+    first of a list it was handed, when the module is checked, then it
+    is not reported: counting a place in a sequence is not reaching
+    into a mapping for a field nobody checked.
+
+    Without this control the law would grow until it forbade ordinary
+    code, and the next person would answer it by weakening the law
+    rather than by repairing what it catches.
+    """
+    ordinary = SERVICE.read_text(encoding="utf-8") + (
+        "\n\ndef _first_defect(defects):\n    return defects[0]\n"
+    )
+
+    found = _looked_up_by_bare_name(ast.parse(ordinary))
+
+    assert found == [], (
+        f"taking the first of a list was reported as reading an unchecked "
+        f"field: {found}. The law is about a field named in a mapping; a step "
+        "that counts a place in a sequence it was handed is doing something "
+        "else, and flagging it would push the next person to weaken the law."
     )
 
 
