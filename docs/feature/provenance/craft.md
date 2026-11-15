@@ -52,23 +52,35 @@ left to find it out.
 
 ## What was run, and what it cost
 
+Measured on the change as it now stands, after the repairs below.
+
 | Command | Result |
 |---|---|
-| `uv run pytest -q tests --durations=10` | 1297 passed in 204.25 s, exit 0 |
+| `uv run pytest -q tests --durations=10` | 1317 passed in 215.47 s, exit 0 |
 | `uv run pytest -q tests/unit` on the prefactor commit and on its parent | exit 0 on both |
 | `uv run python -m compileall -q src tests` | exit 0 here and on the tree before the change; no new finding |
 
 The seven new test files were then run nine times in a row. All nine runs
-passed all 20 checks: 3.18, 3.18, 3.19, 3.19, 3.20, 3.18, 3.19, 3.19 and
-3.19 seconds, a median of 3.19 s and a slowest run of 3.20 s. The slowest
-single check is 0.81 s, one of the three generated laws, which sends 12
-requests to the real command. The three checks that do not start a
-process at all run in under 5 ms each. Nothing here sleeps or reads a
-clock to decide an outcome.
+passed all 20 checks: 6.61, 6.59, 6.67, 6.59, 6.61, 6.67, 6.58, 6.63 and
+6.56 seconds, a median of 6.61 s and a slowest run of 6.67 s. Each of the
+three laws now sends one request per cell of its grid, which is what the
+file costs; the three checks that start no process at all run in under
+5 ms each. Nothing here sleeps or reads a clock to decide an outcome.
 
-One earlier run is worth keeping: the first whole-suite run of this
-change failed one accepted test, which is how the name collision above
-was found.
+An earlier count is worth keeping as a warning: this document first said
+1297 passed, the figure measured before the branch was brought onto the
+current main and before the repairs below. A count copied forward is a
+count nobody measured.
+
+## What changed after the review
+
+| Finding | What was wrong | What was done |
+|---|---|---|
+| F1 | `discover` published its claim, what it stands on and its manifest as fields every answer carries, and the sentence beside that said a condition there could never fail. Under `PROVA_BUDGET_ANSWER_SIZE=200` the answer is a refusal carrying none of the three. | They are published as every other operation does, when the answer completes; the false sentence is gone with the method that held it. A new law reads what is left of an answer a budget stopped against what is published. Re-injecting the old publication fails that law. |
+| F2 | This document reported a count measured on an earlier tree. | Re-measured on the final tree and reported above. |
+| F3 | The sentence published beside the `verify` shape named only one of an entry's two fields. | It names both, and says the two are read apart. |
+| F4 | Two of the three laws drew 12 cases from a closed grid of 30 cells. | They draw one case per cell. Removing the block from one operation alone now fails the first law. |
+| F5 | The word `holds` appears in two messages that were there before this change. | Nothing: they are not this change's, and neither claims anything was shown. |
 
 ## What this step does not prove
 
