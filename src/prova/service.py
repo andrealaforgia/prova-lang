@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from prova import checker, evaluator, obligations, syntax
+from prova import checker, evaluator, manifest, obligations, syntax
 from prova.reader import READING_LIMIT, ReaderError, TooDeeplyNested, end_of, read_program
 from prova.values import render
 
@@ -206,7 +206,7 @@ class FunctionName:
         if isinstance(asked, str):
             return cls(asked)
         return MalformedRequest.about(
-            "function",
+            manifest.FUNCTION.name,
             f"the 'function' field of the request holds "
             f"{type(asked).__name__}, not the name of a function: this tool "
             "looks a function up by the name its program declares for it, and "
@@ -232,7 +232,7 @@ class ArgumentTexts:
     def read(cls, supplied: object) -> "ArgumentTexts | MalformedRequest":
         if not isinstance(supplied, list):
             return MalformedRequest.about(
-                "arguments",
+                manifest.ARGUMENTS.name,
                 f"the 'arguments' field of the request holds "
                 f"{type(supplied).__name__}, not a list of the texts of "
                 "values: this tool reads one value from each text, and a "
@@ -243,7 +243,7 @@ class ArgumentTexts:
             )
         unreadable = [
             (
-                f"arguments[{place}]",
+                f"{manifest.ARGUMENTS.name}[{place}]",
                 f"the argument at place {place} of the request holds "
                 f"{type(written).__name__}, not the text of a value: this "
                 "tool reads a value from the characters of each argument, "
@@ -318,11 +318,11 @@ class Request:
         revision of those characters, and a value of another kind has
         none.
         """
-        written = self.submitted.get("source", "")
+        written = self.submitted.get(manifest.SOURCE.name, "")
         if isinstance(written, str):
             return written
         return MalformedRequest.about(
-            "source",
+            manifest.SOURCE.name,
             f"the 'source' field of the request holds "
             f"{type(written).__name__}, not the text of a program: this tool "
             "reads a program from the characters of that field, and a value "
@@ -337,8 +337,10 @@ class Request:
         Both are read in one pass: they are independent, so a client
         that wrote both wrongly is told about both at once.
         """
-        function = FunctionName.read(self.submitted.get("function"))
-        arguments = ArgumentTexts.read(self.submitted.get("arguments", []))
+        function = FunctionName.read(self.submitted.get(manifest.FUNCTION.name))
+        arguments = ArgumentTexts.read(
+            self.submitted.get(manifest.ARGUMENTS.name, [])
+        )
         if isinstance(function, MalformedRequest):
             if isinstance(arguments, MalformedRequest):
                 return function.and_also(arguments)
@@ -393,6 +395,15 @@ def _run_discover() -> dict:
                     "a source the tool refused before checking it through "
                     "carries one too."
                 ),
+                "operation_schemas": (
+                    "What each operation an agent may call takes and what its "
+                    "answer carries: one entry per field, with the kind of "
+                    "value it carries, when it is there and what it is for. "
+                    "The operation field itself is not one of them: a request "
+                    "whose operation field carries another kind of value, or "
+                    "a name this tool does not have, names no operation at "
+                    "all and is answered 'unavailable'."
+                ),
                 "verify": (
                     "A completed verify response is an inventory only: it lists the "
                     "obligations the program owes and attempts none of them, so every "
@@ -418,6 +429,7 @@ def _run_discover() -> dict:
                     },
                 },
             },
+            **manifest.published_parts(AVAILABLE_OPERATIONS, UNAVAILABLE_OPERATIONS),
         },
     }
 
