@@ -6,9 +6,11 @@ The only place that knows operation names.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 
 from prova import checker, evaluator, manifest, obligations, syntax, tree
+from prova.budgets import BudgetExhausted, Budgets, Exhaustion, Run, UnreadableBudget
 from prova.reader import (
     READING_LIMIT,
     ReaderError,
@@ -90,28 +92,40 @@ DIAGNOSTIC_CATEGORIES = tuple(checker.DIAGNOSTIC_KINDS)
 # does not answer attempts none of the work, which
 # tests/properties/test_i1_s1_p4_p5.py observes from outside by tracing
 # every module the process enters.
-def handle(submitted: object) -> dict:
+def handle(submitted: object, budgets: Budgets | None = None) -> dict:
     request = Request.read(submitted)
     if isinstance(request, MalformedRequest):
         return request.response_for(None)
 
+    run = (budgets if budgets is not None else Budgets.declared()).start()
+    try:
+        return _answer(request, run)
+    except BudgetExhausted as stopped:
+        return budget_response(request.names_as_written(), stopped.exhaustion)
+
+
+def _answer(request: "Request", run: Run) -> dict:
+    """The answer to a request this tool could read, measured against
+    the budgets of this run at every boundary between its stages."""
     operation = request.asks_for()
+    run.stop_if_exhausted()
     if operation in SOURCE_READING_OPERATIONS:
         source = request.source()
         if isinstance(source, MalformedRequest):
             return source.response_for(operation)
+        run.stop_if_source_too_large(source)
         if operation == "check":
-            return _run_check(source)
+            return _run_check(source, run)
         if operation == "examples":
-            return _run_examples(source)
+            return _run_examples(source, run)
         if operation == "verify":
-            return _run_verify(source)
+            return _run_verify(source, run)
         if operation == "parse":
-            return _run_parse(source)
+            return _run_parse(source, run)
         asked = request.evaluation_asked()
         if isinstance(asked, MalformedRequest):
             return asked.response_for(operation)
-        return _run_evaluate(source, asked)
+        return _run_evaluate(source, asked, run)
     if operation == "discover":
         return _run_discover()
     if operation in UNAVAILABLE_OPERATIONS:
@@ -137,6 +151,63 @@ def handle(submitted: object) -> dict:
             }
         ],
     }
+
+
+def answer_text(submitted: object, budgets: Budgets | None = None) -> str:
+    """The text of the one answer to `submitted`, inside the answer
+    budget of this run.
+
+    The one place an answer becomes the characters a caller reads, so
+    the size this tool measures is the size it would have printed. An
+    answer too large is replaced whole: the first part of one carries no
+    outcome, and a caller that parsed it would read a result this tool
+    never finished writing. The refusal that replaces it is this tool's
+    smallest answer and is printed whatever the budget says, which the
+    manifest states beside the budget.
+    """
+    within = budgets if budgets is not None else Budgets.declared()
+    answer = handle(submitted, within)
+    text = json.dumps(answer)
+    exhausted = within.answer_exhausted_by(len(text.encode("utf-8", "surrogatepass")))
+    if exhausted is None:
+        return text
+    return json.dumps(budget_response(answer.get("operation"), exhausted))
+
+
+def budget_response(operation: object, exhaustion: Exhaustion) -> dict:
+    """The one answer a run stopped inside a budget gives.
+
+    It carries the status, and one refusal naming the budget, what it
+    allowed and what was reached. There is no claim, no result and no
+    revision of a source in it: the tool stopped inside a budget of its
+    own and read no rule of the language over anything.
+    """
+    return {
+        "operation": operation,
+        "status": RESOURCE_EXHAUSTED,
+        "diagnostics": [
+            _diagnostic_dict(
+                checker.Diagnostic(
+                    exhaustion.category,
+                    exhaustion.message,
+                    about=checker.AboutTwoCounts(
+                        exhaustion.budget, exhaustion.maximum, exhaustion.reached
+                    ),
+                )
+            )
+        ],
+    }
+
+
+def budgets_refused(unreadable: UnreadableBudget) -> dict:
+    """The answer to a caller that wrote a budget this tool cannot read.
+
+    The same answer a field of a request that cannot be read gets, named
+    the same way: the variable to repair, and why.
+    """
+    return MalformedRequest.about(
+        unreadable.variable, unreadable.reason
+    ).response_for(None)
 
 
 @dataclass(frozen=True)
@@ -438,6 +509,9 @@ def _run_discover() -> dict:
                         "reason": evaluator.EVALUATION_LIMIT.reason(),
                     },
                 },
+                "budgets": Budgets.declared().published_for(
+                    AVAILABLE_OPERATIONS, RESOURCE_EXHAUSTED
+                ),
             },
             **manifest.published_parts(AVAILABLE_OPERATIONS, UNAVAILABLE_OPERATIONS),
         },
@@ -612,7 +686,7 @@ class Refusal:
         }
 
 
-def _checked_program(source: str):
+def _checked_program(source: str, run: Run):
     """The program `source` declares, checked against every rule of
     core-0 -- or the `Refusal` to answer with instead.
 
@@ -636,14 +710,15 @@ def _checked_program(source: str):
     except (ReaderError, syntax.SyntaxError_) as error:
         return Refusal("invalid_program", (_syntax_diagnostic(error),), revision)
 
+    run.stop_if_exhausted()
     diagnostics = checker.check_program(program)
     if diagnostics:
         return Refusal("invalid_program", tuple(diagnostics), revision)
     return program
 
 
-def _run_check(source: str) -> dict:
-    checked = _checked_program(source)
+def _run_check(source: str, run: Run) -> dict:
+    checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("check")
     program = checked
@@ -658,13 +733,13 @@ def _run_check(source: str) -> dict:
     }
 
 
-def _run_verify(source: str) -> dict:
+def _run_verify(source: str, run: Run) -> dict:
     """The obligations the program owes, every one of them not attempted.
 
     Reads nothing but `source`, writes nothing and keeps nothing: asking
     twice changes neither the answer nor anything else.
     """
-    checked = _checked_program(source)
+    checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("verify")
     program = checked
@@ -679,7 +754,7 @@ def _run_verify(source: str) -> dict:
     }
 
 
-def _run_parse(source: str) -> dict:
+def _run_parse(source: str, run: Run) -> dict:
     """The tree the tool built for `source`.
 
     Reads the source through the rule every operation that reads one
@@ -692,7 +767,7 @@ def _run_parse(source: str) -> dict:
     program alone, and widening what they all share for the one
     operation that reads prose would make every one of them carry it.
     """
-    checked = _checked_program(source)
+    checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("parse")
     program = checked
@@ -707,8 +782,8 @@ def _run_parse(source: str) -> dict:
     }
 
 
-def _run_examples(source: str) -> dict:
-    checked = _checked_program(source)
+def _run_examples(source: str, run: Run) -> dict:
+    checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("examples")
     program = checked
@@ -722,6 +797,7 @@ def _run_examples(source: str) -> dict:
                 "arguments": [render(a) for a in example.args],
                 "expected": render(example.expected),
             }
+            run.stop_if_exhausted()
             try:
                 actual = evaluator.call_function(function, example.args, program)
             except evaluator.EvaluationTooDeep as too_deep:
@@ -777,8 +853,8 @@ def _declared_place(program, name: str) -> tuple[int, int]:
     raise KeyError(name)
 
 
-def _run_evaluate(source: str, asked: EvaluationAsked) -> dict:
-    checked = _checked_program(source)
+def _run_evaluate(source: str, asked: EvaluationAsked, run: Run) -> dict:
+    checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("evaluate")
     program = checked
@@ -894,6 +970,7 @@ def _run_evaluate(source: str, asked: EvaluationAsked) -> dict:
             ],
         }
 
+    run.stop_if_exhausted()
     try:
         result = evaluator.call_function(function, args, program)
     except evaluator.EvaluationTooDeep as too_deep:

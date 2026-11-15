@@ -38,16 +38,23 @@ CHECK_THE_CLOCK = {
     "source": within_every_budget(),
 }
 
-# What a caller writes by mistake, and the variable it wrote it in.
+# What a caller writes by mistake: the variable it wrote it in, the text
+# it wrote, and what the refusal must quote back -- the value when the
+# value is at fault, the name when the name is.
 MISTAKES = {
-    "a value that is not a whole number": (variable_for(OPERATION_TIME), "ten"),
-    "a value with nothing in it": (variable_for(OPERATION_TIME), ""),
-    "a negative value": (variable_for(OPERATION_TIME), "-1"),
+    "a value that is not a whole number": (
+        variable_for(OPERATION_TIME), "ten", "'ten'",
+    ),
+    "a value with nothing in it": (variable_for(OPERATION_TIME), "", "''"),
+    "a negative value": (variable_for(OPERATION_TIME), "-1", "'-1'"),
     "a value above the number this tool declares": (
         variable_for(OPERATION_TIME),
         str(DECLARED[OPERATION_TIME] + 1),
+        str(DECLARED[OPERATION_TIME] + 1),
     ),
-    "a budget name this tool does not publish": ("PROVA_BUDGET_DISK_SIZE", "5"),
+    "a budget name this tool does not publish": (
+        "PROVA_BUDGET_DISK_SIZE", "5", "PROVA_BUDGET_DISK_SIZE",
+    ),
 }
 
 
@@ -88,7 +95,7 @@ def test_a_budget_a_caller_cannot_set_is_refused_by_name(mistake):
     sends a request, then the tool refuses by naming the variable
     instead of running as if nothing had been asked.
     """
-    variable, written = MISTAKES[mistake]
+    variable, written, quoted_back = MISTAKES[mistake]
 
     answer = run_with_environment(CHECK_THE_CLOCK, {variable: written})
     response = answer.assert_answered(mistake)
@@ -105,9 +112,10 @@ def test_a_budget_a_caller_cannot_set_is_refused_by_name(mistake):
         f"{variable!r}: {refusal}. A caller is sent to the one variable it "
         "must repair."
     )
-    assert written in refusal.get("reason", "") or written == "", (
-        f"the refusal for {mistake} does not quote back {written!r}: "
-        f"{refusal.get('reason')!r}. A caller reads what the tool saw, so it "
+    assert quoted_back in refusal.get("reason", ""), (
+        f"the refusal for {mistake} does not quote back {quoted_back!r}: "
+        f"{refusal.get('reason')!r}. A caller reads what the tool saw at "
+        "fault -- the value it wrote, or the name it wrote it under -- so it "
         "can tell a typing mistake from a disagreement about the number."
     )
     assert "result" not in response, (

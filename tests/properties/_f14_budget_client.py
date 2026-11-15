@@ -46,8 +46,8 @@ FORBIDDEN_WORDS = ("bound", "bounded", "domain", "verified", "proved", "proof", 
 
 # The operations that read the program a request carries, and the ones
 # this tool offers in all.
-READS_A_SOURCE = ("check", "examples", "evaluate", "verify")
-OFFERED = ("check", "examples", "evaluate", "verify", "discover")
+READS_A_SOURCE = ("check", "examples", "evaluate", "verify", "parse")
+OFFERED = ("check", "examples", "evaluate", "verify", "parse", "discover")
 
 
 def variable_for(budget: str) -> str:

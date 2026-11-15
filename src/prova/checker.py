@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields, is_dataclass
 from typing import ClassVar
 
-from prova import syntax
+from prova import budgets, syntax
 from prova.values import ConstructorValue
 
 @dataclass(frozen=True)
@@ -237,6 +237,14 @@ NESTING_LIMIT_EXCEEDED = "nesting_limit_exceeded"
 # each calling the next breaks no rule of core-0, and the one thing
 # that would make such a chain endless, a cycle, is already refused.
 EVALUATION_DEPTH_EXCEEDED = "evaluation_depth_exceeded"
+# A budget of the whole run passed: the source was larger than this tool
+# reads, the run had no time left, it had taken more memory than it is
+# given, or its answer was larger than it may print. Budgets too, and
+# kept apart from every rule of core-0 for the same reason: each of them
+# says how much work this tool does and nothing about what a program may
+# mean. They stand at no place in any text, because none of them is
+# about a form of one (SPEC.md lines 503-508).
+BUDGET_EXCEEDED_CATEGORIES = budgets.BUDGET_CATEGORIES
 
 # The one name core-0 reserves: a postcondition reads it as the
 # function's return value, so no binder may take it.
@@ -408,6 +416,16 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         granularity=("token",),
     ),
     EVALUATION_DEPTH_EXCEEDED: DiagnosticKind(AboutTwoCounts),
+    **{
+        category: DiagnosticKind(
+            AboutTwoCounts,
+            placed=NEVER,
+            points_into=(),
+            granularity=(),
+            revision=NEVER,
+        )
+        for category in BUDGET_EXCEEDED_CATEGORIES
+    },
     "non_exhaustive_match": DiagnosticKind(AboutASymbol),
     CYCLIC_DEPENDENCY: DiagnosticKind(
         AboutASymbol,

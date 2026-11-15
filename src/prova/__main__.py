@@ -4,10 +4,12 @@ response to stdout."""
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import sys
 
 from prova import service
+from prova.budgets import Budgets, UnreadableBudget
 
 
 def main() -> None:
@@ -17,14 +19,18 @@ def main() -> None:
     else:
         request_text = sys.stdin.read()
 
+    budgets = Budgets.from_environment(os.environ)
+    if isinstance(budgets, UnreadableBudget):
+        print(json.dumps(service.budgets_refused(budgets)))
+        sys.exit(0)
+
     try:
         request = json.loads(request_text)
     except json.JSONDecodeError as error:
         print(json.dumps(_unreadable_text(error).response_for(None)))
         sys.exit(0)
 
-    response = service.handle(request)
-    print(json.dumps(response))
+    print(service.answer_text(request, budgets))
     sys.exit(0)
 
 
