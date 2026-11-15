@@ -1663,3 +1663,271 @@ def _check_operator(
                 )
         return "Bool"
     raise ValueError(f"unknown operator {op!r}")
+
+
+# --- what the contracts of a program promise -------------------------------
+#
+# SPEC.md, "Meaning of a claim": omitted blocks mean `true`, reports must
+# identify omitted and explicitly trivial contracts, and acceptance of a
+# trivial claim must not be described as meaningful domain correctness. A
+# program keeping every rule of core-0 is accepted whether it promises
+# anything or not, so the report beside that answer is the one place a
+# reader learns which functions promise nothing.
+
+CONTRACT_OMITTED = "omitted"
+CONTRACT_TRIVIAL = "trivial"
+CONTRACT_STATED = "stated"
+
+# The three words a contract block can be recorded with, and nothing
+# else. Read when a strength is built and when the manifest publishes
+# the vocabulary, so a report can never record a word a client cannot
+# look up.
+CONTRACT_STRENGTH_NAMES = (CONTRACT_OMITTED, CONTRACT_TRIVIAL, CONTRACT_STATED)
+
+
+def _is_literal_true(clause: object) -> bool:
+    """Whether `clause` is the literal `true` the program writes, rather
+    than an expression that happens to be true of every input.
+
+    SPEC.md asks for *explicitly* trivial contracts, so only the literal
+    is read here: deciding that `(or p (not p))` promises nothing would
+    need a solver, and this tool has none.
+    """
+    return isinstance(clause, syntax.BoolLit) and clause.value
+
+
+@dataclass(frozen=True)
+class ContractStrength:
+    """How much one block of a contract -- one `requires` or one
+    `ensures` -- promises.
+
+    One of the three values below and nothing else: a strength built
+    from any other word refuses, so an answer can never record a word
+    the manifest does not publish.
+    """
+
+    name: str
+    meaning: str
+
+    def __post_init__(self) -> None:
+        if self.name not in CONTRACT_STRENGTH_NAMES:
+            raise ValueError(
+                f"WHAT: {self.name!r} is not one of the strengths a contract "
+                f"block can be recorded with "
+                f"({listed(CONTRACT_STRENGTH_NAMES)}). "
+                "WHY: a reader of an answer looks every word of the report up "
+                "in the manifest, and a word the manifest does not publish "
+                "tells that reader nothing. "
+                "HOW: record the block as omitted, trivial or stated, or add "
+                "the new strength to prova.checker.CONTRACT_STRENGTH_NAMES, "
+                "beside the three below, before recording it."
+            )
+
+    @classmethod
+    def of(cls, clauses: tuple) -> "ContractStrength":
+        """How much a block holding `clauses` promises: nothing when the
+        program writes none, nothing when every clause it writes is the
+        literal `true`, and something otherwise.
+
+        The clauses of a block are a conjunction (SPEC.md, "Meaning of a
+        claim"), so one clause that is not the literal `true` makes the
+        block say that clause.
+        """
+        if not clauses:
+            return OMITTED_CONTRACT
+        if all(_is_literal_true(clause) for clause in clauses):
+            return TRIVIAL_CONTRACT
+        return STATED_CONTRACT
+
+    @classmethod
+    def named(cls, name: str) -> "ContractStrength":
+        """The one strength recorded under `name`."""
+        for strength in CONTRACT_STRENGTHS:
+            if strength.name == name:
+                return strength
+        raise ValueError(
+            f"WHAT: no contract strength is recorded under {name!r} "
+            f"({listed(CONTRACT_STRENGTH_NAMES)}). "
+            "WHY: the strengths are a closed list, so that the manifest and "
+            "every answer use one vocabulary. "
+            "HOW: ask for omitted, trivial or stated."
+        )
+
+    def promises_something(self) -> bool:
+        return self.name == CONTRACT_STATED
+
+
+OMITTED_CONTRACT = ContractStrength(
+    CONTRACT_OMITTED,
+    "the program writes no such block, which reads as true and promises "
+    "nothing",
+)
+TRIVIAL_CONTRACT = ContractStrength(
+    CONTRACT_TRIVIAL,
+    "the block is written, and every clause in it is the literal true, so it "
+    "promises nothing",
+)
+STATED_CONTRACT = ContractStrength(
+    CONTRACT_STATED,
+    "the block has a clause that is not the literal true, so it says "
+    "something about the function",
+)
+CONTRACT_STRENGTHS = (OMITTED_CONTRACT, TRIVIAL_CONTRACT, STATED_CONTRACT)
+
+
+@dataclass(frozen=True)
+class FunctionContracts:
+    """What the two contract blocks of one function promise."""
+
+    function: str
+    precondition: ContractStrength
+    postcondition: ContractStrength
+
+    @classmethod
+    def of(cls, function: syntax.Function) -> "FunctionContracts":
+        return cls(
+            function.name,
+            ContractStrength.of(function.requires),
+            ContractStrength.of(function.ensures),
+        )
+
+    def blocks(self) -> tuple[ContractStrength, ContractStrength]:
+        return (self.precondition, self.postcondition)
+
+    def promises_something(self) -> bool:
+        return any(block.promises_something() for block in self.blocks())
+
+    def as_dict(self) -> dict:
+        return {
+            "function": self.function,
+            "precondition": self.precondition.name,
+            "postcondition": self.postcondition.name,
+        }
+
+
+# What the report says beside the entries, so the answer itself states
+# how much it is worth. No sentence here reports an outcome over the
+# program: a completed check says the rules of core-0 were kept over one
+# text, and a program whose every block promises nothing says so.
+NOTHING_IS_PROMISED = (
+    "Every precondition and postcondition in this program is omitted or "
+    "written as the literal true, so its contracts say nothing about what its "
+    "functions answer. A completed check reports that the rules of core-0 "
+    "were kept over this text and nothing beyond that."
+)
+SOMETHING_IS_PROMISED = (
+    "This report says which contract blocks are written and which of them "
+    "promise nothing. It does not say whether a block that promises something "
+    "is true of its function: a completed check reports that the rules of "
+    "core-0 were kept over this text."
+)
+NO_FUNCTION_IS_DECLARED = (
+    "This program declares no function, so it writes no contract at all."
+)
+
+
+@dataclass(frozen=True)
+class ContractReport:
+    """Which functions of one program promise nothing.
+
+    One entry per declared function, in declaration order. Two entries
+    may not name one function: a reader counts each declared function
+    once, and the totals of a report that counted one twice could not be
+    read against the source.
+    """
+
+    entries: tuple[FunctionContracts, ...]
+
+    def __post_init__(self) -> None:
+        named = [entry.function for entry in self.entries]
+        repeated = sorted({name for name in named if named.count(name) > 1})
+        if repeated:
+            raise ValueError(
+                f"WHAT: {repeated} each name more than one entry of the same "
+                "contract report. "
+                "WHY: one entry says what one declared function promises, so "
+                "that a reader counts each function once and reads the totals "
+                "against the source; a repeated entry makes both unreadable. "
+                "HOW: build the report from the declared functions of a "
+                "checked program, as ContractReport.of does: a program "
+                "declaring one name twice is refused before it reaches here."
+            )
+
+    @classmethod
+    def of(cls, program: syntax.Program) -> "ContractReport":
+        return cls(
+            tuple(
+                FunctionContracts.of(function)
+                for function in program.functions.values()
+            )
+        )
+
+    def states_a_contract(self) -> bool:
+        """Whether any block of any declared function promises something."""
+        return any(entry.promises_something() for entry in self.entries)
+
+    def note(self) -> str:
+        if not self.entries:
+            return NO_FUNCTION_IS_DECLARED
+        if self.states_a_contract():
+            return SOMETHING_IS_PROMISED
+        return NOTHING_IS_PROMISED
+
+    def _counted(self) -> dict:
+        counted = {name: 0 for name in CONTRACT_STRENGTH_NAMES}
+        for entry in self.entries:
+            for block in entry.blocks():
+                counted[block.name] += 1
+        return counted
+
+    def as_dict(self) -> dict:
+        return {
+            "functions": [entry.as_dict() for entry in self.entries],
+            "totals": {
+                "functions": len(self.entries),
+                "contracts": 2 * len(self.entries),
+                **self._counted(),
+            },
+            "states_a_contract": self.states_a_contract(),
+            "note": self.note(),
+        }
+
+
+def contract_report_published(carried_by: tuple[str, ...]) -> dict:
+    """The shape of the contract report as the manifest states it.
+
+    Built from the same strengths every entry is recorded with, so the
+    shape published and the shape answered cannot drift apart. The
+    operations carrying it are passed in: the dispatcher is the one place
+    that knows operation names.
+    """
+    return {
+        "what": (
+            "which functions of the checked program promise nothing: for each "
+            "declared function, whether its requires block and its ensures "
+            "block is omitted, trivial or stated"
+        ),
+        "carried_by": list(carried_by),
+        "entry_fields": {
+            "function": "the name the program declares the function under",
+            "precondition": "the strength of its requires block",
+            "postcondition": "the strength of its ensures block",
+        },
+        "strengths": {
+            strength.name: strength.meaning for strength in CONTRACT_STRENGTHS
+        },
+        "totals_fields": {
+            "functions": "how many functions the program declares",
+            "contracts": (
+                "how many contract blocks those functions have: two each, a "
+                "requires and an ensures"
+            ),
+            CONTRACT_OMITTED: "how many of those blocks the program writes none of",
+            CONTRACT_TRIVIAL: "how many of them are written as the literal true",
+            CONTRACT_STATED: "how many of them say something",
+        },
+        "states_a_contract": (
+            "false when every block of every declared function is omitted or "
+            "trivial, and true when at least one of them is stated"
+        ),
+    }

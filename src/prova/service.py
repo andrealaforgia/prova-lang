@@ -49,6 +49,14 @@ STATUSES = {
     "unavailable": "the operation is not one this tool answers yet",
 }
 
+# The operations whose answer carries the contract report. `check` is
+# the answer whose completed status a reader can mistake for a
+# meaningful result, so the report that says which functions promise
+# nothing stands beside it; `verify` already answers that nothing was
+# attempted, and an answer that refuses a program carries no report
+# because no program was read.
+CONTRACT_REPORT_OPERATIONS = ("check",)
+
 # Every category a refusal carries, read from the kinds that say what
 # each of them carries: the published list and the published shape are
 # the same table, so a category can never be announced without its shape
@@ -148,6 +156,9 @@ def _run_discover() -> dict:
             "operations": availability,
             "statuses": dict(STATUSES),
             "diagnostic_categories": list(DIAGNOSTIC_CATEGORIES),
+            "contract_report": checker.contract_report_published(
+                CONTRACT_REPORT_OPERATIONS
+            ),
             "diagnostic_schemas": {
                 category: checker.DIAGNOSTIC_KINDS[category].published()
                 for category in DIAGNOSTIC_CATEGORIES
@@ -333,6 +344,7 @@ def _run_check(source: str) -> dict:
     checked = _checked_program(source)
     if isinstance(checked, Refusal):
         return checked.response_for("check")
+    program = checked
 
     return {
         "operation": "check",
@@ -340,6 +352,7 @@ def _run_check(source: str) -> dict:
         "claim": {"kind": "static_check", "scope": "this input"},
         "source_digest": _source_digest(source),
         "diagnostics": [],
+        "contract_report": checker.ContractReport.of(program).as_dict(),
     }
 
 
