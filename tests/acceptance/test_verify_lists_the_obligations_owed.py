@@ -511,32 +511,6 @@ def test_nothing_in_the_answer_reports_work_the_tool_never_did():
             f"HOW: reword those entries: {response}"
         )
 
-
-def test_an_obligation_the_tool_cannot_settle_claims_nothing():
-    """Given a program multiplying two numbers neither of which is known
-    -- which SPEC.md puts outside the automation required here -- when the
-    Owner reads the answer, then that obligation is unsettled and no word
-    in its entry reports work the tool did not do.
-
-    The scan above runs over the two shipped examples, where every entry
-    is settled. This one gives it entries that are not, so the rule it
-    guards is read against data that could break it.
-    """
-    entries = _obligations(_run("verify", OUTSIDE_THE_FRAGMENT))
-    unsettled = [entry for entry in entries if entry.get("result") == "unknown"]
-
-    assert unsettled, (
-        "WHAT: every obligation of a program multiplying two unknown numbers "
-        "was settled. WHY: this test needs an unsettled entry to scan; a tool "
-        "that settles this program has grown a fragment this test no longer "
-        f"describes. HOW: inspect the answer: {entries}"
-    )
-    hits = _claim_words(unsettled)
-    assert not hits, (
-        f"WHAT: an unsettled entry contains {sorted(set(hits))}. "
-        "WHY: nothing was shown about it, so its entry must report no outcome. "
-        f"HOW: reword the entry: {unsettled}"
-    )
         assert isinstance(inventory.get("note"), str) and inventory["note"].strip(), (
             f"WHAT: the answer for {label} carries no note saying nothing was attempted. "
             "WHY: a reader must not mistake a list of work owed for work done. "
@@ -633,3 +607,30 @@ def test_asking_twice_about_the_same_program_owes_exactly_the_same_list():
         f"HOW: inspect the identities: {identities}"
     )
     assert all(isinstance(identity, str) and identity for identity in identities), identities
+
+
+def test_an_obligation_the_tool_cannot_settle_claims_nothing():
+    """Given a program multiplying two numbers neither of which is known
+    -- which SPEC.md puts outside the automation required here -- when the
+    Owner reads the answer, then that obligation is unsettled and no word
+    in its entry reports work the tool did not do.
+
+    The scan in the test above runs over the two shipped examples, where
+    every entry is settled. This one gives it entries that are not, so the
+    rule it guards is read against data that could break it.
+    """
+    entries = _obligations(_run("verify", OUTSIDE_THE_FRAGMENT))
+    unsettled = [entry for entry in entries if entry.get("result") == "unknown"]
+
+    assert unsettled, (
+        "WHAT: every obligation of a program multiplying two unknown numbers "
+        "was settled. WHY: this test needs an unsettled entry to scan; a tool "
+        "that settles this program has grown a fragment this test no longer "
+        f"describes. HOW: inspect the answer: {entries}"
+    )
+    hits = _claim_words(unsettled)
+    assert not hits, (
+        f"WHAT: an unsettled entry contains {sorted(set(hits))}. "
+        "WHY: nothing was shown about it, so its entry must report no outcome. "
+        f"HOW: reword the entry: {unsettled}"
+    )
