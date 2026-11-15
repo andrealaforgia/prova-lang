@@ -141,20 +141,28 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
-- M src/prova/checker.py (+268 -0 lines)
+- A docs/contract-report/DECISIONS.md (+11 -0 lines)
+- A docs/contract-report/SUMMARY.md (+385 -0 lines)
+- A docs/contract-report/TRACE.md (+5 -0 lines)
+- A docs/feature/contract-report/craft.md (+113 -0 lines)
+- A docs/feature/contract-report/oracle.md (+61 -0 lines)
+- A docs/feature/contract-report/selfreview.md (+48 -0 lines)
+- M src/prova/checker.py (+273 -0 lines)
 - M src/prova/service.py (+13 -0 lines)
-- A tests/acceptance/_f13_contract_fixtures.py (+192 -0 lines)
+- A tests/acceptance/_f13_contract_fixtures.py (+205 -0 lines)
 - A tests/acceptance/test_f13_b1_a_function_without_a_precondition_is_recorded_as_omitted.py (+55 -0 lines)
-- A tests/acceptance/test_f13_b2_a_contract_written_as_true_is_recorded_as_trivial.py (+73 -0 lines)
+- A tests/acceptance/test_f13_b2_a_contract_written_as_true_is_recorded_as_trivial.py (+92 -0 lines)
 - A tests/acceptance/test_f13_b3_a_real_contract_is_recorded_as_neither.py (+102 -0 lines)
-- A tests/acceptance/test_f13_b4_a_program_that_promises_nothing_is_not_called_meaningful.py (+103 -0 lines)
-- A tests/acceptance/test_f13_b5_the_manifest_publishes_the_shape_of_the_report.py (+128 -0 lines)
-- A tests/properties/test_f13_contract_report_laws.py (+184 -0 lines)
+- A tests/acceptance/test_f13_b4_a_program_that_promises_nothing_is_not_called_meaningful.py (+125 -0 lines)
+- A tests/acceptance/test_f13_b5_the_manifest_publishes_the_shape_of_the_report.py (+132 -0 lines)
+- A tests/properties/test_f13_contract_report_laws.py (+186 -0 lines)
 - A tests/unit/test_f13_contract_report_refuses_what_it_cannot_say.py (+102 -0 lines)
 
 ## Commits (git log, BASE to HEAD)
 
 - 5b558e4 [F13] say which contracts are missing or trivial
+- 7eceb90 [F13] hand the contract report over with its record
+- fed906d [F13] read a contract block for its value, and publish every part of the report
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
@@ -338,48 +346,48 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   20 failed, 1 passed in 16.73s
   ```
 
-## 2. craft: Craft the change (revision 1)
+## 3. craft: Craft the change (revision 2)
 
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 120.183s
-  - tests (read from the run): 1066 passed in 120.05s
-  - slowest: 6.74s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 4.41s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 3.92s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 3.36s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 2.62s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 1.98s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 122.195s
+  - tests (read from the run): 1067 passed in 122.06s
+  - slowest: 6.78s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 4.40s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 3.93s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 3.40s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 2.74s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 2.00s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
   - slowest: 1.65s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.47s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 1.36s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  - slowest: 1.35s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  - slowest: 1.57s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.44s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  - slowest: 1.43s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
   ```text
   ........................................................................ [  6%]
   ........................................................................ [ 13%]
   ........................................................................ [ 20%]
-  ........................................................................ [ 27%]
+  ........................................................................ [ 26%]
   ........................................................................ [ 33%]
   ........................................................................ [ 40%]
   ........................................................................ [ 47%]
-  ........................................................................ [ 54%]
+  ........................................................................ [ 53%]
   ........................................................................ [ 60%]
   ........................................................................ [ 67%]
   ........................................................................ [ 74%]
-  ........................................................................ [ 81%]
+  ........................................................................ [ 80%]
   ........................................................................ [ 87%]
   ........................................................................ [ 94%]
-  ..........................................................               [100%]
+  ...........................................................              [100%]
   ============================= slowest 10 durations =============================
-  6.74s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  4.41s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  3.92s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  3.36s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  2.62s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  1.98s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  6.78s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  4.40s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  3.93s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  3.40s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  2.74s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  2.00s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
   1.65s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.47s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  1.36s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  1.35s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  1066 passed in 120.05s (0:02:00)
+  1.57s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.44s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  1.43s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1067 passed in 122.06s (0:02:02)
   ```
-- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.036s
+- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.057s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this environment, checked from a shell command and from a login shell; the client answered exit 3 before any question was sent, so the two open choices were decided locally and recorded as DEC1 and DEC2 of the oracle step
