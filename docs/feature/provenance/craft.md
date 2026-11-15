@@ -50,10 +50,25 @@ left to find it out.
    no field added, the unit suite green before and after.
 2. The feature commit adds everything above.
 
-## What was run
+## What was run, and what it cost
 
-The commands and their output are in the brief, with the test cost
-measured over nine runs of the new files.
+| Command | Result |
+|---|---|
+| `uv run pytest -q tests --durations=10` | 1297 passed in 204.25 s, exit 0 |
+| `uv run pytest -q tests/unit` on the prefactor commit and on its parent | exit 0 on both |
+| `uv run python -m compileall -q src tests` | exit 0 here and on the tree before the change; no new finding |
+
+The seven new test files were then run nine times in a row. All nine runs
+passed all 20 checks: 3.18, 3.18, 3.19, 3.19, 3.20, 3.18, 3.19, 3.19 and
+3.19 seconds, a median of 3.19 s and a slowest run of 3.20 s. The slowest
+single check is 0.81 s, one of the three generated laws, which sends 12
+requests to the real command. The three checks that do not start a
+process at all run in under 5 ms each. Nothing here sleeps or reads a
+clock to decide an outcome.
+
+One earlier run is worth keeping: the first whole-suite run of this
+change failed one accepted test, which is how the name collision above
+was found.
 
 ## What this step does not prove
 
