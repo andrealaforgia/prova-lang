@@ -69,11 +69,13 @@ def declared_with(word: str) -> str:
 class OutOfProfileSource:
     """One source that uses a construct `core-0` does not have: the
     source, the words the refusal must say so a reader knows what to
-    repair, the line the construct stands on, and the in-profile twin
-    that differs only in that construct."""
+    repair, the stable word a caller sorts the refusal by, the line the
+    construct stands on, and the in-profile twin that differs only in
+    that construct."""
 
     source: str
     naming: tuple[str, ...]
+    construct: str
     line: int
     twin: str
     twin_status: str = "completed"
@@ -83,54 +85,63 @@ OUT_OF_PROFILE: dict[str, OutOfProfileSource] = {
     "division": OutOfProfileSource(
         source=with_body("(/ n 1)"),
         naming=("division", "/"),
+        construct="division",
         line=BODY_LINE,
         twin=with_body("(* n 1)"),
     ),
     "a decimal literal": OutOfProfileSource(
         source=with_body("1.5"),
         naming=("decimal", "1.5"),
+        construct="decimal_literal",
         line=BODY_LINE,
         twin=with_body("1"),
     ),
     "a decimal literal in an example": OutOfProfileSource(
         source=WELL_FORMED.replace("=> 1)", "=> 1.0)"),
         naming=("decimal", "1.0"),
+        construct="decimal_literal",
         line=3,
         twin=WELL_FORMED,
     ),
     "a text literal": OutOfProfileSource(
         source=with_body('"ok"'),
         naming=("text", '"ok"'),
+        construct="text_literal",
         line=BODY_LINE,
         twin=with_body("1"),
     ),
     "a trailing top-level expression": OutOfProfileSource(
         source=WELL_FORMED + "\n(f 1)\n",
         naming=("top-level expression", "f"),
+        construct="top_level_expression",
         line=6,
         twin=WELL_FORMED,
     ),
     "the declaration word 'defspec'": OutOfProfileSource(
         source=declared_with("defspec"),
         naming=("defspec", "declaration"),
+        construct="declaration_form",
         line=1,
         twin=WELL_FORMED,
     ),
     "the declaration word 'fn'": OutOfProfileSource(
         source=declared_with("fn"),
         naming=("fn", "declaration"),
+        construct="declaration_form",
         line=1,
         twin=WELL_FORMED,
     ),
     "the declaration word 'trust'": OutOfProfileSource(
         source=declared_with("trust"),
         naming=("trust", "declaration"),
+        construct="declaration_form",
         line=1,
         twin=WELL_FORMED,
     ),
     "the declaration word 'module'": OutOfProfileSource(
         source=declared_with("module"),
         naming=("module", "declaration"),
+        construct="declaration_form",
         line=1,
         twin=WELL_FORMED,
     ),
@@ -143,6 +154,19 @@ OUT_OF_PROFILE: dict[str, OutOfProfileSource] = {
 # feature: it is a word the reader cannot place, and it keeps the
 # refusal the reader already gives it.
 MISSPELLED_DECLARATION_WORD = "(deftypo T (record (x Int)))\n"
+
+# Neither is a parenthesis in the wrong place. Each source below is
+# repaired by moving one pair of parentheses, which is exactly the
+# repair an out-of-profile refusal cannot offer: telling a reader that
+# core-0 will never have this, when the declaration inside is already a
+# core-0 declaration, sends them away from a one-character fix.
+MISPLACED_PARENTHESES = {
+    "a whole declaration inside one pair of parentheses too many": (
+        f"({WELL_FORMED.strip()})\n"
+    ),
+    "a call whose head is itself a parenthesised form": "((f) 1)\n",
+    "an empty pair of parentheses on its own": "()\n",
+}
 
 # An in-profile program that breaks an in-profile rule: it must keep the
 # status and the category its own rule owns.
@@ -197,6 +221,7 @@ class PreservedCase:
     """
 
     naming: tuple[str, ...]
+    construct: str
     substitutions: tuple[tuple[str, str], ...] = ()
     drop_last_form: bool = True
     adapted_status: str = INVALID_PROGRAM_STATUS
@@ -226,43 +251,49 @@ class PreservedCase:
 _TO_WHOLE_NUMBERS = (("Decimal", "Int"), ("3.0", "3"), ("1.0", "1"))
 
 PRESERVED_CASES: dict[str, PreservedCase] = {
-    "boolean-operands": PreservedCase(naming=("top-level expression", "choose")),
-    "builtin-hides-name": PreservedCase(naming=("top-level expression", "choose")),
-    "builtin-hides-type": PreservedCase(naming=("top-level expression", "choose")),
+    "boolean-operands": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
+    "builtin-hides-name": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
+    "builtin-hides-type": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
     "constant-division": PreservedCase(
         naming=("decimal", "1.0"),
+        construct="decimal_literal",
         substitutions=_TO_WHOLE_NUMBERS + (("(/ 3 3)", "(* 3 3)"), ("=> 1)", "=> 9)")),
         adapted_status="completed",
     ),
     "exact-division": PreservedCase(
         naming=("decimal", "3.0"),
+        construct="decimal_literal",
         substitutions=_TO_WHOLE_NUMBERS
         + (("(/ amount 3)", "(* amount 1)"), ("=> 1)", "=> 3)")),
         adapted_status="completed",
     ),
     "false-contract": PreservedCase(
-        naming=("top-level expression", "wrong"), adapted_status="completed"
+        naming=("top-level expression", "wrong"), construct="top_level_expression", adapted_status="completed"
     ),
     "false-contract-plus-unencoded": PreservedCase(
-        naming=("top-level expression", "wrong"), adapted_status="completed"
+        naming=("top-level expression", "wrong"), construct="top_level_expression", adapted_status="completed"
     ),
-    "hidden-operator-type": PreservedCase(naming=("top-level expression", "choose")),
-    "hidden-unknown-name": PreservedCase(naming=("top-level expression", "choose")),
+    "hidden-operator-type": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
+    "hidden-unknown-name": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
     "inexact-division": PreservedCase(
         naming=("decimal", "3.0"),
+        construct="decimal_literal",
         substitutions=_TO_WHOLE_NUMBERS
         + (("(/ amount 3)", "(* amount 1)"), ("=> 1)", "=> 3)")),
         adapted_status="completed",
     ),
     "missing-call-precondition": PreservedCase(
         naming=("defspec", "declaration"),
+        construct="declaration_form",
         substitutions=(("(defspec ", "(defn "),),
         adapted_status="completed",
     ),
-    "named-call-arity": PreservedCase(naming=("top-level expression", "choose")),
-    "non-bool-condition": PreservedCase(naming=("top-level expression", "choose")),
+    "named-call-arity": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
+    "non-bool-condition": PreservedCase(naming=("top-level expression", "choose"), construct="top_level_expression"),
     "valid-builtin": PreservedCase(
-        naming=("text", '"ok"'), substitutions=(('"ok"', "1"),)
+        naming=("text", '"ok"'),
+        construct="text_literal",
+        substitutions=(('"ok"', "1"),),
     ),
 }
 

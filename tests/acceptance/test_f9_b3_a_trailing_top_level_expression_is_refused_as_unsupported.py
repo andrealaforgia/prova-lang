@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from _f9_profile_fixtures import (
     INVALID_PROGRAM_STATUS,
+    MISPLACED_PARENTHESES,
     MISSPELLED_DECLARATION_WORD,
     OUT_OF_PROFILE,
     UNSUPPORTED_CATEGORY,
@@ -74,3 +75,30 @@ def test_a_misspelled_declaration_word_keeps_the_refusal_it_has_today():
     assert "deftypo" in response["diagnostics"][0].get("reason", ""), (
         f"the refusal does not name the word that cannot be placed: {response}."
     )
+
+
+def test_a_misplaced_parenthesis_keeps_the_refusal_it_has_today():
+    """Given each of the 3 sources whose only defect is a parenthesis in
+    the wrong place -- among them a whole `defn` core-0 does define,
+    wrapped in one pair too many -- when each is checked, then each is
+    still refused as an invalid program in the `syntax` category.
+
+    Their repair is to move a parenthesis. An out-of-profile refusal
+    would tell the reader that core-0 will never have what they wrote,
+    which is both untrue and a remedy no respelling can follow.
+    """
+    for described, source in sorted(MISPLACED_PARENTHESES.items()):
+        response = check(source).response()
+
+        assert response.get("status") == INVALID_PROGRAM_STATUS, (
+            f"{described} was answered {response.get('status')!r}: {response}. "
+            "The declaration it holds is one core-0 defines; only the "
+            "parentheses are wrong, so this is the refusal the reader already "
+            "gets."
+        )
+        assert categories(response) == ["syntax"], (
+            f"{described} was refused as {categories(response)}: {response}. A "
+            "parenthesis in the wrong place is not a construct core-0 lacks, "
+            "and telling a reader to wait for a later profile sends them away "
+            "from a one-character repair."
+        )

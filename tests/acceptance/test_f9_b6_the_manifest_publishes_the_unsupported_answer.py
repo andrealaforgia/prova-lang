@@ -70,8 +70,8 @@ def test_the_manifest_lists_the_status_and_the_category_this_rule_adds():
     ]
     assert not missing_statuses, (
         f"the manifest lists {sorted(statuses)} and leaves out {missing_statuses}, "
-        "which the tool already answers with. A list of statuses that is not "
-        "every status sends a caller to guess the rest."
+        "which an answered request already carries. A list that is not every "
+        "status of an answered request sends a caller to guess the rest."
     )
 
     assert UNSUPPORTED_CATEGORY in published, (
@@ -90,6 +90,29 @@ def test_the_manifest_lists_the_status_and_the_category_this_rule_adds():
     assert "out_of_profile" not in published and "out_of_profile" not in statuses, (
         f"the manifest publishes a name the tool never answers with: {result}. "
         "Publish only what the tool reports."
+    )
+
+
+def test_the_manifest_says_what_the_list_of_statuses_covers():
+    """Given a caller reading the statuses, when it looks for the one an
+    unreadable request gets, then the manifest says the list covers an
+    answered request, that the command answers an unreadable one with
+    `tool_failure`, and `tool_failure` is not in the list itself.
+
+    Without that sentence a caller meeting `tool_failure` would read the
+    list as wrong rather than as a different speaker.
+    """
+    result = discover().response()["result"]
+    said = result.get("documentation", {}).get("statuses", "")
+
+    assert "answered request" in said and "tool_failure" in said, (
+        f"the manifest does not say what its list of statuses covers: {said!r}. "
+        "A caller that meets a status the list leaves out cannot tell whether "
+        "the list is incomplete or whether another speaker answered."
+    )
+    assert "tool_failure" not in result["statuses"], (
+        f"the service lists a status it never answers with: {result['statuses']}. "
+        "The command answers an unreadable request; the service does not."
     )
 
 

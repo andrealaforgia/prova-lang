@@ -52,19 +52,18 @@ class UnsupportedConstruct(Exception):
     no such construct at all, so no spelling repairs it and the reader
     must stop writing it (SPEC.md lines 51-54, 96-99).
 
-    It cannot be built without naming the construct it refuses: a
-    refusal that did not say what is outside the profile would leave a
-    reader with nothing to stop writing.
+    It carries the `OutOfProfileConstruct` that met the source, not a
+    name copied out of it, so what the refusal says is outside the
+    profile is what the profile itself declares and can be nothing else.
     """
 
-    def __init__(self, message: str, construct: str, line: int, column: int):
-        if not construct:
-            raise ValueError(
-                "an out-of-profile refusal must name the construct it refuses: "
-                "this one was built with none, so a reader could not tell what "
-                "core-0 does not have; build it from the OutOfProfileConstruct "
-                "that met the source"
-            )
+    def __init__(
+        self,
+        message: str,
+        construct: OutOfProfileConstruct,
+        line: int,
+        column: int,
+    ):
         super().__init__(message)
         self.message = message
         self.construct = construct
@@ -255,16 +254,19 @@ MATCH_CLAUSES = AtLeastOne(
 
 @dataclass(frozen=True)
 class OutOfProfileConstruct:
-    """One construct core-0 does not have: the name a reader knows it
+    """One construct core-0 does not have: the name a caller sorts it
     by, what is absent that makes it meaningless here, and how to write
     the same intent with what core-0 does have.
+
+    `name` is the stable word the response carries beside the sentence,
+    so a caller tells the kinds apart without reading prose.
 
     Mirrors `MarkerToken`, which owns one token core-0 fixes at a single
     grammar position. This owns a construct core-0 fixes nowhere at all,
     and builds its own refusal, so no caller composes that sentence.
     """
 
-    construct: str
+    name: str
     absence: str
     repair: str
 
@@ -272,7 +274,7 @@ class OutOfProfileConstruct:
         return UnsupportedConstruct(
             f"{named} is unsupported in the core-0 profile: {self.absence}; "
             f"{self.repair}",
-            self.construct,
+            self,
             line,
             column,
         )
@@ -286,27 +288,27 @@ DIVISION = OutOfProfileConstruct(
     "division arrives with a later numeric profile",
 )
 DECIMAL_LITERAL = OutOfProfileConstruct(
-    "a decimal literal",
+    "decimal_literal",
     "the core-0 literals are 'true', 'false', the unit value '()' and whole "
     "numbers",
     "write a whole number, such as 1; decimal arithmetic arrives with a later "
     "numeric profile",
 )
 TEXT_LITERAL = OutOfProfileConstruct(
-    "a text literal",
+    "text_literal",
     "core-0 has no text values and no operator that reads one",
     "remove it, or say what it stands for with a type core-0 declares; text "
     "arrives with a later profile",
 )
 TOP_LEVEL_EXPRESSION = OutOfProfileConstruct(
-    "a top-level expression",
+    "top_level_expression",
     "core-0 writes only 'deftype' and 'defn' forms at the top level, so a call "
     "written beside them has no place to run",
     "move the call into a function body, or ask for it with the 'evaluate' "
     "operation",
 )
 DECLARATION_FORM = OutOfProfileConstruct(
-    "a declaration form core-0 does not have",
+    "declaration_form",
     "core-0 declares only 'deftype' and 'defn'",
     "write the declaration as (defn name (sig (parameters) -> Type ! pure) "
     "(examples (example (name arguments) => value)) body)",
@@ -363,17 +365,23 @@ class ProfileBoundary:
             raise DECLARATION_FORM.refuse(
                 f"the declaration form {head!r}", line, column
             )
-        if self._is_an_expression(head):
+        if self._is_an_expression(form, head):
             raise TOP_LEVEL_EXPRESSION.refuse(
                 self._named_expression(form, head), line, column
             )
 
-    def _is_an_expression(self, head: object) -> bool:
+    def _is_an_expression(self, form: object, head: object) -> bool:
         """Whether a top-level form that declares nothing is recognisably
-        an expression. A word that is none of these is one the reader
-        cannot place at all, and keeps the refusal that owns it."""
+        an expression a reader meant to write.
+
+        A form whose head is not a symbol -- a parenthesised group, or a
+        form wrapped in one pair of parentheses too many -- is not one:
+        it is a misplaced parenthesis, which the reader repairs by moving
+        it, so it keeps the refusal that already owns it. The same holds
+        for a word the reader cannot place at all.
+        """
         if head is None:
-            return True
+            return isinstance(form, Atom)
         if head in OPERATORS or head in SPECIAL_FORMS:
             return True
         if head.startswith(".") or head[:1].isupper():
@@ -382,11 +390,9 @@ class ProfileBoundary:
 
     @staticmethod
     def _named_expression(form: object, head: object) -> str:
-        if head is not None:
-            return f"the top-level expression calling {head!r}"
-        if isinstance(form, Atom):
+        if head is None:
             return f"the top-level expression {form.text!r}"
-        return "the top-level expression standing there"
+        return f"the top-level expression calling {head!r}"
 
     def _read_every_token(self, node: object) -> None:
         if isinstance(node, Atom):

@@ -22,8 +22,11 @@ UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "build"})
 UNSUPPORTED_STATUS = "unsupported"
 UNSUPPORTED_CONSTRUCT = "unsupported_construct"
 
-# Every status `handle` answers with, and what each one tells a caller.
-# Published by the manifest, so the vocabulary is read from the tool.
+# Every status an answered request carries, and what each one tells a
+# caller. Published by the manifest, so the vocabulary is read from the
+# tool. A request the service cannot read as a request at all never gets
+# one of these: the command answers that itself, and the manifest says
+# so beside this list.
 STATUSES = {
     "completed": "the operation answered the request",
     "invalid_program": (
@@ -124,6 +127,13 @@ def _run_discover() -> dict:
                     "were checked and held for the supplied input; it is not a proof "
                     "for all inputs."
                 ),
+                "statuses": (
+                    "Every status an answered request carries. A request this "
+                    "service cannot read as a request at all is not answered "
+                    "here: the command answers it with the status "
+                    "'tool_failure' and exits 1, and 'tool_failure' is "
+                    "therefore not one of the statuses listed."
+                ),
                 "verify": (
                     "A completed verify response is an inventory only: it lists the "
                     "obligations the program owes and attempts none of them, so every "
@@ -172,13 +182,14 @@ def _out_of_profile_diagnostic(refusal: syntax.UnsupportedConstruct) -> dict:
     carries: the construct named, why core-0 cannot give it a meaning,
     how to write the intent instead, and the place it stands at.
 
-    `construct` is carried beside the sentence so a caller can tell the
+    `construct` is the stable word the profile gives that kind of
+    construct, carried beside the sentence so a caller can tell the
     kinds apart without reading the prose.
     """
     return {
         "category": UNSUPPORTED_CONSTRUCT,
         "reason": refusal.message,
-        "construct": refusal.construct,
+        "construct": refusal.construct.name,
         "location": {"line": refusal.line, "column": refusal.column},
     }
 

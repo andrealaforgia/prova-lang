@@ -46,6 +46,7 @@ from prova import service
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "acceptance"))
 
 from _f9_profile_fixtures import (
+    MISPLACED_PARENTHESES,
     MISSPELLED_DECLARATION_WORD,
     OUT_OF_PROFILE,
     PRESERVED_CASES,
@@ -139,6 +140,13 @@ def test_every_out_of_profile_refusal_names_its_construct_and_where_it_stands(
             "WHY: a reader repairs the construct the refusal names. "
             "HOW: name the construct and the profile it is outside of."
         )
+    assert diagnostic.get("construct") == case.construct, (
+        f"WHAT: {described} is reported as construct "
+        f"{diagnostic.get('construct')!r}, not {case.construct!r}: {response}. "
+        "WHY: a caller sorts refusals by that word without reading the "
+        "sentence, so it is part of the contract and not a convenience. "
+        "HOW: carry the name the profile gives that construct."
+    )
     location = diagnostic.get("location") or {}
     assert location.get("line") == case.line, (
         f"WHAT: {described} is refused at {location or 'nowhere'}, but the "
@@ -170,7 +178,15 @@ def test_every_preserved_counterexample_is_refused_for_the_construct_it_uses(nam
         "under this profile each is refused at the boundary. "
         "HOW: refuse the construct the file uses, naming it."
     )
-    reason = (response.get("diagnostics") or [{}])[0].get("reason", "")
+    diagnostic = (response.get("diagnostics") or [{}])[0]
+    assert diagnostic.get("construct") == case.construct, (
+        f"WHAT: {name!r} is reported as construct "
+        f"{diagnostic.get('construct')!r}, not {case.construct!r}: {response}. "
+        "WHY: the preserved case uses one named construct, and a caller sorts "
+        "it by that word. "
+        "HOW: carry the name the profile gives the construct the file uses."
+    )
+    reason = diagnostic.get("reason", "")
     for word in case.naming:
         assert word in reason, (
             f"WHAT: the refusal of {name!r} does not say {word!r}: {reason!r}. "
@@ -209,12 +225,18 @@ UNCHANGED_SOURCES = {
         {"unbound_name"},
     ),
     "a misspelled declaration word": ("invalid_program", {"syntax"}),
+    **{
+        described: ("invalid_program", {"syntax"})
+        for described in MISPLACED_PARENTHESES
+    },
 }
 
 
 def _unchanged_source(described: str) -> str:
     if described in SHIPPED_PROGRAMS:
         return shipped_source(described)
+    if described in MISPLACED_PARENTHESES:
+        return MISPLACED_PARENTHESES[described]
     if described == "a misspelled declaration word":
         return MISSPELLED_DECLARATION_WORD
     return UNBOUND_NAME_IN_PROFILE
