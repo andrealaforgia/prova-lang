@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from prova import checker, evaluator, formatter, manifest, obligations, syntax, tree
 from prova.budgets import BudgetExhausted, Budgets, Exhaustion, Run, UnreadableBudget
 from prova.reader import (
+    LITERAL_DIGITS,
     READING_LIMIT,
     ReaderError,
     TooDeeplyNested,
@@ -128,7 +129,7 @@ def _answer(request: "Request", run: Run) -> dict:
         source = request.source()
         if isinstance(source, MalformedRequest):
             return source.response_for(operation)
-        run.stop_if_source_too_large(source)
+        run.stop_if_source_too_large(source.characters)
         if operation == "check":
             return _run_check(source, run)
         if operation == "examples":
@@ -286,6 +287,50 @@ class MalformedRequest:
 
 
 @dataclass(frozen=True)
+class SubmittedText:
+    """One text a request carries, known to be writable as UTF-8.
+
+    Every text a request carries is turned back into bytes somewhere:
+    the source is hashed for the revision an answer carries, every text
+    is measured in bytes against the input budget, and all of them are
+    written into the JSON answer. A character that cannot be written as
+    UTF-8 -- half of a surrogate pair, which a client that decoded bytes
+    badly sends -- has no bytes at all, and the step that reached for
+    them used to end the run with nothing on standard output.
+
+    Built only by `read` below, which refuses such a text by name, so a
+    step that takes one of these is reached with a text that can be
+    written and never has to defend itself. Python still lets a caller
+    build one around any text by hand; nothing in this tool does, and
+    the one path that reads a request refuses.
+    """
+
+    characters: str
+
+    @classmethod
+    def read(cls, field: str, written: str) -> "SubmittedText | MalformedRequest":
+        try:
+            written.encode("utf-8")
+        except UnicodeEncodeError as half_a_character:
+            return MalformedRequest.about(
+                field,
+                f"the {field!r} field of the request holds a character at "
+                f"position {half_a_character.start} that cannot be written as "
+                f"UTF-8 ("
+                f"{written[half_a_character.start]!r}: "
+                f"{half_a_character.reason}): this tool reads every text a "
+                "request carries as the bytes it is written in -- it takes "
+                "the revision an answer carries from those bytes and measures "
+                "its budgets in them -- and half of a character has no bytes "
+                "to read; send the field as text whose characters can all be "
+                "written as UTF-8, writing a character outside the basic "
+                "plane as the one character it is rather than as the two "
+                "halves of its UTF-16 escape",
+            )
+        return cls(written)
+
+
+@dataclass(frozen=True)
 class FunctionName:
     """The name of a function a request asks this tool to call.
 
@@ -301,7 +346,10 @@ class FunctionName:
     @classmethod
     def read(cls, asked: object) -> "FunctionName | MalformedRequest":
         if isinstance(asked, str):
-            return cls(asked)
+            written = SubmittedText.read(manifest.FUNCTION.name, asked)
+            if isinstance(written, MalformedRequest):
+                return written
+            return cls(written.characters)
         return MalformedRequest.about(
             manifest.FUNCTION.name,
             f"the 'function' field of the request holds "
@@ -318,12 +366,13 @@ class ArgumentTexts:
     """The texts of the values a request supplies as arguments, one per
     parameter the function declares.
 
-    Every element is known to be a text before the first of them is
-    read, so a list holding one number refuses by name rather than
-    breaking the reader on the way through.
+    Every element is known to be a text that can be written as UTF-8
+    before the first of them is read, so a list holding one number, or
+    one half of a character, refuses by name rather than breaking the
+    reader on the way through.
     """
 
-    texts: tuple[str, ...]
+    texts: tuple[SubmittedText, ...]
 
     @classmethod
     def read(cls, supplied: object) -> "ArgumentTexts | MalformedRequest":
@@ -338,22 +387,31 @@ class ArgumentTexts:
                 "parameter the function declares, and an empty list when it "
                 "declares none",
             )
-        unreadable = [
-            (
-                f"{manifest.ARGUMENTS.name}[{place}]",
-                f"the argument at place {place} of the request holds "
-                f"{type(written).__name__}, not the text of a value: this "
-                "tool reads a value from the characters of each argument, "
-                "and a value of another kind holds no characters to read; "
-                "send that argument as one JSON string, writing the value "
-                "the way a program writes it, as \"(Clock 12)\" or \"7\"",
-            )
-            for place, written in enumerate(supplied)
-            if not isinstance(written, str)
-        ]
+        unreadable: list[tuple[str, str]] = []
+        texts: list[SubmittedText] = []
+        for place, written in enumerate(supplied):
+            named = f"{manifest.ARGUMENTS.name}[{place}]"
+            if not isinstance(written, str):
+                unreadable.append(
+                    (
+                        named,
+                        f"the argument at place {place} of the request holds "
+                        f"{type(written).__name__}, not the text of a value: this "
+                        "tool reads a value from the characters of each argument, "
+                        "and a value of another kind holds no characters to read; "
+                        "send that argument as one JSON string, writing the value "
+                        "the way a program writes it, as \"(Clock 12)\" or \"7\"",
+                    )
+                )
+                continue
+            read = SubmittedText.read(named, written)
+            if isinstance(read, MalformedRequest):
+                unreadable.extend(read.defects)
+                continue
+            texts.append(read)
         if unreadable:
             return MalformedRequest(tuple(unreadable))
-        return cls(tuple(supplied))
+        return cls(tuple(texts))
 
 
 @dataclass(frozen=True)
@@ -407,17 +465,17 @@ class Request:
         asked = self.names_as_written()
         return asked if isinstance(asked, str) else None
 
-    def source(self) -> "str | MalformedRequest":
+    def source(self) -> "SubmittedText | MalformedRequest":
         """The text of the program the request submits.
 
         Read before anything else about the request, because every later
         answer is about a text: the revision an answer carries is the
-        revision of those characters, and a value of another kind has
-        none.
+        revision of those characters, and a value of another kind, or a
+        text that cannot be written as UTF-8, has none.
         """
         written = self.submitted.get(manifest.SOURCE.name, "")
         if isinstance(written, str):
-            return written
+            return SubmittedText.read(manifest.SOURCE.name, written)
         return MalformedRequest.about(
             manifest.SOURCE.name,
             f"the 'source' field of the request holds "
@@ -502,6 +560,17 @@ def _run_discover() -> dict:
                     "a name this tool does not have, names no operation at "
                     "all and is answered 'unavailable'."
                 ),
+                "integer_literals": (
+                    f"An integer literal in a text this tool reads -- the "
+                    f"source of a program or the value of an argument -- is "
+                    f"read up to {LITERAL_DIGITS.maximum} digits long, and a "
+                    "longer run of digits is refused where it stands with a "
+                    "'syntax' refusal naming that length. The limit is on the "
+                    "characters of a literal a text may write and not on what "
+                    "a program may mean: an integer written inside it is read "
+                    "and answered exactly, however far past 64 bits it is. "
+                    f"{LITERAL_DIGITS.reason()}"
+                ),
                 "verify": (
                     "A completed verify response is an inventory only: it lists the "
                     "obligations the program owes and attempts none of them, so every "
@@ -549,14 +618,21 @@ class SourceRevision:
     digest: str
 
     @classmethod
-    def of(cls, source: str) -> "SourceRevision":
-        return cls(hashlib.sha256(source.encode("utf-8")).hexdigest())
+    def of(cls, source: SubmittedText) -> "SourceRevision":
+        """The revision of a text the request reader has already read.
+
+        It takes the text as the reader built it, and not as characters
+        a caller assembled: the bytes it hashes are known to exist
+        because nothing but the reader builds one of these, and the
+        reader refuses a text that has none.
+        """
+        return cls(hashlib.sha256(source.characters.encode("utf-8")).hexdigest())
 
     def rendered(self) -> str:
         return self.digest
 
 
-def _source_digest(source: str) -> str:
+def _source_digest(source: SubmittedText) -> str:
     return SourceRevision.of(source).rendered()
 
 
@@ -628,7 +704,7 @@ def _too_deep_to_run_diagnostic(
 
 
 def _too_deep_to_run(
-    operation: str, source: str, refusal: evaluator.EvaluationTooDeep
+    operation: str, source: SubmittedText, refusal: evaluator.EvaluationTooDeep
 ) -> dict:
     return {
         "operation": operation,
@@ -703,7 +779,7 @@ class Refusal:
         }
 
 
-def _checked_program(source: str, run: Run):
+def _checked_program(source: SubmittedText, run: Run):
     """The program `source` declares, checked against every rule of
     core-0 -- or the `Refusal` to answer with instead.
 
@@ -713,7 +789,7 @@ def _checked_program(source: str, run: Run):
     """
     revision = SourceRevision.of(source)
     try:
-        program = syntax.parse_program(read_program(source))
+        program = syntax.parse_program(read_program(source.characters))
     except TooDeeplyNested as too_deep:
         return Refusal(
             RESOURCE_EXHAUSTED,
@@ -734,7 +810,7 @@ def _checked_program(source: str, run: Run):
     return program
 
 
-def _run_check(source: str, run: Run) -> dict:
+def _run_check(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("check")
@@ -750,7 +826,7 @@ def _run_check(source: str, run: Run) -> dict:
     }
 
 
-def _run_verify(source: str, run: Run) -> dict:
+def _run_verify(source: SubmittedText, run: Run) -> dict:
     """The obligations the program owes, every one of them not attempted.
 
     Reads nothing but `source`, writes nothing and keeps nothing: asking
@@ -771,7 +847,7 @@ def _run_verify(source: str, run: Run) -> dict:
     }
 
 
-def _run_parse(source: str, run: Run) -> dict:
+def _run_parse(source: SubmittedText, run: Run) -> dict:
     """The tree the tool built for `source`.
 
     Reads the source through the rule every operation that reads one
@@ -795,11 +871,15 @@ def _run_parse(source: str, run: Run) -> dict:
         "claim": {"kind": "syntax_tree", "scope": "this input"},
         "source_digest": _source_digest(source),
         "diagnostics": [],
-        "result": {"tree": tree.tree_of(program, read_source(source).comments)},
+        "result": {
+            "tree": tree.tree_of(
+                program, read_source(source.characters).comments
+            )
+        },
     }
 
 
-def _run_format(source: str, run: Run) -> dict:
+def _run_format(source: SubmittedText, run: Run) -> dict:
     """The one text the submitted program is written as.
 
     Reads the source through the rule every operation that reads one
@@ -831,7 +911,7 @@ def _run_format(source: str, run: Run) -> dict:
     }
 
 
-def _run_examples(source: str, run: Run) -> dict:
+def _run_examples(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("examples")
@@ -870,18 +950,20 @@ def _run_examples(source: str, run: Run) -> dict:
     }
 
 
-def _parse_value_text(text: str) -> object:
+def _parse_value_text(text: SubmittedText) -> object:
     """The one value `text` writes, or the reader's refusal to read one.
 
     A refusal stands where the reader stopped in that text: at the value
     after the first when there are several, and at the end of the text
     when there is none.
     """
-    forms = read_program(text)
+    forms = read_program(text.characters)
     if len(forms) != 1:
         extra = forms[1] if len(forms) > 1 else None
         line, column = (
-            (extra.line, extra.column) if extra is not None else end_of(text)
+            (extra.line, extra.column)
+            if extra is not None
+            else end_of(text.characters)
         )
         raise ReaderError(
             f"expected exactly one value, got {len(forms)}", line, column
@@ -902,7 +984,7 @@ def _declared_place(program, name: str) -> tuple[int, int]:
     raise KeyError(name)
 
 
-def _run_evaluate(source: str, asked: EvaluationAsked, run: Run) -> dict:
+def _run_evaluate(source: SubmittedText, asked: EvaluationAsked, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("evaluate")

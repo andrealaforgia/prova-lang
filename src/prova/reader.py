@@ -92,6 +92,61 @@ READING_LIMIT = NestingLimit(128)
 
 
 @dataclass(frozen=True)
+class DigitLimit:
+    """The longest run of digits this tool reads as one integer literal,
+    and the name a caller reads that number under.
+
+    One object holds the number, as the nesting limit beside it does:
+    the reader asks it whether a literal has passed it, the refusal
+    quotes it, and the manifest says the same number, so what a caller
+    is promised and what the tool does cannot drift apart.
+
+    It bounds the characters of a literal a text may write, and nothing
+    else: an integer below it is kept exactly however large it is, and
+    no rule of core-0 is read over a text refused here.
+    """
+
+    maximum: int
+    name: str = "integer_literal_digits"
+
+    def passed_by(self, digits: int) -> bool:
+        return digits > self.maximum
+
+    def reason(self) -> str:
+        """Why the number is the number it is, for a caller that must
+        shorten the numbers its generator writes."""
+        return (
+            f"turning a run of digits into a number costs time that grows "
+            f"with the square of its length, and the interpreter this tool "
+            f"runs on refuses a run past 4300 digits with an error of its "
+            f"own; {self.maximum} digits stands far below that, so every "
+            "literal this tool reads is turned into a number well inside the "
+            "interpreter's own limit and a caller meets this tool's refusal "
+            "rather than the interpreter's. It also stands far above the "
+            "numbers programs are written with: a value that fills 64 bits "
+            f"is 20 digits long, and an integer written with up to "
+            f"{self.maximum} digits is read and answered exactly."
+        )
+
+    def refusal_at(self, digits: int, line: int, column: int) -> ReaderError:
+        return ReaderError(
+            f"the integer literal written here is {digits} digits long and "
+            f"this tool reads an integer literal of at most {self.maximum} "
+            f"digits: {self.reason()}; write the number with at most "
+            f"{self.maximum} digits, and read that length from the "
+            f"{self.name!r} entry of what the 'discover' operation documents",
+            line,
+            column,
+        )
+
+
+# How long a run of digits one integer literal may be, for every text
+# this tool reads: the source of a program and the value of an argument
+# alike.
+LITERAL_DIGITS = DigitLimit(1000)
+
+
+@dataclass(frozen=True)
 class Atom:
     text: str
     line: int
@@ -102,7 +157,26 @@ class Atom:
         return bool(INT_RE.match(self.text))
 
     @property
+    def digits_written(self) -> int:
+        """How many digits this atom writes, counted the way the
+        interpreter counts them: every character of the run, leading
+        zeros and all, with only the sign left out."""
+        return len(self.text) - (1 if self.text[:1] in "+-" else 0)
+
+    @property
     def int_value(self) -> int:
+        """The number this atom writes.
+
+        The one place a text becomes an integer, so the one place the
+        digit limit is counted: a literal in a program, in a pattern and
+        in the argument of a request all reach a number through here,
+        and no later stage has to defend itself against a run of digits
+        the interpreter refuses to convert.
+        """
+        if LITERAL_DIGITS.passed_by(self.digits_written):
+            raise LITERAL_DIGITS.refusal_at(
+                self.digits_written, self.line, self.column
+            )
         return int(self.text)
 
 
