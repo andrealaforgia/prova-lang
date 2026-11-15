@@ -1678,11 +1678,26 @@ CONTRACT_OMITTED = "omitted"
 CONTRACT_TRIVIAL = "trivial"
 CONTRACT_STATED = "stated"
 
-# The three words a contract block can be recorded with, and nothing
-# else. Read when a strength is built and when the manifest publishes
-# the vocabulary, so a report can never record a word a client cannot
-# look up.
-CONTRACT_STRENGTH_NAMES = (CONTRACT_OMITTED, CONTRACT_TRIVIAL, CONTRACT_STATED)
+# The three words a contract block can be recorded with, each beside
+# what it tells a reader. The one place the vocabulary is written: the
+# strengths below, the check a strength makes of its own name and the
+# shape the manifest publishes are all read from here, so a word can
+# never be answered without its meaning or published without existing.
+CONTRACT_STRENGTH_MEANINGS = {
+    CONTRACT_OMITTED: (
+        "the program writes no such block, which reads as true and promises "
+        "nothing"
+    ),
+    CONTRACT_TRIVIAL: (
+        "the block is written, and every clause in it is the literal true, so "
+        "it promises nothing"
+    ),
+    CONTRACT_STATED: (
+        "the block has a clause that is not the literal true, so it says "
+        "something about the function"
+    ),
+}
+CONTRACT_STRENGTH_NAMES = tuple(CONTRACT_STRENGTH_MEANINGS)
 
 
 def _is_literal_true(clause: object) -> bool:
@@ -1734,45 +1749,29 @@ class ContractStrength:
         block say that clause.
         """
         if not clauses:
-            return OMITTED_CONTRACT
+            return cls.named(CONTRACT_OMITTED)
         if all(_is_literal_true(clause) for clause in clauses):
-            return TRIVIAL_CONTRACT
-        return STATED_CONTRACT
+            return cls.named(CONTRACT_TRIVIAL)
+        return cls.named(CONTRACT_STATED)
 
     @classmethod
     def named(cls, name: str) -> "ContractStrength":
-        """The one strength recorded under `name`."""
-        for strength in CONTRACT_STRENGTHS:
-            if strength.name == name:
-                return strength
-        raise ValueError(
-            f"WHAT: no contract strength is recorded under {name!r} "
-            f"({listed(CONTRACT_STRENGTH_NAMES)}). "
-            "WHY: the strengths are a closed list, so that the manifest and "
-            "every answer use one vocabulary. "
-            "HOW: ask for omitted, trivial or stated."
-        )
+        """The one strength recorded under `name`, with the meaning the
+        manifest publishes for it.
+
+        A name the table above does not hold refuses here, in the same
+        words the constructor uses: the two are one rule read from one
+        table.
+        """
+        return cls(name, CONTRACT_STRENGTH_MEANINGS.get(name, ""))
 
     def promises_something(self) -> bool:
         return self.name == CONTRACT_STATED
 
 
-OMITTED_CONTRACT = ContractStrength(
-    CONTRACT_OMITTED,
-    "the program writes no such block, which reads as true and promises "
-    "nothing",
+CONTRACT_STRENGTHS = tuple(
+    ContractStrength.named(name) for name in CONTRACT_STRENGTH_NAMES
 )
-TRIVIAL_CONTRACT = ContractStrength(
-    CONTRACT_TRIVIAL,
-    "the block is written, and every clause in it is the literal true, so it "
-    "promises nothing",
-)
-STATED_CONTRACT = ContractStrength(
-    CONTRACT_STATED,
-    "the block has a clause that is not the literal true, so it says "
-    "something about the function",
-)
-CONTRACT_STRENGTHS = (OMITTED_CONTRACT, TRIVIAL_CONTRACT, STATED_CONTRACT)
 
 
 @dataclass(frozen=True)
