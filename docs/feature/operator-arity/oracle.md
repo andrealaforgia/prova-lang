@@ -86,10 +86,23 @@ these claims over the eleven operators and counts from none to six.
 Each refusal is paired with a control that accepts almost the same
 program, so a tool that refused everything would fail here.
 
+After the review, three more refusals were added where an expression may
+also stand - in a precondition, in a postcondition and in the body of a
+`match` clause - each pointing at the place the test works out from its
+own program text, with one control that writes correct operators in all
+three at once.
+
 ## Still open
 
-Nothing in the oracle. `docs/spec-trace.md` still records this clause as
-missing; that document is a snapshot measured at a named commit and
-already carries other rows a later delivery overtook (row 2.13, which
-its own probe now reports as satisfied), so it is left to its owner
-rather than half-updated here.
+- The recorded edge case "an empty source is accepted with no
+  diagnostics" is **stale**. While this feature was being built, the
+  rule that a program is one or more declarations landed beside it, so
+  an empty source is now refused for a reason of its own. The control
+  that pinned acceptance was moved onto a whole valid program that
+  writes no operator anywhere, which is what it was always for; the
+  recorded edge line itself was not re-recorded.
+- `docs/spec-trace.md` still records this clause as missing. That
+  document is a snapshot measured at a named commit and already carries
+  other rows a later delivery overtook (row 2.13, which its own probe
+  now reports as satisfied), so it is left to its owner rather than
+  half-updated here.
