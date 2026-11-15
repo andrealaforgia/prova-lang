@@ -2,13 +2,20 @@
 
 ## What changed, in order
 
+This work sits on `f389095`. The commits below are its own, oldest
+first; the one that prepares the ground is the first of them.
+
 | Commit | What it does |
 |---|---|
-| `16b6550` | Prepares the ground: one object now answers how many fields a constructor declares. Behaviour unchanged, no test edited. |
-| `75079f6` | The tests, all failing. |
-| `69d66b4` | The design and its diagram. |
-| `009a372` | The three gates. |
-| `b64f259` | Two more inputs that still crashed: a program too long to run, and text that is not a request at all. |
+| `18d3066` | Prepares the ground: one object now answers how many fields a constructor declares. Behaviour unchanged, no test edited. |
+| `eecd944` | The tests, all failing. |
+| `e0cb22e` | The design and its diagram. |
+| `55b477a` | The first three gates. |
+| `7f5a75b` | This record, first written. |
+| `fa36a23` | Two more inputs that still crashed: a program too long to run, and text that is not a request at all. |
+| `c4e0717` | The record measured against the branch, and the two answers that changed. |
+| `c3e6331` | The cost of the tests, measured over all of them. |
+| `3d0eb88` | The law about reading an unchecked field narrowed, so it leaves ordinary code alone. |
 
 The prepare-first commit was needed because the number of fields a
 constructor declares was compared in two places that did not know about
@@ -96,26 +103,33 @@ program yet, so there is nothing to report about a program.
 
 | Check | Command | Result |
 |---|---|---|
-| Whole suite | `uv run pytest -q tests --durations=10` | 1113 passed in 127.61s |
-| The branch before this delivery | same, at `988db32` | 1091 passed |
+| Whole suite, here | `uv run pytest -q tests` | 1136 passed in 140.72s |
+| The branch this work sits on | same, at `f389095` | 1067 passed in 121.68s |
 | Prepare-first commit preserves behaviour | `uv run pytest -q tests/unit` | 63 passed |
 | Mechanical check | `uv run python -m compileall -q src tests` | exit 0 |
 
-22 tests are new since `988db32` (1091 + 22 = 1113). No existing test
-was edited and none broke.
+**69 tests are new**: 1067 at `f389095` plus 69 is 1136. Both counts
+were measured, the base one in a worktree checked out at `f389095`, not
+carried over from an earlier run of the branch. No existing test was
+edited and none broke.
+
+Two earlier counts appear in the history of this record and are kept
+here so they are not mistaken for the current one: 1045 at `988db32`
+and 1091 at a point part way through this work. Neither is the base of
+this delivery; `f389095` is.
 
 ## Test cost
 
-All nine new test files were run nine times in a row: 68 tests each,
-all nine green, median 6.83s, slowest 6.86s. No run differed from
-another by more than 0.1s, so nothing in them is flaky.
+All nine new test files were run nine times in a row at this commit:
+69 tests each, all nine green, median 6.45s, slowest 6.46s. The nine
+runs span 0.02s end to end, so nothing in them is flaky.
 
 | | |
 |---|---|
-| Tests | 68 |
+| Tests | 69 |
 | Runs | 9, all green |
-| Median | 6.83s |
-| Slowest | 6.86s |
+| Median | 6.45s |
+| Slowest | 6.46s |
 | Slowest single test | 3.29s, the sweep of mangled requests |
 | Every other test | under 0.2s |
 
@@ -140,6 +154,7 @@ of a process is paid once.
 | The evaluator stops counting how far it has gone | 3 of 7 |
 | Unreadable text is called a failure of the tool again | 6 of 14 |
 | The architectural check looks only for the polite spelling | 1 of 3 |
+| The law also flags counting a place in a list it was handed | 1 of 4 |
 
 Each break was put back and the suite is green again.
 
