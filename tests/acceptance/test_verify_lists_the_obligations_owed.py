@@ -1,5 +1,5 @@
-"""The Owner asks what would have to be shown for a program, before any
-solver exists.
+"""The Owner asks what would have to be shown for a program, and what
+became of each of those obligations.
 
 `verify` answers with the complete inventory of obligations the program
 owes: one for each potentially evaluated call's precondition under the
@@ -9,8 +9,9 @@ definedness and structural termination (SPEC.md "Verification obligations
 and the initial fragment", and "A checker that never ran has
 `not_attempted`, not success").
 
-Every entry is `not_attempted` and nothing in the answer reports work that
-did not happen.
+Every entry says where it stands, and nothing in the answer reports work
+that did not happen: an obligation the tool did not settle carries no word
+claiming it did.
 
 Drives only the `prova` command's real JSON stdin/stdout surface. No
 imports from src/prova.
@@ -38,6 +39,17 @@ CLAIM_WORD = re.compile(
 # in the order it declares them, and how many examples each one declares.
 # Written out here so every expected count comes from the shipped program a
 # reader can open, never from the answer under observation.
+# A program whose promise needs the product of two numbers neither of
+# which is known. SPEC.md keeps the automated fragment linear, so this
+# obligation is one the tool cannot settle -- which is what the scan for
+# words reporting work needs in order to run over anything at all.
+OUTSIDE_THE_FRAGMENT = """(defn product
+  (sig ((n Int) (m Int)) -> Int ! pure)
+  (ensures (>= result 0))
+  (examples (example (product 2 3) => 6))
+  (* n m))
+"""
+
 CLOCK_FUNCTIONS = ("valid-state", "initial", "step")
 CLOCK_EXAMPLE_COUNTS = {"valid-state": 4, "initial": 1, "step": 3}
 
@@ -466,10 +478,11 @@ def test_nothing_in_the_answer_reports_work_the_tool_never_did():
         entries = _obligations(response)
 
         results = {entry.get("result") for entry in entries}
-        assert results == {"not_attempted"}, (
-            f"WHAT: {label} has obligations reported as {sorted(results)}. "
-            "WHY: this tool has no solver; a checker that never ran is `not_attempted`, "
-            "never a success. "
+        assert "not_attempted" not in results, (
+            f"WHAT: {label} has obligations nothing attempted: {sorted(results)}. "
+            "WHY: every obligation of these two programs is put to the solver or "
+            "settled by a rule of core-0; an entry nothing tried would be work "
+            "silently skipped. "
             f"HOW: inspect the answer: {response}"
         )
 
@@ -479,7 +492,7 @@ def test_nothing_in_the_answer_reports_work_the_tool_never_did():
             f"{len(entries)}. WHY: the count must name the list it counts. "
             f"HOW: inspect the totals: {totals}"
         )
-        assert totals.get("attempted") == 0, f"{label}: {totals}"
+        assert totals.get("attempted") == len(entries), f"{label}: {totals}"
         assert totals.get("attempted", 0) + totals.get("not_attempted", -1) == len(entries), (
             f"WHAT: for {label} the attempted and not-attempted counts do not add up to "
             f"the {len(entries)} obligations listed. "
@@ -487,12 +500,43 @@ def test_nothing_in_the_answer_reports_work_the_tool_never_did():
             f"HOW: inspect the totals: {totals}"
         )
 
-        hits = _claim_words(response)
-        assert not hits, (
-            f"WHAT: the answer for {label} contains {sorted(set(hits))}. "
-            "WHY: nothing ran, so the answer must report no outcome at all. "
-            f"HOW: reword the answer: {response}"
+        hits = _claim_words(
+            [entry for entry in entries if entry.get("result") != "proved"]
         )
+        assert not hits, (
+            f"WHAT: entries of {label} that were not proved contain "
+            f"{sorted(set(hits))}. "
+            "WHY: an obligation this tool did not settle must report no outcome "
+            "at all; only an entry really settled may say one. "
+            f"HOW: reword those entries: {response}"
+        )
+
+
+def test_an_obligation_the_tool_cannot_settle_claims_nothing():
+    """Given a program multiplying two numbers neither of which is known
+    -- which SPEC.md puts outside the automation required here -- when the
+    Owner reads the answer, then that obligation is unsettled and no word
+    in its entry reports work the tool did not do.
+
+    The scan above runs over the two shipped examples, where every entry
+    is settled. This one gives it entries that are not, so the rule it
+    guards is read against data that could break it.
+    """
+    entries = _obligations(_run("verify", OUTSIDE_THE_FRAGMENT))
+    unsettled = [entry for entry in entries if entry.get("result") == "unknown"]
+
+    assert unsettled, (
+        "WHAT: every obligation of a program multiplying two unknown numbers "
+        "was settled. WHY: this test needs an unsettled entry to scan; a tool "
+        "that settles this program has grown a fragment this test no longer "
+        f"describes. HOW: inspect the answer: {entries}"
+    )
+    hits = _claim_words(unsettled)
+    assert not hits, (
+        f"WHAT: an unsettled entry contains {sorted(set(hits))}. "
+        "WHY: nothing was shown about it, so its entry must report no outcome. "
+        f"HOW: reword the entry: {unsettled}"
+    )
         assert isinstance(inventory.get("note"), str) and inventory["note"].strip(), (
             f"WHAT: the answer for {label} carries no note saying nothing was attempted. "
             "WHY: a reader must not mistake a list of work owed for work done. "
