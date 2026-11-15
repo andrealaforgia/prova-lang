@@ -488,13 +488,8 @@ class Parameter:
 class Signature:
     params: tuple[Parameter, ...]
     return_type: str
-    # A signature, an example and a function below keep a place of their
-    # own only when they were read from a source: a caller that builds a
-    # program in memory, as the obligation inventory's own tests do, has
-    # no text to point into. Every part that is published carries a place
-    # it cannot be built without.
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
@@ -502,8 +497,8 @@ class Example:
     function: str
     args: tuple[object, ...]
     expected: object
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
@@ -514,8 +509,8 @@ class Function:
     ensures: tuple["Expr", ...]
     examples: tuple[Example, ...]
     body: "Expr"
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
