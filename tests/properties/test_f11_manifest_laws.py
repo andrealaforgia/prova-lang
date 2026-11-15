@@ -137,7 +137,7 @@ def _program_applying(operator: str, operands: tuple[str, ...], answer_type: str
 
 
 @given(operation=st.sampled_from(THE_OPERATIONS_AN_AGENT_MAY_CALL), data=st.data())
-@settings(max_examples=15, deadline=None)
+@settings(max_examples=15, deadline=None, derandomize=True)
 def test_a_published_field_of_another_kind_is_always_refused_by_name(operation, data):
     """LAW1: a published request field sent as another kind of value is
     refused as invalid input, naming the field."""
@@ -172,7 +172,7 @@ def test_a_published_field_of_another_kind_is_always_refused_by_name(operation, 
     function=st.sampled_from(["twice", "absent", ""]),
     arguments=st.sampled_from([["3"], [], ["(Clock 12)"], ["3", "4"]]),
 )
-@settings(max_examples=15, deadline=None)
+@settings(max_examples=15, deadline=None, derandomize=True)
 def test_every_answer_carries_the_fields_the_manifest_publishes(
     operation, source, function, arguments
 ):
@@ -211,7 +211,7 @@ def test_every_answer_carries_the_fields_the_manifest_publishes(
 
 
 @given(operator=st.sampled_from(THE_OPERATORS))
-@settings(max_examples=11, deadline=None)
+@settings(max_examples=11, deadline=None, derandomize=True)
 def test_the_published_signature_of_an_operator_is_the_one_the_tool_keeps(operator):
     """LAW3: a program applying an operator to operands of its published
     argument types is checked, and the same program with one operand of

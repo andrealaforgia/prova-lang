@@ -92,8 +92,8 @@ class OperandsOfOneType:
         return {}
 
     def refusals(
-        self, operator: str, arg_types: list, place: tuple[int, int]
-    ) -> list:
+        self, operator: str, arg_types: list[str | None], place: tuple[int, int]
+    ) -> list["Diagnostic"]:
         return [
             Diagnostic(
                 "type_mismatch",
@@ -130,8 +130,8 @@ class OperandsOfOneAndTheSameType:
         }
 
     def refusals(
-        self, operator: str, arg_types: list, place: tuple[int, int]
-    ) -> list:
+        self, operator: str, arg_types: list[str | None], place: tuple[int, int]
+    ) -> list["Diagnostic"]:
         known = [arg_type for arg_type in arg_types if arg_type is not None]
         if len(set(known)) <= 1:
             return []
@@ -167,12 +167,12 @@ class BuiltinOperator:
 
     arity: int
     family: str
-    operands: object
+    operands: "OperandsOfOneType | OperandsOfOneAndTheSameType"
     answers: str
 
     def refusals(
-        self, operator: str, arg_types: list, place: tuple[int, int]
-    ) -> list:
+        self, operator: str, arg_types: list[str | None], place: tuple[int, int]
+    ) -> list["Diagnostic"]:
         return self.operands.refusals(operator, arg_types, place)
 
     def published(self) -> dict:

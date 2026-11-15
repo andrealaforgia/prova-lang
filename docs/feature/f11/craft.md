@@ -43,23 +43,25 @@ and were not rewritten.
 
 ## Test cost, measured
 
-The whole suite: `uv run pytest -q tests --durations=10`, **1151 passed in
-139.67 s** (1136 before this change, 15 added). Before the change the same
-fifteen were seen failing in 1.95 s, each because the promised part of the
-manifest was absent.
+The whole suite: `uv run pytest -q tests --durations=10`, **1153 passed in
+141.02 s** (1136 before this change, 17 added). Before the change the fifteen
+that state the promises were seen failing in 1.95 s, each because the promised
+part of the manifest was absent; the two added later, on the module itself, are
+named under the review repairs below.
 
-The six files added, run nine times in a row, all nine green, 15 tests each:
+The seven files added, run nine times in a row, all nine green, 17 tests each:
 
 | | seconds |
 |---|---|
-| median of the nine runs | 4.85 |
-| slowest of the nine runs | 4.88 |
-| slowest single test | 0.92 (`test_the_published_signature_of_an_operator_is_the_one_the_tool_keeps`) |
+| median of the nine runs | 4.82 |
+| slowest of the nine runs | 5.37 |
+| slowest single test | 1.02 (`test_the_published_signature_of_an_operator_is_the_one_the_tool_keeps`) |
 
-Every one of the fifteen drives the real `prova` command as a subprocess, so all
-fifteen are integration tests and none is under the 10 ms unit budget; the
-slowest is under one second and the whole set is under five. No test sleeps, and
-none reads the clock to decide its outcome.
+Fifteen of the seventeen drive the real `prova` command as a subprocess, so they
+are integration tests and none of them is under the 10 ms unit budget; the
+slowest is just over one second and the whole set is under six. The two that
+read the module directly run in well under 10 ms each. No test sleeps, and none
+reads the clock to decide its outcome.
 
 ## Mechanical checks
 
@@ -76,7 +78,38 @@ The three choices it would have been asked (where the catalogue lives, where the
 operator signatures come from, whether a formal model pays) were settled locally
 and are written in `design.md`.
 
+## What an independent review changed
+
+The review read the manifest against the code and found it accurate, but
+rejected the work on one criterion and asked for two more repairs. All three are
+done:
+
+1. **The three properties were not derandomised.** Their docstring said they
+   were, and the settings did not say it: two consecutive runs drew different
+   cases, so a verdict depended on what the generator happened to draw. With
+   `derandomize=True` two consecutive runs now send the same 52 requests, line
+   for line (0 of 52 differ); with it taken out again, 33 of the same 52 differ.
+2. **Two alternatives were typed as `object`.** An operation's standing and its
+   traffic, and the operand rule of an operator, now name the two shapes each of
+   them can have, so a reader sees the alternatives in the signature.
+3. **A category claimed twice was silently overwritten.** The second claim is
+   now refused, naming both operations, the category and where to repair it, and
+   leaving the first claim exactly as it was. Two operations claiming one
+   category cannot be caused by a request, so the check is observed on the module
+   itself in `tests/unit/test_manifest_catalogue.py`. With the refusal taken out,
+   that test fails and its control (two categories, two operations) still passes.
+
+## Two findings that are not this change's
+
+- **Pre-existing, reported to its owner, not repaired here.** A `check` request
+  whose source carries a lone surrogate character (`"\udccc"`) ends in a
+  `UnicodeEncodeError` while the revision of the source is computed, instead of
+  being answered. It is older than this change, this change neither caused nor
+  touched it, and repairing it would widen the delivery; the roadmap carries it.
+- A fifth observation was recorded as informational by the reviewer and asks for
+  no change here; its text is in the review record, not restated from memory.
+
 ## What is still open
 
-Nothing in the code. The self-review step is next; an independent reviewer and a
-blind examiner read the repository afterwards.
+Nothing in the code. The self-review step is next; it needs the independent
+review entry, which an executor may not write for itself.

@@ -79,7 +79,7 @@ class Fields:
     """The fields of one side of the traffic of an operation, and
     nothing else."""
 
-    fields: tuple
+    fields: tuple[Field, ...]
 
     def published(self) -> dict:
         return {field.name: field.published() for field in self.fields}
@@ -181,7 +181,7 @@ class NotAnsweredYet:
         )
 
 
-def answering(request: tuple, answer: tuple) -> Traffic:
+def answering(request: tuple[Field, ...], answer: tuple[Field, ...]) -> Traffic:
     return Traffic(Fields(request), Fields(answer))
 
 
@@ -221,10 +221,25 @@ class Standings:
         self._beyond: dict = {}
 
     def covers_a_category(self, category: str, name: str, availability: str) -> None:
+        self._refuse_a_second_claim(category, name)
         self._categories[category] = {
             "operation": name,
             "availability": availability,
         }
+
+    def _refuse_a_second_claim(self, category: str, name: str) -> None:
+        standing = self._categories.get(category)
+        if standing is None:
+            return
+        raise ValueError(
+            f"the operations {standing['operation']!r} and {name!r} both "
+            f"cover the category {category!r}: an agent reads one operation "
+            "per category, so the second would quietly take the place of the "
+            "first and the first would disappear from the manifest while this "
+            "tool still answers it. Give one of the two the category it "
+            "covers and the other its own category, or write it as this "
+            "tool's own with the reason, in THE_OPERATIONS in manifest.py."
+        )
 
     def is_this_tools_own(self, name: str, reason: str) -> None:
         self._beyond[name] = reason
@@ -243,8 +258,8 @@ class Operation:
     """
 
     name: str
-    standing: object
-    traffic: object
+    standing: "InACategory | BeyondTheProfile"
+    traffic: "Traffic | NotAnsweredYet"
 
     def record_standing(self, standings: Standings, availability: str) -> None:
         self.standing.record(standings, self.name, availability)
@@ -266,9 +281,11 @@ class Catalogue:
     answers nor describe one it does not have.
     """
 
-    operations: tuple
+    operations: tuple[Operation, ...]
 
-    def published(self, available: tuple, unavailable: frozenset) -> dict:
+    def published(
+        self, available: tuple[str, ...], unavailable: frozenset[str]
+    ) -> dict:
         advertised = {name: "available" for name in available}
         advertised.update({name: "unavailable" for name in sorted(unavailable)})
         self._refuse_another_set(advertised)
@@ -441,7 +458,9 @@ def the_language_published() -> dict:
     }
 
 
-def published_parts(available: tuple, unavailable: frozenset) -> dict:
+def published_parts(
+    available: tuple[str, ...], unavailable: frozenset[str]
+) -> dict:
     """The parts of the manifest this module owns, ready to be printed
     beside the parts the dispatcher already publishes."""
     return {
