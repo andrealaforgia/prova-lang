@@ -98,24 +98,25 @@ EQUALS = _declare(
     "whether two values of one type are the same value, which for the shapes "
     "below means the same constructor with the same field values throughout",
 )
-CONJUNCTION = _declare("conjunction", "all of the given conditions hold at once")
-DISJUNCTION = _declare("disjunction", "at least one of the two conditions holds")
-NEGATION = _declare("negation", "the condition does not hold")
+CONJUNCTION = _declare("conjunction", "all of the given conditions are true at once")
+DISJUNCTION = _declare("disjunction", "at least one of the two conditions is true")
+NEGATION = _declare("negation", "the condition is not true")
 CONDITIONAL = _declare(
     "conditional",
-    "the value of the second term where the first condition holds and of the "
-    "third where it does not, which is what an if and a match both become",
+    "the value of the second term where the first condition is true and of "
+    "the third where it is not, which is what an if and a match both become",
 )
 SHAPE = _declare(
     "shape",
-    "one value built by a declared constructor from its field values: a "
+    "one value made by a declared constructor from its field values: a "
     "record or one variant of a union, never a recursive one",
 )
 FIELD = _declare(
-    "field", "the value of one declared field of a value built by a constructor"
+    "field",
+    "the value of one declared field of a value made by a constructor",
 )
 IS_SHAPE = _declare(
-    "is_shape", "whether a value was built by the constructor this term names"
+    "is_shape", "whether a value was made by the constructor this term names"
 )
 
 
@@ -248,8 +249,14 @@ class OutsideTheFragment:
 @dataclass(frozen=True)
 class ByRuleOfTheProfile:
     """An obligation no solver is asked about, because a rule of `core-0`
-    settles it. The rule is carried so that the answer can say which
-    one."""
+    settles it.
+
+    It carries the name of the rule and not its sentence: an answer about
+    a program of many functions would otherwise repeat the same paragraph
+    once per entry, and a reader comparing two entries could not tell at
+    a glance that they rest on the same rule. The sentences are published
+    once beside the inventory.
+    """
 
     rule: str
 

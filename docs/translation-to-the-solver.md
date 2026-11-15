@@ -51,17 +51,17 @@ unsettled here rather than guessed at.
 - `equals` — whether two values of one type are the same value, which for
   the shapes below means the same constructor with the same field values
   throughout.
-- `conjunction` — all of the given conditions hold at once.
-- `disjunction` — at least one of the two conditions holds.
-- `negation` — the condition does not hold.
+- `conjunction` — all of the given conditions are true at once.
+- `disjunction` — at least one of the two conditions is true.
+- `negation` — the condition is not true.
 - `conditional` — the value of the second term where the first condition
-  holds and of the third where it does not; what both `if` and `match`
+  is true and of the third where it is not; what both `if` and `match`
   become.
-- `shape` — one value built by a declared constructor from its field
+- `shape` — one value made by a declared constructor from its field
   values: a record, or one variant of a union, never a recursive one.
 - `field` — the value of one declared field of a value built by a
   constructor.
-- `is_shape` — whether a value was built by the constructor the term
+- `is_shape` — whether a value was made by the constructor the term
   names.
 
 ## Why each translation is faithful to the language

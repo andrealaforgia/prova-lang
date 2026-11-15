@@ -84,6 +84,7 @@ class Finding:
     execution_status: str
     reason: str | None = None
     discharged_by: str | None = None
+    rule: str | None = None
     witness: ValidatedWitness | None = None
 
     @classmethod
@@ -95,7 +96,7 @@ class Finding:
         return cls(
             PROVED,
             "completed",
-            reason=rule,
+            rule=rule,
             discharged_by=BY_A_RULE_OF_THE_PROFILE,
         )
 
@@ -133,6 +134,8 @@ class Finding:
             entry["reason"] = self.reason
         if self.discharged_by is not None:
             entry["discharged_by"] = self.discharged_by
+        if self.rule is not None:
+            entry["rule"] = self.rule
         if self.witness is not None:
             entry["counterexample"] = self.witness.published()
 

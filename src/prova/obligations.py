@@ -33,6 +33,45 @@ from prova import encoding, syntax
 NOT_ATTEMPTED = "not_attempted"
 UNSUPPORTED = "unsupported"
 
+# The two rules of core-0 that settle an obligation with no solver, each
+# named once here and written out once in an answer that used it. An
+# entry names its rule; the sentence stands beside the inventory, so a
+# program of many functions does not carry the same paragraph a thousand
+# times and two entries resting on one rule are seen to.
+TOTALITY_OF_THE_PROFILE = "totality_of_the_profile"
+ACYCLIC_CALLS = "acyclic_calls"
+
+THE_RULES_OF_THE_PROFILE = {
+    TOTALITY_OF_THE_PROFILE: (
+        "Every operation core-0 has is defined for every value of its declared "
+        "types: the profile has no division and no other partial primitive, "
+        "field selection is resolved from the operand's nominal type by the "
+        "checker that accepted this program, and every match it contains was "
+        "shown exhaustive. The one thing a clause could still fail to be "
+        "defined at is a call whose precondition does not hold, and each of "
+        "those calls is a call_precondition obligation of its own, listed and "
+        "settled separately. No solver is asked about an entry resting on this "
+        "rule."
+    ),
+    ACYCLIC_CALLS: (
+        "The combined dependency graph of bodies and contracts must be acyclic "
+        "in core-0, and the checker that accepted this program refuses any "
+        "program whose graph has a cycle. Every call such a function can reach "
+        "therefore ends, and so does it. No solver is asked about an entry "
+        "resting on this rule."
+    ),
+}
+
+
+def the_rules_of_the_profile(named: set) -> dict:
+    """The sentences of the rules an answer used, and of no others."""
+    return {
+        name: THE_RULES_OF_THE_PROFILE[name]
+        for name in sorted(named)
+        if name in THE_RULES_OF_THE_PROFILE
+    }
+
+
 NOTHING_WAS_ATTEMPTED = (
     "This tool has no solver and ran none of these obligations: every entry is "
     "still owed and its result is not_attempted. The list says what work remains "
@@ -373,17 +412,7 @@ class ContractDefinedness(Obligation):
         return {"contract_clauses": self.contract_clauses}
 
     def _claim(self, program: syntax.Program):
-        return encoding.ByRuleOfTheProfile(
-            "every operation core-0 has is defined for every value of its "
-            "declared types: the profile has no division and no other partial "
-            "primitive, field selection is resolved from the operand's "
-            "nominal type by the checker that accepted this program, and "
-            "every match it contains was shown exhaustive. The one thing a "
-            "clause could still fail to be defined at is a call whose "
-            "precondition does not hold, and each of those calls is a "
-            "call_precondition obligation of its own, listed and settled "
-            "separately. No solver was asked about this entry"
-        )
+        return encoding.ByRuleOfTheProfile(TOTALITY_OF_THE_PROFILE)
 
 
 @dataclass(frozen=True)
@@ -404,13 +433,7 @@ class StructuralTermination(Obligation):
         return {"direct_calls": self.direct_calls}
 
     def _claim(self, program: syntax.Program):
-        return encoding.ByRuleOfTheProfile(
-            "the combined dependency graph of bodies and contracts must be "
-            "acyclic in core-0, and the checker that accepted this program "
-            "refuses any program whose graph has a cycle. Every call this "
-            "function can reach therefore ends, and so does it. No solver "
-            "was asked about this entry"
-        )
+        return encoding.ByRuleOfTheProfile(ACYCLIC_CALLS)
 
 
 # --- the inventory ---------------------------------------------------------
@@ -454,8 +477,10 @@ class Inventory:
             for obligation in self.obligations
         ]
         settled = [entry for entry in entries if entry["result"] != NOT_ATTEMPTED]
+        rested_on = {entry.get("rule") for entry in entries if entry.get("rule")}
         return {
             "obligations": entries,
+            "rules": the_rules_of_the_profile(rested_on),
             "totals": {
                 "obligations": len(entries),
                 "attempted": len(settled),
