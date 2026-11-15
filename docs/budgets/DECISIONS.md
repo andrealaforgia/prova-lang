@@ -1,0 +1,21 @@
+# nwstep decisions
+
+kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: none
+
+## oracle (revision 1)
+
+- **decisions**:
+  - DEC1: each budget gets its own refusal category (input_budget_exceeded, time_budget_exceeded, memory_budget_exceeded, output_budget_exceeded), the way every other distinct refusal of this tool has one, so a caller can handle one budget differently from another without reading prose.
+  - DEC2: a caller lowers a budget for one run through an environment variable named in the manifest (PROVA_BUDGET_INPUT_SIZE and its three siblings). A request field would let any caller change the budgets of the published protocol, and an in-process argument alone could not be reached from a test that drives the real command. Owner absent: recorded as my decision.
+  - DEC3: the answer budget is enforced where the answer is rendered and printed, so one renderer owns the bytes a caller reads. A refusal is always delivered even when it is itself larger than the budget: the budget sizes the answer an operation produced, and the refusal that replaces it is this tool's smallest answer.
+  - DEC4: the time and memory budgets are observed at the boundaries between the stages of an operation and before each declared example is run. A stage already running is not interrupted part way; the input budget is what keeps a stage short. Published as enforced with that granularity stated, rather than as not enforced.
+  - DEC5: the four numbers are published as declared, not measured: each entry carries basis declared and the reason says so. Measured on this delivery: the sizes (input and answer, counted in bytes) and that every shipped program and every test in the suite completes inside all four. Only declared: that 10 s and 512 MiB are the right numbers for a machine other than mine; no CI measurement of time or memory was taken.
+  - DEC6: the budgets live in one new module, src/prova/budgets.py, which owns the numbers, their published shape and the refusals. service.py gains one parameter and the calls that check at a stage boundary; __main__.py reads the environment and prints through the renderer. This keeps both contended files lightly edited while F12 runs in parallel.
+  - DEC7: the time budget is published in milliseconds so that every budget states a whole number in a published unit, and every refusal reports expected and actual as whole numbers, the way the two limits published before already do.
+  - DEC8: no formal model (Quint) for this work: there is no protocol, no concurrency and no stored state here; a budget is a comparison of one number with another inside one process, and the properties cover it.
+  - DEC9: the budget refusals carry no source revision. Three of the four are not about a submitted text at all, and the input budget refusal is answered before the text is read, so hashing it would be work the budget exists to refuse.
+
+## design (revision 2)
+
+- **reuse_decision**: Reused: the resource_exhausted status, the Diagnostic and its published-shape table, _diagnostic_dict as the one builder of a refusal, MalformedRequest for a value this tool cannot read, and the resource_limits block the manifest already answers with. Created new: one module, src/prova/budgets.py, because no existing owner holds a size in bytes, a span of time or an amount of memory: the nesting limit lives in the reader because the reader is what nests, and the evaluation depth lives in the evaluator for the same reason, while a budget on the whole run belongs to none of them. Putting the four numbers in service.py would make the dispatcher the owner of four rules it does not apply, and would grow the one file another delivery is editing. The four budgets share one shape, so they are four small classes over one base rather than four copies of the same arithmetic.
+- **prefactoring_reason**: No refactor is owed first. The change adds one parameter to the dispatcher and its five handlers and calls the new module at the boundaries between stages; every line it touches keeps its behaviour, and no existing code must be prepared to receive it. The one refactor this file has recorded as owed -- extracting the parse-and-check preamble the four handlers repeat -- is owed for a time when no other delivery is editing service.py, and another delivery is editing it now.
