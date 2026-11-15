@@ -1219,3 +1219,9 @@ there.
 - **nwstep baseline after a rebase.** Re-initialising the workspace baseline after
   rebasing a delivery would let `record craft` run again; today craft stays at the
   pre-rebase revision. Tool gap, not a Prova defect.
+- **Request text that cannot be encoded.** `{"operation":"check","source":"\udccc"}`
+  (a lone surrogate escape) ends in `UnicodeEncodeError` in `SourceDigest.of`
+  (`src/prova/service.py`), on every source-reading operation. Refuse a source that
+  cannot be encoded as UTF-8 with `invalid_input` naming the field, at the request
+  reader that already refuses a wrong-kind `source`. Pre-existing; raised by the F11
+  review.
