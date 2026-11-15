@@ -33,6 +33,18 @@ TWO_DECLARATIONS = (
 )
 
 
+TWO_AT_THE_END = (
+    "(deftype Counter (record (held Int)))\n"
+    "; one last word\n"
+    "; and another after it\n"
+)
+
+WRITTEN_ON_ANOTHER_SYSTEM = (
+    "; a comment ending in two characters\r\n"
+    "(deftype Counter (record (held Int)))\r\n"
+)
+
+
 def _comments_of(node: dict) -> list[str]:
     return [comment["text"] for comment in node.get("comments", [])]
 
@@ -67,6 +79,36 @@ def test_a_comment_nothing_follows_is_answered_at_the_end_of_the_document():
     ], (
         "the first comment of the source did not reach the declaration under "
         f"it: {tree['declarations'][0]}"
+    )
+
+
+def test_two_comments_after_the_last_declaration_are_each_answered_once():
+    tree = ask_for_the_tree(TWO_AT_THE_END)["result"]["tree"]
+
+    trailing = [comment["text"] for comment in tree["trailing_comments"]]
+    assert trailing == ["; one last word", "; and another after it"], (
+        f"the document ends carrying {trailing}: both comments stand after "
+        "the last declaration, in the order they were written"
+    )
+    answered = [node["text"] for node in nodes_of(tree) if node["kind"] == "comment"]
+    assert answered == trailing, (
+        f"the tree answers {answered} for the 2 comments the source writes: a "
+        "comment answered twice, or answered inside another comment, makes a "
+        "reader of the tree believe the source says it twice"
+    )
+
+
+def test_a_comment_on_a_text_that_ends_its_lines_with_two_characters():
+    tree = ask_for_the_tree(WRITTEN_ON_ANOTHER_SYSTEM)["result"]["tree"]
+
+    assert _comments_of(tree["declarations"][0]) == [
+        "; a comment ending in two characters"
+    ], (
+        f"the comment was answered as "
+        f"{_comments_of(tree['declarations'][0])}: what ends the line is not "
+        "one of the characters the reader wrote, so it is no part of the "
+        "comment; a client writing the source back out would write an "
+        "invisible character into the middle of a line"
     )
 
 

@@ -111,7 +111,7 @@ def _categories(response: dict) -> list[str]:
     return sorted(d["category"] for d in response["diagnostics"])
 
 
-@settings(max_examples=CASES, deadline=None)
+@settings(max_examples=CASES, deadline=None, derandomize=True)
 @given(programs)
 def test_every_node_stands_where_the_source_holds_a_character(source):
     """LAW1 -- every node of a published tree stands at a place the source
@@ -135,57 +135,71 @@ def test_every_node_stands_where_the_source_holds_a_character(source):
         )
 
 
-@settings(max_examples=CASES, deadline=None)
-@given(programs, st.integers(min_value=0, max_value=6))
-def test_every_comment_is_answered_once_on_the_first_node_after_it(source, where):
+@settings(max_examples=CASES, deadline=None, derandomize=True)
+@given(programs, st.data())
+def test_every_comment_is_answered_once_on_the_first_node_after_it(source, drawn):
     """LAW2 -- every comment of the source is answered exactly once, on the
-    first node that stands after it, or at the document end."""
+    first node that stands after it, or at the document end.
+
+    The comments are written anywhere in the text, none of them or
+    several, including after everything the source declares.
+    """
     lines = source.rstrip("\n").split("\n")
-    at = where % (len(lines) + 1)
-    written = f"; comment number {at}"
-    commented = "\n".join(lines[:at] + [written] + lines[at:]) + "\n"
+    # Drawn against the length of this program, so that two comments
+    # after everything it declares is a case this law really reaches.
+    at = sorted(
+        drawn.draw(
+            st.lists(st.integers(min_value=0, max_value=len(lines)), max_size=4)
+        )
+    )
+    written = [f"; comment number {ordinal}" for ordinal in range(len(at))]
+    commented_lines = list(lines)
+    for ordinal in reversed(range(len(at))):
+        commented_lines.insert(at[ordinal], written[ordinal])
+    commented = "\n".join(commented_lines) + "\n"
 
     answer = _read(commented)
     assert answer["status"] == "completed", answer
     tree = answer["result"]["tree"]
 
     answered = [node for node in _nodes(tree) if node["kind"] == "comment"]
-    assert [node["text"] for node in answered] == [written], (
-        f"the source writes one comment and the tree answers "
-        f"{[n['text'] for n in answered]}: a comment is answered once, with "
-        "the characters it was written with"
+    assert [node["text"] for node in answered] == written, (
+        f"the source writes {written} and the tree answers "
+        f"{[n['text'] for n in answered]}: each comment is answered once, "
+        "with the characters it was written with, in the order it was written"
     )
-    comment_place = _place(answered[0])
-    following = sorted(
-        _place(node)
-        for node in _nodes(tree)
-        if node["kind"] != "comment" and _place(node) > comment_place
+    places = sorted(
+        _place(node) for node in _nodes(tree) if node["kind"] != "comment"
     )
-    holders = [
-        node
+    holder_of = {
+        carried["text"]: _place(node)
         for node in _nodes(tree)
-        if any(c["text"] == written for c in node.get("comments", []))
-    ]
+        if node["kind"] != "comment"
+        for carried in node.get("comments", [])
+    }
     trailing = [c["text"] for c in tree.get("trailing_comments", [])]
-    if following:
-        assert len(holders) == 1 and _place(holders[0]) == following[0], (
-            f"the comment at {comment_place} was answered on "
-            f"{[(_place(h), h['kind']) for h in holders]}, and the first node "
-            f"after it stands at {following[0]}: a comment belongs to the node "
-            "that follows it"
-        )
-        assert trailing == [], (
-            f"the comment was answered at the document end as well: {trailing}"
-        )
-    else:
-        assert trailing == [written] and holders == [], (
-            f"nothing follows the comment at {comment_place}, and it was "
-            f"answered on {[h['kind'] for h in holders]} instead of at the "
-            f"document end: {trailing}"
-        )
+    for comment in answered:
+        text, place = comment["text"], _place(comment)
+        following = [one for one in places if one > place]
+        if following:
+            assert holder_of.get(text) == min(following), (
+                f"{text!r} stands at {place} and was answered on the node at "
+                f"{holder_of.get(text)}, while the first node after it stands "
+                f"at {min(following)}: a comment belongs to the node that "
+                "follows it"
+            )
+            assert text not in trailing, (
+                f"{text!r} was answered at the document end as well: {trailing}"
+            )
+        else:
+            assert text in trailing and text not in holder_of, (
+                f"nothing follows {text!r} at {place}, and it was answered on "
+                f"the node at {holder_of.get(text)} instead of at the document "
+                f"end: {trailing}"
+            )
 
 
-@settings(max_examples=CASES, deadline=None)
+@settings(max_examples=CASES, deadline=None, derandomize=True)
 @given(programs, st.integers(min_value=0, max_value=4096))
 def test_a_tree_is_published_exactly_when_a_check_completes(source, cut):
     """LAW3 -- a tree is published exactly when a check of the same source
