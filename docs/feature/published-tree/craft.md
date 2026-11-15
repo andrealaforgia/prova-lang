@@ -28,7 +28,7 @@ that cannot say where it stands can no longer be built at all.
 
 ## What was measured
 
-- Full suite: 1171 passed (1136 before this change).
+- Full suite: 1188 passed on top of main (1153 before this change).
 - The seven test files this change adds: 9 runs in a row, 35 tests green
   each time, median 0.30s for the whole set, slowest single test 0.04s.
 - Every repair has a delete-check: the wrong behaviour was put back and
@@ -41,6 +41,26 @@ scorecard only compiles the package and the tests. No style, type or
 dead-code claim is made. Jev was unreachable for the whole run
 (`TYPESAFE_API_KEY` absent), so every open choice was settled locally and
 written down in the oracle record.
+
+## Standing on the manifest another delivery built
+
+That delivery landed on main while this one was being repaired, and it
+moved the manifest into a catalogue of its own. Reading a program was
+written there as an operation this tool does not answer yet, carrying no
+shape at all. It carries one now: the source it reads, and an answer
+whose tree is there exactly when the program was read through. The laws
+that hold every operation to its published shape were written over the
+operations an agent could call, and reading a program is one of them
+now, so those laws cover it too.
+
+Three tests that already existed were edited, each in its own commit and
+each the same authorised change:
+
+| Test | The edit |
+|---|---|
+| `tests/unit/test_service_discover.py` | `"parse": "unavailable"` becomes `"available"`. |
+| `tests/unit/test_obligation_inventory_refuses_what_it_cannot_list.py` | the program it builds in memory passes line 1 column 1 for its signature, its example and its function. |
+| `tests/properties/test_f11_manifest_laws.py` | `"parse"` joins the operations an agent may call. |
 
 ## Still open
 
