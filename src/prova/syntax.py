@@ -18,7 +18,12 @@ SPECIAL_FORMS = {"let", "if", "match"}
 CORE_KEYWORDS = frozenset(
     {
         "deftype", "record", "union", "defn", "sig", "pure", "requires",
-        "ensures", "examples", "example", "true", "false", "result",
+        "ensures", "examples", "example", "true", "false",
+        # 'result' is not here: SPEC.md reserves it for the value a
+        # postcondition speaks about, which is a rule about what a name
+        # binds, not about how a name is spelled. The checker owns it and
+        # publishes it as its own refusal, so the spelling rule lets it
+        # through and leaves that answer to the one owner of the rule.
     }
 ) | frozenset(SPECIAL_FORMS)
 RESERVED_WORDS = CORE_KEYWORDS | frozenset(OPERATORS)

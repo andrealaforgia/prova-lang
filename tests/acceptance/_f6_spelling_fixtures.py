@@ -45,13 +45,18 @@ def _function_named(name: str) -> str:
 
 # --- 1. a reserved word used as a function name
 
-# Every word the language reserves, as SPEC.md lists them: the core
-# keywords, the postcondition name and the builtin operator names. A
-# reserved word is never a name a program may declare.
+# The words whose spelling the language refuses as a declared name: the
+# core keywords and the builtin operator names, as SPEC.md lists them.
+#
+# `result` is not among them. SPEC.md reserves it for the value a
+# postcondition speaks about, which is a rule about what a name binds
+# rather than how a name is spelled, and the tool answers it with its own
+# refusal from the whole-program check. Sweeping it here would ask the
+# spelling rule for an answer another rule owns.
 RESERVED_WORDS = (
     "deftype", "record", "union", "defn", "sig", "pure", "requires",
     "ensures", "examples", "example", "let", "if", "match", "true",
-    "false", "result",
+    "false",
     "+", "-", "*", "<", "<=", ">", ">=", "=", "and", "or", "not",
 )
 

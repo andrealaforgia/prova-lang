@@ -34,11 +34,14 @@ SYNTAX_CATEGORY = "syntax"
 # The shape SPEC.md gives a value or function name, and the words it
 # reserves. Written from the specification, not read from the tool.
 VALUE_NAME_SHAPE = re.compile(r"[a-z][a-z0-9-]*[?!]?$")
+# `result` is deliberately absent: SPEC.md reserves it for the value a
+# postcondition speaks about, and that refusal is owned by the
+# whole-program check, not by the spelling of a declared name.
 RESERVED_WORDS = frozenset(
     {
         "deftype", "record", "union", "defn", "sig", "pure", "requires",
         "ensures", "examples", "example", "let", "if", "match", "true",
-        "false", "result",
+        "false",
         "+", "-", "*", "<", "<=", ">", ">=", "=", "and", "or", "not",
     }
 )
