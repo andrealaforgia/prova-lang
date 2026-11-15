@@ -136,6 +136,11 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - WHEN the program is checked
   - THEN the answer is completed with 0 diagnostics
   - test: test_a_program_is_accepted_exactly_when_every_example_is_about_its_own_function
+- SC8 (P2): not-held (no held self-probe case)
+  - GIVEN "double" whose only example is (example (Box 3) => 4), where "Box" is a declared constructor and no function
+  - WHEN the program is checked
+  - THEN the answer is invalid_program and the refusal says "Box" is not a function this program declares, offering no move of the example to it
+  - test: test_an_example_calling_a_declared_constructor_is_refused_the_same_way
 - SC7 (P5): not-held (no held self-probe case)
   - GIVEN a client that has read 0 refusals of this tool so far
   - WHEN it asks the tool what it answers with
@@ -148,25 +153,55 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
-- A docs/feature/function-examples/craft.md (+87 -0 lines)
-- A docs/feature/function-examples/oracle.md (+92 -0 lines)
-- M src/prova/checker.py (+110 -2 lines)
-- M src/prova/service.py (+1 -0 lines)
-- A tests/acceptance/_f8_example_subject_fixtures.py (+345 -0 lines)
-- A tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py (+79 -0 lines)
-- A tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py (+44 -0 lines)
+- A docs/f9-out-of-profile/DECISIONS.md (+20 -0 lines)
+- A docs/f9-out-of-profile/SUMMARY.md (+671 -0 lines)
+- A docs/f9-out-of-profile/TRACE.md (+6 -0 lines)
+- A docs/feature/f9/craft.md (+103 -0 lines)
+- A docs/feature/f9/design.md (+106 -0 lines)
+- A docs/feature/f9/oracle.md (+98 -0 lines)
+- A docs/feature/function-examples/craft.md (+112 -0 lines)
+- A docs/feature/function-examples/oracle.md (+94 -0 lines)
+- A docs/feature/function-examples/selfreview.md (+35 -0 lines)
+- A docs/function-examples/DECISIONS.md (+13 -0 lines)
+- A docs/function-examples/SUMMARY.md (+406 -0 lines)
+- A docs/function-examples/TRACE.md (+5 -0 lines)
+- M docs/spec-trace.md (+9 -0 lines)
+- M docs/spec-trace/probe.py (+5 -1 lines)
+- M src/prova/checker.py (+114 -2 lines)
+- M src/prova/service.py (+114 -68 lines)
+- M src/prova/syntax.py (+206 -0 lines)
+- A tests/acceptance/_f8_example_subject_fixtures.py (+406 -0 lines)
+- A tests/acceptance/_f9_profile_fixtures.py (+408 -0 lines)
+- A tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py (+84 -0 lines)
+- A tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py (+77 -0 lines)
 - A tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py (+88 -0 lines)
 - A tests/acceptance/test_f8_b4_running_the_examples_answers_instead_of_crashing.py (+72 -0 lines)
 - A tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py (+58 -0 lines)
 - A tests/acceptance/test_f8_b6_sources_this_rule_leaves_alone.py (+58 -0 lines)
 - A tests/acceptance/test_f8_char1_shipped_programs_still_check.py (+91 -0 lines)
+- A tests/acceptance/test_f9_b1_division_is_refused_as_unsupported.py (+70 -0 lines)
+- A tests/acceptance/test_f9_b2_a_decimal_or_text_literal_is_refused_as_unsupported.py (+102 -0 lines)
+- A tests/acceptance/test_f9_b3_a_trailing_top_level_expression_is_refused_as_unsupported.py (+104 -0 lines)
+- A tests/acceptance/test_f9_b4_a_preserved_counterexample_is_refused_as_unsupported.py (+63 -0 lines)
+- A tests/acceptance/test_f9_b5_an_unsupported_refusal_claims_nothing_more.py (+81 -0 lines)
+- A tests/acceptance/test_f9_b6_the_manifest_publishes_the_unsupported_answer.py (+134 -0 lines)
 - A tests/properties/test_f8_example_subject.py (+211 -0 lines)
+- A tests/properties/test_f9_out_of_profile_source.py (+289 -0 lines)
 
 ## Commits (git log, BASE to HEAD)
 
-- d18a17d [F8] read whose example a declared example is
+- 6ee913b Let one owner answer a source the tool cannot check
+- f17fe1d Say what an out-of-profile source should be told, before saying it
+- 7e79d26 Tell a source that core-0 has no such construct, instead of guessing
+- d54c227 Record what F9 was measured at, beside the change
+- 5701c86 Keep a misplaced parenthesis a misplaced parenthesis
+- feb8130 Correct the craft record after the review and the rebase
+- 56faab9 Generate F9's delivery record from the journal
+- b5540f4 [F8] read whose example a declared example is
+- e749fec [F8] close the delivery's record beside the change
+- a42e3b2 [F8] say what a name that is no function is
 
-## 1. oracle: Frame the work and write the oracle (revision 1)
+## 3. oracle: Frame the work and write the oracle (revision 2)
 
 - **request**:
   - /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-f8/request.md
@@ -217,6 +252,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - SC4 | P3 | GIVEN "double", which takes 1 parameter, whose example is (example (double 2 3) => 4) | WHEN the program is checked | THEN the answer is invalid_program and the refusal says the example passes 2 arguments where 1 was expected
   - SC5 | P3 | GIVEN the same "double" whose example is (example (double) => 4), which ended the command before | WHEN the declared examples are asked to run | THEN the command exits 0 with 1 JSON answer saying invalid_program and reports 0 example outcomes
   - SC6 | P4 | GIVEN "double" whose example is (example (double 2) => 4), beside "triple" with its own example | WHEN the program is checked | THEN the answer is completed with 0 diagnostics
+  - SC8 | P2 | GIVEN "double" whose only example is (example (Box 3) => 4), where "Box" is a declared constructor and no function | WHEN the program is checked | THEN the answer is invalid_program and the refusal says "Box" is not a function this program declares, offering no move of the example to it
   - SC7 | P5 | GIVEN a client that has read 0 refusals of this tool so far | WHEN it asks the tool what it answers with | THEN the published list of categories names "unrelated_example", the 1 word an example about another function carries
 - **conflicts**:
   - S1 | NONE | ran the named command on this worktree before any change: 962 tests, all green, so the baseline the sentence states holds here
@@ -273,6 +309,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - SC5 => test_asking_for_the_examples_of_a_program_with_too_few_arguments_is_answered
   - SC6 => test_a_program_is_accepted_exactly_when_every_example_is_about_its_own_function
   - SC7 => test_the_word_for_an_example_about_another_function_is_published
+  - SC8 => test_an_example_calling_a_declared_constructor_is_refused_the_same_way
 - **predictions**:
   - SC1 => base differs
   - SC2 => base differs
@@ -281,6 +318,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - SC5 => base differs
   - SC6 => base held
   - SC7 => base differs
+  - SC8 => base differs
 - **interfaces**:
   - I1: the `check` operation of the prova command's JSON request surface, which answers whether a program is valid
   - I2: the `examples` operation of that same surface, which runs the examples a program declares
@@ -312,33 +350,31 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - LAW2 | a refusal of an example about another function names both the function left without an example of its own and the function the example calls | generator=test_a_refusal_names_the_function_left_without_an_example_and_the_one_called | observation=the reason text of the refusal | mutant=a refusal naming only the function that declares the example
 - **messages**:
   - MSG1 | a program declaring 'double' and 'triple' whose only example of 'double' is (example (triple 2) => 6) | example 0 of function 'double' calls 'triple' | core-0 requires every function to have an example directly calling that same function, so this example demonstrates 'triple' and leaves 'double' with no example of its own | write the example as a call to 'double', or declare it among the examples of 'triple' | test=test_an_example_calling_a_different_function_is_refused_naming_both
-  - MSG2 | a program whose only example of 'double' is (example (treble 2) => 4) and which declares no 'treble' | example 0 of function 'double' calls 'treble', which this program does not declare | core-0 requires every function to have an example directly calling that same function, so 'double' is left with no example of its own | write the example as a call to 'double' | test=test_an_example_naming_a_function_that_does_not_exist_is_refused
+  - MSG2 | a program whose only example of 'double' is (example (treble 2) => 4) and which declares no function 'treble', or one whose example is (example (Box 3) => 4) with 'Box' a declared constructor | example 0 of function 'double' calls the name it writes, which is not a function this program declares | core-0 requires every function to have an example directly calling that same function, so 'double' is left with no example of its own, and no repair may send a reader to a function that is not there | write the example as a call to 'double' | test=test_an_example_naming_a_function_that_does_not_exist_is_refused
   - MSG3 | a program whose 'double' takes 1 parameter and whose example is (example (double 2 3) => 4) | example 0 of function 'double' passes 2 argument(s), expected 1 | an example supplies 1 closed value for each parameter the function declares, so this example cannot be run against 'double' | write exactly 1 argument in the example | test=test_an_example_with_one_argument_too_many_is_refused_when_the_program_is_checked
-- **red**: `uv run pytest -q tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py tests/acceptance/test_f8_b4_running_the_examples_answers_instead_of_crashing.py tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py tests/acceptance/test_f8_b6_sources_this_rule_leaves_alone.py tests/acceptance/test_f8_char1_shipped_programs_still_check.py tests/properties/test_f8_example_subject.py` exited 1 in 1.923s
-  - failing on the pre-feature tree (14): tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_an_example_calling_a_different_function_is_refused_naming_both, tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_two_examples_about_another_function_are_both_reported, tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_running_the_examples_refuses_the_same_program, tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_naming_a_function_that_does_not_exist_is_refused, tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_with_one_argument_too_many_is_refused_when_the_program_is_checked, tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_with_no_argument_for_a_function_that_takes_one_is_refused, tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_leaving_out_the_second_argument_is_refused, tests/acceptance/test_f8_b4_running_the_examples_answers_instead_of_crashing.py::test_asking_for_the_examples_of_a_program_with_too_few_arguments_is_answered, tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py::test_the_word_for_an_example_about_another_function_is_published, tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py::test_the_word_a_real_refusal_carries_is_one_the_manifest_publishes, tests/acceptance/test_f8_char1_shipped_programs_still_check.py::test_a_shipped_program_is_still_accepted_and_the_rule_runs_on_it[examples/hour-clock.prova], tests/acceptance/test_f8_char1_shipped_programs_still_check.py::test_a_shipped_program_is_still_accepted_and_the_rule_runs_on_it[conformance/add-one.prova], tests/properties/test_f8_example_subject.py::test_a_program_is_accepted_exactly_when_every_example_is_about_its_own_function, tests/properties/test_f8_example_subject.py::test_a_refusal_names_the_function_left_without_an_example_and_the_one_called
-  - tests (read from the run): 14 failed, 10 passed in 1.56s
+- **red**: `uv run pytest -q tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py tests/acceptance/test_f8_b4_running_the_examples_answers_instead_of_crashing.py tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py tests/acceptance/test_f8_b6_sources_this_rule_leaves_alone.py tests/acceptance/test_f8_char1_shipped_programs_still_check.py tests/properties/test_f8_example_subject.py` exited 1 in 2.55s
+  - failing on the pre-feature tree (16): tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_an_example_calling_a_different_function_is_refused_naming_both, tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_two_examples_about_another_function_are_both_reported, tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_running_the_examples_refuses_the_same_program, tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_naming_a_function_that_does_not_exist_is_refused, tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_calling_a_declared_constructor_is_refused_the_same_way, tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_whose_call_is_a_builtin_operator_is_refused_the_same_way, tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_with_one_argument_too_many_is_refused_when_the_program_is_checked, tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_with_no_argument_for_a_function_that_takes_one_is_refused, tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_leaving_out_the_second_argument_is_refused, tests/acceptance/test_f8_b4_running_the_examples_answers_instead_of_crashing.py::test_asking_for_the_examples_of_a_program_with_too_few_arguments_is_answered, tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py::test_the_word_for_an_example_about_another_function_is_published, tests/acceptance/test_f8_b5_the_manifest_publishes_the_new_category.py::test_the_word_a_real_refusal_carries_is_one_the_manifest_publishes, tests/acceptance/test_f8_char1_shipped_programs_still_check.py::test_a_shipped_program_is_still_accepted_and_the_rule_runs_on_it[examples/hour-clock.prova], tests/acceptance/test_f8_char1_shipped_programs_still_check.py::test_a_shipped_program_is_still_accepted_and_the_rule_runs_on_it[conformance/add-one.prova], tests/properties/test_f8_example_subject.py::test_a_program_is_accepted_exactly_when_every_example_is_about_its_own_function, tests/properties/test_f8_example_subject.py::test_a_refusal_names_the_function_left_without_an_example_and_the_one_called
+  - tests (read from the run): 16 failed, 10 passed in 1.77s
   ```text
-
-  >       assert repr(owner) in reason and repr(called) in reason, (
-              f"the refusal {reason!r} does not name both {owner!r}, the function left "
-              f"without an example of its own, and {called!r}, the function its example "
-              f"calls. Source:\n{source}\nName both, so a reader can repair the example "
-              "without searching the program."
-          )
-  E       AssertionError: the refusal '' does not name both 'probe-0', the function left without an example of its own, and 'absent-probe', the function its example calls. Source:
+  E       AssertionError: the refusal '' does not name both 'probe-0', the function left without an example of its own, and 'probe-1', the function its example calls. Source:
   E         (defn probe-0
   E           (sig () -> Int ! pure)
-  E           (examples (example (absent-probe) => 1))
+  E           (examples (example (probe-1) => 1))
+  E           1)
+  E
+  E         (defn probe-1
+  E           (sig () -> Int ! pure)
+  E           (examples (example (probe-1) => 1))
   E           1)
   E
   E         Name both, so a reader can repair the example without searching the program.
   E       assert ("'probe-0'" in '')
   E        +  where "'probe-0'" = repr('probe-0')
   E       Failing test case: test_a_refusal_names_the_function_left_without_an_example_and_the_one_called(
-  E           drawn=('(defn probe-0\n  (sig () -> Int ! pure)\n  (examples (example (absent-probe) => 1))\n  1)\n',
-  E            'about a name never declared',
+  E           drawn=('(defn probe-0\n  (sig () -> Int ! pure)\n  (examples (example (probe-1) => 1))\n  1)\n\n(defn probe-1\n  (sig () -> Int ! pure)\n  (examples (example (probe-1) => 1))\n  1)\n',
+  E            'about another declared function',
   E            'probe-0',
-  E            'absent-probe'),  # or any other generated value
+  E            'probe-1'),  # or any other generated value
   E       )
 
   tests/properties/test_f8_example_subject.py:206: AssertionError
@@ -347,6 +383,8 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   FAILED tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_two_examples_about_another_function_are_both_reported
   FAILED tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py::test_running_the_examples_refuses_the_same_program
   FAILED tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_naming_a_function_that_does_not_exist_is_refused
+  FAILED tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_calling_a_declared_constructor_is_refused_the_same_way
+  FAILED tests/acceptance/test_f8_b2_an_example_naming_an_undeclared_function_is_refused.py::test_an_example_whose_call_is_a_builtin_operator_is_refused_the_same_way
   FAILED tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_with_one_argument_too_many_is_refused_when_the_program_is_checked
   FAILED tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_with_no_argument_for_a_function_that_takes_one_is_refused
   FAILED tests/acceptance/test_f8_b3_an_example_with_the_wrong_number_of_arguments_is_refused.py::test_an_example_leaving_out_the_second_argument_is_refused
@@ -357,50 +395,96 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   FAILED tests/acceptance/test_f8_char1_shipped_programs_still_check.py::test_a_shipped_program_is_still_accepted_and_the_rule_runs_on_it[conformance/add-one.prova]
   FAILED tests/properties/test_f8_example_subject.py::test_a_program_is_accepted_exactly_when_every_example_is_about_its_own_function
   FAILED tests/properties/test_f8_example_subject.py::test_a_refusal_names_the_function_left_without_an_example_and_the_one_called
-  14 failed, 10 passed in 1.56s
+  16 failed, 10 passed in 1.77s
   ```
 
-## 2. craft: Craft the change (revision 1)
+## 4. craft: Craft the change (revision 2)
 
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 99.933s
-  - tests (read from the run): 986 passed in 99.80s
-  - slowest: 5.78s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 3.84s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 3.34s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 3.00s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 106.289s
+  - tests (read from the run): 1007 passed in 106.17s
+  - slowest: 6.37s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 4.14s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 3.70s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 3.29s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
   - slowest: 2.52s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 1.70s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  - slowest: 1.42s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 1.41s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.24s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  - slowest: 1.21s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  - slowest: 1.85s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 1.53s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  - slowest: 1.43s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.33s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  - slowest: 1.28s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
   ```text
   ........................................................................ [  7%]
   ........................................................................ [ 14%]
   ........................................................................ [ 21%]
-  ........................................................................ [ 29%]
-  ........................................................................ [ 36%]
-  ........................................................................ [ 43%]
-  ........................................................................ [ 51%]
-  ........................................................................ [ 58%]
-  ........................................................................ [ 65%]
-  ........................................................................ [ 73%]
-  ........................................................................ [ 80%]
-  ........................................................................ [ 87%]
-  ........................................................................ [ 94%]
-  ..................................................                       [100%]
+  ........................................................................ [ 28%]
+  ........................................................................ [ 35%]
+  ........................................................................ [ 42%]
+  ........................................................................ [ 50%]
+  ........................................................................ [ 57%]
+  ........................................................................ [ 64%]
+  ........................................................................ [ 71%]
+  ........................................................................ [ 78%]
+  ........................................................................ [ 85%]
+  ........................................................................ [ 92%]
+  .......................................................................  [100%]
   ============================= slowest 10 durations =============================
-  5.78s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  3.84s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  3.34s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  3.00s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  6.37s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  4.14s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  3.70s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  3.29s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
   2.52s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  1.70s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  1.42s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  1.41s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.24s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  1.21s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  986 passed in 99.80s (0:01:39)
+  1.85s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  1.53s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  1.43s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.33s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1.28s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  1007 passed in 106.17s (0:01:46)
   ```
-- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.038s
+- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.061s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment, so jev_decide.py exited 3 on the three open questions (category for an example about another function, whether an undeclared name is the same defect, category for a wrong argument count); the request kept at mine/jev/request.json, decided locally as DEC1, DEC2 and DEC3
+
+## 5. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the rule lives where the oracle's decisions put it: one owner in checker.py and one published word in service.py (src/prova/service.py:31), as decisions DEC1 to DEC4 of the oracle record say; no other file is touched
+  - D2: pass - the number of parameters, the name called and the ordinal are read once, in DeclaredExample.of (src/prova/checker.py:572); check_program asks that owner and decides nothing itself (src/prova/checker.py:704); the published word is written once (src/prova/checker.py:97) and read from there by service.py
+  - D3: pass - the rule reads only parsed syntax and answers a Diagnostic; it calls no reader, no evaluator and no service, and service.py only names the word the checker owns
+  - D4: pass - src/prova/checker.py:544 gives the example its own type holding the six facts the rule needs, built only by DeclaredExample.of from a function, its example and the program, so a caller cannot ask the question with a count that belongs to another function; the refusals are returned as Diagnostic values, not booleans (src/prova/checker.py:591)
+  - D5: pass - src/prova/checker.py:544 is one frozen dataclass with one responsibility, 6 fields, 5 short methods and no branch deeper than one level; is_about_its_own_function (src/prova/checker.py:588) names the question instead of comparing strings at the call site
+  - D6: n/a: no pattern was added; the change follows the shape Cycle and TypeCycle already use, a small value that carries its own refusal
+  - D7: pass - the owner speaks the language of SPEC.md (an example, the function that declares it, the function it calls) and the refusals quote the rule the program breaks, at src/prova/checker.py:609 and src/prova/checker.py:634
+  - D8: pass - no file, no process, no clock and no network is read by the rule; it is a pure function of a parsed program
+  - D9: pass - the acceptance tests drive only the real `prova` command over JSON (tests/acceptance/_f8_example_subject_fixtures.py:275 reads only a response dict) and import nothing from src/prova; the property tests use the published service.handle request surface and its published words, no internal symbol
+  - D10: pass - every test name is a sentence about what a reader of the tool gets, for example tests/acceptance/test_f8_b1_an_example_about_another_function_is_refused.py:32; no production symbol, process id or layer term appears in a name
+  - D11: pass - the programs and the two assertion helpers live once in tests/acceptance/_f8_example_subject_fixtures.py and every test file calls them; no test re-implements an assertion about a refusal
+  - D12: pass - tests/properties/test_f8_example_subject.py:108 draws the case first from a closed set of 5 and then builds a program that is in that case by construction, with no filtering; the oracle is the case drawn, not the checker's answer, and the bounds (3 functions, 2 parameters) are declared in the module
+  - D13: pass - 9 runs of the 8 new files in a row: 26 passed every time, pytest-reported 1.22-1.24s; the full suite is 1007 passed in 100.11s; the acceptance tests are integration tests that start the real command once each, about 40 ms, and no test sleeps or reads a clock
+  - D14: pass - each test adds a distinct observation: the four names that are not the function's own, the three wrong counts, the crash case, the manifest, the sources the rule leaves alone and the shipped programs; no finite example repeats the property's pair
+  - D15: pass - every refusal says what, why and how with the facts it holds (src/prova/checker.py:609 names both functions and the repair; src/prova/checker.py:634 gives both counts), and every assertion message states expected, actual and the contract, for example tests/acceptance/_f8_example_subject_fixtures.py:343
+  - D16: n/a: the rule is a pure whole-program check with no state, protocol, concurrency or crash window, so a formal model would have nothing to explore; recorded as decision DEC6 of the oracle
+  - D17: pass - docs/feature/function-examples/oracle.md, craft.md and selfreview.md state the measured numbers, the two review findings and the checks that turn red without their fixes, and name what the tests do not prove (argument types, programs larger than the generated bounds, the pre-feature collection limit of 4 unrelated property modules)
+- **independent_review**:
+  - REV1 | reviewer=rev1-impl-review | findings=2 (verdict APPROVE at e749fec, non-blocking): the branch for a name that is no function had no falsifier, and the refusal's wording was false of a declared constructor and of a builtin operator | resolution=both fixed in a42e3b2: the tests now state both halves of the refusal and observe an example calling a constructor and one calling an operator, and the wording became 'is not a function this program declares'; removing either fix turns 3 tests red, and the converse mutant turns 2 red
+
+## 6. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - A declared example is now read as what it demonstrates.
+  - An example that names its own function with another number of arguments is refused with the word the tool already uses for a call, a constructor and an operator given the wrong number of arguments, at check time: asking such a program for its examples used to end the command with a traceback and now comes back as one JSON refusal.
+  - The rule lives in one owner in the checker beside the refusals it carries; the published list of categories in the service gained one line.
+  - Checked through the real prova command over JSON for the examples, the constructor and the operator cases, with a generated property for the law over small programs, and with the two shipped programs kept accepted and their examples passing.
+- **not_verified**:
+  - that an example's arguments have the types its function declares: the rule reads the name called and the number of arguments only, and the value checks that existed before are unchanged
+  - any program larger than the generated bounds: the property samples programs of at most 3 functions of at most 2 parameters, which is evidence and not proof
+  - the refusals carry no line and column, so nothing here was checked about where a reader is sent inside the file; a parsed example keeps no position and giving it one would change syntax.py, which a parallel delivery holds
+  - no linter and no type checker ran: the repository declares none, and the scorecard command is a byte-compilation of the sources
+  - the pre-feature tree cannot collect 4 unrelated property modules (git show of an older SPEC revision exits 128 there), so the recorded red run names the 8 new test files directly instead of the whole suite
+  - Jev answered none of the three open questions: TYPESAFE_API_KEY is absent from this environment and the client exited 3; the categories were decided locally
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit a42e3b2ecc51ed7c2ad54a388e6952e0da0398ff
+  - no checks declared
+
+## Not backed by the diff
+
+- An example whose call names anything but the function that declares it is refused with a word the manifest publishes, naming the function left without an example of its own and the name the example calls; the refusal offers to move the example only when that name is a function able to own one, and otherwise says it is not a function this program declares, which is true of a name declared nowhere, of a declared constructor and of a builtin operator alike.: a guarantee names no test function of the change
+- Each refusal and each half of its message was removed in turn and the tests were watched to fail, then restored.: a guarantee names no test function of the change

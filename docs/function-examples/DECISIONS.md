@@ -2,7 +2,7 @@
 
 kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: none
 
-## oracle (revision 1)
+## oracle (revision 2)
 
 - **decisions**:
   - DEC1: the refusal of an example about another function carries a new published word, unrelated_example, because none of the 13 published categories states that defect: they report a name that does not resolve, a count, a type, a repeated declaration, a cycle, a hidden binding or a reserved word. SPEC.md line 233 calls such an example unrelated, so the word is the language's own.
