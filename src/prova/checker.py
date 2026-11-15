@@ -857,9 +857,11 @@ def _binder_refusals_in(expression: object, visible: VisibleNames) -> list[Diagn
     if isinstance(expression, syntax.Let):
         found: list[Diagnostic] = []
         scope = visible
-        for name, bound_expression in expression.bindings:
-            found += _binder_refusals_in(bound_expression, scope)
-            binder = Binder(name, LET_BINDING, expression.line, expression.column)
+        for binding in expression.bindings:
+            found += _binder_refusals_in(binding.value, scope)
+            binder = Binder(
+                binding.name, LET_BINDING, expression.line, expression.column
+            )
             refusals, scope = _introduce(binder, scope)
             found += refusals
         return found + _binder_refusals_in(expression.body, scope)
@@ -938,9 +940,9 @@ def _binding_diagnostics(program: syntax.Program) -> list[Diagnostic]:
     for function in program.functions.values():
         line, column = places[function.name]
         scope = declarations
-        for parameter_name, _ in function.signature.params:
+        for parameter in function.signature.params:
             refusals, scope = _introduce(
-                Binder(parameter_name, PARAMETER, line, column), scope
+                Binder(parameter.name, PARAMETER, line, column), scope
             )
             diagnostics += refusals
         for expression in (*function.requires, function.body):
@@ -1138,15 +1140,17 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
     for function in program.functions.values():
         within = function.name
         place = function_places[within]
-        for param_name, param_type in function.signature.params:
+        for parameter in function.signature.params:
             check_type_name(
-                param_type, f"function {within!r} parameter {param_name!r}", place
+                parameter.type_name,
+                f"function {within!r} parameter {parameter.name!r}",
+                place,
             )
         check_type_name(
             function.signature.return_type, f"function {within!r} return type", place
         )
 
-        params_env = {name: type_ for name, type_ in function.signature.params}
+        params_env = {p.name: p.type_name for p in function.signature.params}
         for clause_expr in function.requires:
             _check_contract_clause_is_bool(clause_expr, params_env, program, diagnostics, within)
 
@@ -1568,8 +1572,10 @@ def _infer(
 
     if isinstance(expr, syntax.Let):
         local_env = dict(env)
-        for name, bound_expr in expr.bindings:
-            local_env[name] = _infer(bound_expr, local_env, program, diagnostics, within)
+        for binding in expr.bindings:
+            local_env[binding.name] = _infer(
+                binding.value, local_env, program, diagnostics, within
+            )
         return _infer(expr.body, local_env, program, diagnostics, within)
 
     if isinstance(expr, syntax.If):
@@ -1729,17 +1735,19 @@ def _infer(
                     about=AboutTwoCounts(expr.name, len(params), len(expr.args)),
                 )
             )
-        for (param_name, param_type), arg in zip(params, expr.args):
+        for parameter, arg in zip(params, expr.args):
             arg_type = _infer(arg, env, program, diagnostics, within)
-            if arg_type is not None and arg_type != param_type:
+            if arg_type is not None and arg_type != parameter.type_name:
                 diagnostics.append(
                     Diagnostic(
                         "type_mismatch",
-                        f"call to {expr.name!r} argument {param_name!r} expects "
-                        f"{param_type}, got {arg_type}",
+                        f"call to {expr.name!r} argument {parameter.name!r} expects "
+                        f"{parameter.type_name}, got {arg_type}",
                         (expr.line, expr.column),
                         about=AboutTwoTypes(
-                            f"{expr.name}.{param_name}", param_type, arg_type
+                            f"{expr.name}.{parameter.name}",
+                            parameter.type_name,
+                            arg_type,
                         ),
                     )
                 )

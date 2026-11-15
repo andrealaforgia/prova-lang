@@ -191,7 +191,7 @@ def call_function(
     program: syntax.Program,
     standing: int = 0,
 ) -> object:
-    env = dict(zip((name for name, _ in function.signature.params), args))
+    env = dict(zip((p.name for p in function.signature.params), args))
 
     for requirement in function.requires:
         if eval_expr(requirement, env, program, standing) is not True:
@@ -240,8 +240,10 @@ def eval_expr(
 
     if isinstance(expr, syntax.Let):
         local_env = dict(env)
-        for name, bound_expr in expr.bindings:
-            local_env[name] = eval_expr(bound_expr, local_env, program, standing)
+        for binding in expr.bindings:
+            local_env[binding.name] = eval_expr(
+                binding.value, local_env, program, standing
+            )
         return eval_expr(expr.body, local_env, program, standing)
 
     if isinstance(expr, syntax.If):

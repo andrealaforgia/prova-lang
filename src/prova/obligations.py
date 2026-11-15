@@ -381,8 +381,8 @@ def _parts_of(expression: object) -> list[tuple[object, str, tuple[str, ...]]]:
         return [(expression.target, "target", ())]
     if isinstance(expression, syntax.Let):
         bound = [
-            (value, f"bind[{index}]", ())
-            for index, (_, value) in enumerate(expression.bindings)
+            (binding.value, f"bind[{index}]", ())
+            for index, binding in enumerate(expression.bindings)
         ]
         return bound + [(expression.body, "in", ())]
     if isinstance(expression, syntax.If):
@@ -463,7 +463,8 @@ def _applied(head: str, args: tuple) -> str:
 
 def _let_text(expression: syntax.Let) -> str:
     bindings = " ".join(
-        f"({name} {text_of(value)})" for name, value in expression.bindings
+        f"({binding.name} {text_of(binding.value)})"
+        for binding in expression.bindings
     )
     return f"(let ({bindings}) {text_of(expression.body)})"
 

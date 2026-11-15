@@ -818,8 +818,10 @@ def _run_evaluate(source: str, asked: EvaluationAsked) -> dict:
         }
 
     try:
-        for arg, (param_name, param_type) in zip(args, params):
-            evaluator.check_value_type(arg, param_type, program, f"argument {param_name!r}")
+        for arg, parameter in zip(args, params):
+            evaluator.check_value_type(
+                arg, parameter.type_name, program, f"argument {parameter.name!r}"
+            )
     except evaluator.MalformedValue as error:
         return {
             "operation": "evaluate",

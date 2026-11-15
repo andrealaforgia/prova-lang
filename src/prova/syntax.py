@@ -439,28 +439,57 @@ def _symbol_text(role: str, node: object) -> str:
 
 # --- declarations -----------------------------------------------------
 
+# Every declaration below carries the place of the form it was read
+# from, as the expressions further down already do: a reader of a
+# declaration is owed the line to open, and a part of the tree that
+# cannot say where it stands cannot be published either.
+
 @dataclass(frozen=True)
 class RecordType:
     name: str
     fields: tuple[tuple[str, str], ...]
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class Variant:
     name: str
     fields: tuple[tuple[str, str], ...]
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class UnionType:
     name: str
     variants: tuple[Variant, ...]
+    line: int = 0
+    column: int = 0
+
+
+@dataclass(frozen=True)
+class Parameter:
+    """One parameter as a function declares it: the name it binds, the
+    type it declares for it, and the place that name stands at.
+
+    A pair of strings said neither which of the two was the name nor
+    where either stood; a caller that needs the place had to go back to
+    the source for it.
+    """
+
+    name: str
+    type_name: str
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class Signature:
-    params: tuple[tuple[str, str], ...]
+    params: tuple[Parameter, ...]
     return_type: str
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -468,6 +497,8 @@ class Example:
     function: str
     args: tuple[object, ...]
     expected: object
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -478,6 +509,8 @@ class Function:
     ensures: tuple["Expr", ...]
     examples: tuple[Example, ...]
     body: "Expr"
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -698,8 +731,19 @@ class FieldAccess:
 
 
 @dataclass(frozen=True)
+class Binding:
+    """One binding of a 'let': the name it binds, the expression bound to
+    it, and the place the binding stands at."""
+
+    name: str
+    value: "Expr"
+    line: int = 0
+    column: int = 0
+
+
+@dataclass(frozen=True)
 class Let:
-    bindings: tuple[tuple[str, "Expr"], ...]
+    bindings: tuple[Binding, ...]
     body: "Expr"
     line: int = 0
     column: int = 0
@@ -718,6 +762,8 @@ class If:
 class MatchClause:
     pattern: "Pattern"
     body: "Expr"
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
@@ -736,33 +782,43 @@ Expr = object  # IntLit | BoolLit | UnitLit | NameRef | Call | ConstructorCall
 
 @dataclass(frozen=True)
 class PatWildcard:
-    pass
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class PatVar:
     name: str
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class PatInt:
     value: int
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class PatBool:
     value: bool
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class PatUnit:
-    pass
+    line: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class PatConstructor:
     name: str
     subpatterns: tuple["Pattern", ...]
+    line: int = 0
+    column: int = 0
 
 
 Pattern = object
@@ -864,10 +920,10 @@ def _parse_type_decl(form: SList) -> RecordType | UnionType:
     )
     if kind == "record":
         fields = tuple(_parse_field(f) for f in body.items[1:])
-        return RecordType(name, fields)
+        return RecordType(name, fields, *_position(form))
     if kind == "union":
         variants = tuple(_parse_variant(v) for v in body.items[1:])
-        return UnionType(name, variants)
+        return UnionType(name, variants, *_position(form))
     raise SyntaxError_(f"expected 'record' or 'union', found {kind!r}", *_position(body))
 
 
@@ -885,7 +941,7 @@ def _parse_variant(node: object) -> Variant:
         )
     ).text
     fields = tuple(_parse_field(f) for f in node.items[1:])
-    return Variant(name, fields)
+    return Variant(name, fields, *_position(node))
 
 
 def _parse_signature(node: SList) -> Signature:
@@ -919,7 +975,7 @@ def _parse_signature(node: SList) -> Signature:
             line,
             column,
         )
-    return Signature(params, return_type)
+    return Signature(params, return_type, line, column)
 
 
 def _item_at(form: object, index: int) -> object | None:
@@ -991,10 +1047,11 @@ def _parse_pair(node: object, within: str, name_role: str | None) -> tuple[str, 
     return name, _symbol_text(f"the type of {name!r}", type_node)
 
 
-def _parse_parameter(node: object) -> tuple[str, str]:
+def _parse_parameter(node: object) -> Parameter:
     """One declared parameter: its name, spelled as core-0 spells a
-    value name, and its declared type."""
-    return _parse_pair(node, "a declared parameter", "parameter name")
+    value name, its declared type, and the place its name stands at."""
+    name, type_name = _parse_pair(node, "a declared parameter", "parameter name")
+    return Parameter(name, type_name, *_position(node.items[0]))
 
 
 _DEFN_REPAIR = (
@@ -1036,7 +1093,9 @@ def _parse_function_decl(form: SList) -> Function:
         )
     examples = _parse_examples(rest[0], name)
     body = parse_expr(rest[1])
-    return Function(name, signature, requires, ensures, examples, body)
+    return Function(
+        name, signature, requires, ensures, examples, body, *_position(form)
+    )
 
 
 def _parse_examples(node: SList, function_name: str) -> tuple[Example, ...]:
@@ -1066,7 +1125,7 @@ def _parse_example(node: object) -> Example:
     function_name = call.items[0].text
     args = tuple(parse_value(v) for v in call.items[1:])
     expected = parse_value(node.items[3])
-    return Example(function_name, args, expected)
+    return Example(function_name, args, expected, *_position(node))
 
 
 # --- parsing: values (used only by declared examples) ----------------------
@@ -1162,7 +1221,7 @@ def parse_expr(node: object) -> Expr:
     return Call(name, args, line, column)
 
 
-def _parse_binding(node: object) -> tuple[str, Expr]:
+def _parse_binding(node: object) -> Binding:
     """One `let` binding: the name it binds and the expression it binds
     to that name."""
     if not isinstance(node, SList) or len(node.items) != 2:
@@ -1174,9 +1233,10 @@ def _parse_binding(node: object) -> tuple[str, Expr]:
             *_position(node),
         )
     name_node, value_node = node.items
-    return (
+    return Binding(
         _symbol_text("the name of a 'let' binding", name_node),
         parse_expr(value_node),
+        *_position(node),
     )
 
 
@@ -1192,23 +1252,24 @@ def _parse_clause(node: object) -> MatchClause:
         )
     pattern = _parse_pattern(node.items[0])
     body = parse_expr(node.items[1])
-    return MatchClause(pattern, body)
+    return MatchClause(pattern, body, *_position(node))
 
 
 def _parse_pattern(node: object) -> Pattern:
+    place = _position(node)
     if isinstance(node, Atom):
         if node.text == "_":
-            return PatWildcard()
+            return PatWildcard(*place)
         if node.text == "true":
-            return PatBool(True)
+            return PatBool(True, *place)
         if node.text == "false":
-            return PatBool(False)
+            return PatBool(False, *place)
         if node.is_int:
-            return PatInt(node.int_value)
-        return PatVar(node.text)
+            return PatInt(node.int_value, *place)
+        return PatVar(node.text, *place)
     assert isinstance(node, SList)
     if not node.items:
-        return PatUnit()
+        return PatUnit(*place)
     name = _symbol_text("the constructor of a pattern", node.items[0])
     subpatterns = tuple(_parse_pattern(p) for p in node.items[1:])
-    return PatConstructor(name, subpatterns)
+    return PatConstructor(name, subpatterns, *place)
