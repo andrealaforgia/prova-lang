@@ -199,6 +199,66 @@ AN_UNCLOSED_OPERATOR_CALL = """\
   (+ cents cents)
 """
 
+# --- the same wrong count written where a reader does not look first:
+# --- in a precondition, in a postcondition and in a match clause body
+
+A_PRECONDITION_WITH_A_WRONG_COUNT = """\
+(defn fare
+  (sig ((cents Int)) -> Int ! pure)
+  (requires (< cents))
+  (examples (example (fare 100) => 110))
+  (+ cents 10))
+"""
+
+A_POSTCONDITION_WITH_A_WRONG_COUNT = """\
+(defn fare
+  (sig ((cents Int)) -> Int ! pure)
+  (ensures (= result))
+  (examples (example (fare 100) => 110))
+  (+ cents 10))
+"""
+
+A_MATCH_CLAUSE_WITH_A_WRONG_COUNT = """\
+(deftype Colour (union (Red (shade Int)) (Blue (shade Int))))
+
+(defn shade-of
+  (sig ((c Colour)) -> Int ! pure)
+  (examples (example (shade-of (Red 2)) => 4))
+  (match c ((Red tone) (+ tone)) ((Blue tone) tone)))
+"""
+
+# The twin of all three: a precondition, a postcondition and a match
+# clause body whose operators are all written with their own number of
+# arguments, nested inside one another.
+CORRECT_OPERATORS_IN_A_CONTRACT_AND_A_MATCH = """\
+(deftype Colour (union (Red (shade Int)) (Blue (shade Int))))
+
+(defn shade-of
+  (sig ((c Colour) (cents Int)) -> Int ! pure)
+  (requires (and (< 0 cents) (not (= cents 7))))
+  (ensures (>= result 0))
+  (examples (example (shade-of (Red 2) 5) => 4))
+  (match c ((Red tone) (+ tone tone)) ((Blue tone) (* tone 2))))
+"""
+
+
+def site_of(source: str, snippet: str) -> tuple[int, int]:
+    """Where `snippet` stands in `source`, as the line and column a
+    reader counts from 1.
+
+    The place a refusal must point at, worked out from the program text
+    the test wrote and from nothing the tool says.
+    """
+    assert source.count(snippet) == 1, (
+        f"{snippet!r} stands {source.count(snippet)} times in the program, so the "
+        "test cannot say which one a refusal should point at. Use a snippet that "
+        "appears once."
+    )
+    index = source.index(snippet)
+    before = source[:index]
+    return before.count("\n") + 1, index - (before.rfind("\n") + 1) + 1
+
+
 # A whole valid program that writes no operator at all: the thing a rule
 # about operators must leave alone. (A source with nothing in it is not
 # that program: core-0 asks for at least one declaration, so an empty
