@@ -213,10 +213,22 @@ class DiagnosticKind:
     names_a_cycle: bool = False
     revision: str = ALWAYS
 
+    def says_which_text(self) -> bool:
+        """Whether a refusal of this category must say which text its
+        place stands in.
+
+        A category whose place can stand in the source or in a value the
+        request supplies leaves a client guessing which one it opened,
+        so each refusal of such a category carries the answer itself.
+        """
+        return len(self.points_into) > 1
+
     def fields(self) -> dict:
         named = dict(self.about.kinds())
         if self.names_a_cycle:
             named["cycle"] = "names"
+        if self.says_which_text():
+            named["points_into"] = "text_the_place_stands_in"
         return named
 
     def published(self) -> dict:
@@ -277,6 +289,13 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         points_into=("argument", "source"),
         granularity=("token", "declaration"),
     ),
+    "malformed_request": DiagnosticKind(
+        AboutASymbol,
+        placed=NEVER,
+        points_into=(),
+        granularity=(),
+        revision=NEVER,
+    ),
     "ill_typed_value": DiagnosticKind(AboutASymbol, granularity=("declaration",)),
     "precondition_violation": DiagnosticKind(
         AboutASymbol, granularity=("declaration",)
@@ -285,10 +304,10 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         AboutASymbol, granularity=("declaration",)
     ),
     "operation_unavailable": DiagnosticKind(
-        AboutNothingNamed, placed=NEVER, points_into=(), revision=NEVER
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=(), revision=NEVER
     ),
     "unknown_operation": DiagnosticKind(
-        AboutNothingNamed, placed=NEVER, points_into=(), revision=NEVER
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=(), revision=NEVER
     ),
 }
 
@@ -300,6 +319,7 @@ class Diagnostic:
     location: tuple[int, int] | None = None
     cycle: "DeclarationCycle | None" = None
     about: object = NOTHING_NAMED
+    points_into: str | None = None
 
     def __post_init__(self) -> None:
         kind = DIAGNOSTIC_KINDS.get(self.category)
@@ -338,6 +358,21 @@ class Diagnostic:
                 "from 1, so a 0 means the place was never found; pass the "
                 "place the refusal stands at, or build it with no place where "
                 "the tree keeps none"
+            )
+        if kind.says_which_text() and self.points_into not in kind.points_into:
+            raise ValueError(
+                f"a refusal of category {self.category!r} says its place stands "
+                f"in {self.points_into!r}, which is not one of "
+                f"{', '.join(kind.points_into)}: a place of this category can "
+                "stand in more than one text, so a client that is not told "
+                "which one cannot open it; pass the text the place stands in"
+            )
+        if not kind.says_which_text() and self.points_into is not None:
+            raise ValueError(
+                f"a refusal of category {self.category!r} says its place stands "
+                f"in {self.points_into!r}, but every place of this category "
+                "stands in the one text the manifest names for it, so a client "
+                "would read a field the manifest does not publish; leave it out"
             )
         if self.cycle is not None and not kind.names_a_cycle:
             raise ValueError(

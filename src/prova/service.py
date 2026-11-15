@@ -13,6 +13,11 @@ from prova.reader import ReaderError, end_of, read_program
 from prova.values import render
 
 AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify")
+
+# The operations that read a program from the `source` field of the
+# request. Each of them is answered about a text, so each of them refuses
+# a request whose `source` is not one.
+SOURCE_READING_OPERATIONS = ("check", "examples", "evaluate", "verify")
 UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "build"})
 
 # What the tool answers when the source is not a program it can check.
@@ -61,6 +66,10 @@ DIAGNOSTIC_CATEGORIES = tuple(checker.DIAGNOSTIC_KINDS)
 # every module the process enters.
 def handle(request: dict) -> dict:
     operation = request.get("operation")
+    if operation in SOURCE_READING_OPERATIONS:
+        source = request.get("source", "")
+        if not isinstance(source, str):
+            return _unreadable_source(operation, source)
     if operation == "check":
         return _run_check(request.get("source", ""))
     if operation == "examples":
@@ -94,6 +103,34 @@ def handle(request: dict) -> dict:
                 "category": "unknown_operation",
                 "reason": f"operation {operation!r} is not recognized",
             }
+        ],
+    }
+
+
+def _unreadable_source(operation: str, source: object) -> dict:
+    """The answer to a request whose `source` is not the text of a
+    program.
+
+    Read before anything else about the request, because every later
+    answer is about a text: the revision an answer carries is the
+    revision of those characters, and a value of another kind has none.
+    """
+    return {
+        "operation": operation,
+        "status": "invalid_input",
+        "diagnostics": [
+            _diagnostic_dict(
+                checker.Diagnostic(
+                    "malformed_request",
+                    f"the 'source' field of the request holds "
+                    f"{type(source).__name__}, not the text of a program: this "
+                    "tool reads a program from the characters of that field, "
+                    "and a value of another kind holds no characters to read; "
+                    "send the program as one JSON string, writing a line break "
+                    "as \\n",
+                    about=checker.AboutASymbol("source"),
+                )
+            )
         ],
     }
 
@@ -192,8 +229,11 @@ def _diagnostic_dict(
     an answer about a source the tool stopped reading still says which
     source that was.
     """
+    kind = checker.DIAGNOSTIC_KINDS[diagnostic.category]
     entry = {"category": diagnostic.category, "reason": diagnostic.reason}
-    if checker.DIAGNOSTIC_KINDS[diagnostic.category].revision == checker.ALWAYS:
+    if kind.says_which_text():
+        entry["points_into"] = diagnostic.points_into
+    if kind.revision == checker.ALWAYS:
         if revision is None:
             raise ValueError(
                 f"a refusal of category {diagnostic.category!r} is being "
@@ -430,6 +470,7 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
                         error.message,
                         (error.line, error.column),
                         about=checker.AboutASymbol(function.name),
+                        points_into="argument",
                     ),
                     revision,
                 )
@@ -471,6 +512,7 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
                         error.reason,
                         place,
                         about=checker.AboutASymbol(function.name),
+                        points_into="source",
                     ),
                     revision,
                 )

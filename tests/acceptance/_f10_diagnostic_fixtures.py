@@ -97,6 +97,7 @@ class Case:
     twin: str = WELL_FORMED
     expected: object = None
     actual: object = None
+    granularity: str = "expression"
 
     def has_expectation(self) -> bool:
         return self.expected is not None
@@ -184,6 +185,7 @@ DECLARATION_CASES: dict[str, Case] = {
         symbol="Cents",
         line=DECLARATION_LINE,
         column=DECLARATION_COLUMN,
+        granularity="declaration",
         twin=with_body("10"),
     ),
     "a record whose field leads back to it": Case(
@@ -193,6 +195,7 @@ DECLARATION_CASES: dict[str, Case] = {
         line=1,
         column=10,
         twin=ACYCLIC_TYPE_SOURCE,
+        granularity="declaration",
     ),
     "two functions that call each other": Case(
         source=MUTUAL_CALLS.format(first="(odd-steps n)"),
@@ -201,6 +204,7 @@ DECLARATION_CASES: dict[str, Case] = {
         line=1,
         column=7,
         twin=MUTUAL_CALLS.format(first="n"),
+        granularity="declaration",
     ),
     "an example about another function": Case(
         source=with_example("(example (other 100) => 110)"),
@@ -208,6 +212,7 @@ DECLARATION_CASES: dict[str, Case] = {
         symbol="fare",
         line=DECLARATION_LINE,
         column=DECLARATION_COLUMN,
+        granularity="declaration",
     ),
     "an example with one argument too many": Case(
         source=with_example("(example (fare 100 7) => 110)"),
@@ -217,6 +222,7 @@ DECLARATION_CASES: dict[str, Case] = {
         actual=2,
         line=DECLARATION_LINE,
         column=DECLARATION_COLUMN,
+        granularity="declaration",
     ),
     "an example value no constructor builds": Case(
         source=EXAMPLE_VALUE.format(constructor="Cash"),
@@ -225,10 +231,93 @@ DECLARATION_CASES: dict[str, Case] = {
         line=2,
         column=7,
         twin=EXAMPLE_VALUE.format(constructor="Money"),
+        granularity="declaration",
+    ),
+}
+
+# --- refusals that stand at the expression they are about ----------------
+
+MONEY = """\
+(deftype Money (record (cents Int)))
+(defn fare
+  (sig ((m Money)) -> Int ! pure)
+  (examples (example (fare (Money 100)) => 100))
+  {body})
+"""
+
+LIGHT = """\
+(deftype Light (union (Red) (Green)))
+(defn go
+  (sig ((l Light)) -> Int ! pure)
+  (examples (example (go (Red)) => 1))
+  {body})
+"""
+
+EXPRESSION_CASES: dict[str, Case] = {
+    "a name nothing binds": Case(
+        source=with_body("nope"),
+        category="unbound_name",
+        symbol="nope",
+        line=BODY_LINE,
+        column=BODY_COLUMN,
+    ),
+    "a field the type does not declare": Case(
+        source=MONEY.format(body="(.pence m)"),
+        category="unbound_field",
+        symbol="Money.pence",
+        line=5,
+        column=3,
+        twin=MONEY.format(body="(.cents m)"),
+    ),
+    "a match that leaves a value out": Case(
+        source=LIGHT.format(body="(match l ((Red) 1))"),
+        category="non_exhaustive_match",
+        symbol="Light",
+        line=5,
+        column=3,
+        twin=LIGHT.format(body="(match l ((Red) 1) ((Green) 2))"),
+    ),
+    "a construct the profile does not have": Case(
+        source=with_body("(/ cents 2)"),
+        category="unsupported_construct",
+        symbol="",
+        line=BODY_LINE,
+        column=4,
+        twin=with_body("(* cents 2)"),
+    ),
+    "a form the reader never closes": Case(
+        source="(defn fare\n",
+        category="syntax",
+        symbol="",
+        line=1,
+        column=1,
+        granularity="token",
     ),
 }
 
 ALL_CASES: dict[str, Case] = {**TYPE_ERRORS, **DECLARATION_CASES}
+
+# Every refused program that carries a place, with the granularity its
+# category publishes for it.
+PLACED_CASES: dict[str, Case] = {**ALL_CASES, **EXPRESSION_CASES}
+
+
+def declared_places(source: str) -> set:
+    """Every place a declaration of `source` writes its own name.
+
+    Read from the text the test submitted, never from the tool: a
+    refusal published as standing at a declaration is checked against
+    the places this finds, so a refusal standing anywhere else is seen.
+    Each fixture writes at most one declaration per line.
+    """
+    places = set()
+    for number, line in enumerate(source.split("\n"), start=1):
+        for word in ("defn", "deftype"):
+            marker = f"({word} "
+            index = line.find(marker)
+            if index >= 0:
+                places.add((number, index + len(marker) + 1))
+    return places
 
 
 # --- running the command --------------------------------------------------

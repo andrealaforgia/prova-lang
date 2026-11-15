@@ -18,12 +18,15 @@ from __future__ import annotations
 from _f10_diagnostic_fixtures import (
     INVALID_INPUT,
     LOCATION,
+    MONEY,
     WELL_FORMED,
     check,
     evaluate,
     revision_of,
     the_one_refusal,
 )
+
+MONEY_PROGRAM = MONEY.format(body="(.cents m)")
 
 UNCLOSED_SOURCE = "(defn fare\n"
 
@@ -34,6 +37,11 @@ MALFORMED_ARGUMENTS = {
     "an argument that is empty": ("", {"line": 1, "column": 1}),
     "an argument holding two values": ("1 2", {"line": 1, "column": 3}),
     "an argument that closes a list it never opened": (")", {"line": 1, "column": 1}),
+    "an argument that is one comment and a line break": (
+        "; a comment\n",
+        {"line": 2, "column": 1},
+    ),
+    "an argument that is two line breaks": ("\n\n", {"line": 3, "column": 1}),
 }
 
 
@@ -45,6 +53,12 @@ def test_a_refused_argument_says_where_in_the_argument_it_stands():
         response = evaluate(WELL_FORMED, "fare", [argument])
         assert response.get("status") == INVALID_INPUT, (why, response)
         entry = the_one_refusal(response, why)
+        assert entry.get("points_into") == "argument", (
+            f"the refusal for {why} does not say which text its place stands "
+            f"in: {entry}. A place of this category can stand in the source or "
+            "in the argument, so a client that is not told which one cannot "
+            "open it."
+        )
         assert entry.get(LOCATION) == place, (
             f"the refusal for {why} is placed at {entry.get(LOCATION)} but the "
             f"reader stopped at {place}: {entry}. A refusal from the reader "
@@ -73,4 +87,33 @@ def test_a_refused_source_still_says_where_it_stands():
     assert entry.get("source_revision") == revision_of(UNCLOSED_SOURCE), (
         f"the refusal does not say which text it is about: {entry}. A reader "
         "refusal is about a source too."
+    )
+
+
+def test_a_value_the_program_cannot_take_points_into_the_source():
+    """Given the argument `(Money 1 2)`, where `Money` holds 1 field,
+    when `fare` is evaluated with it, then the refusal stands at the
+    declaration of `fare` in the source, line 2 column 7, and says that
+    its place is in the source and not in the argument."""
+    entry = the_one_refusal(
+        evaluate(MONEY_PROGRAM, "fare", ["(Money 1 2)"]),
+        "a constructor given one field too many",
+    )
+
+    assert entry.get("category") == "malformed_value", entry
+    assert entry.get("points_into") == "source", (
+        f"the refusal places itself in the argument text: {entry}. The reader "
+        "read this argument; what the program cannot take is the value, so the "
+        "place is the declaration it was passed to."
+    )
+    assert entry.get(LOCATION) == {"line": 2, "column": 7}, entry
+
+    reader_refusal = the_one_refusal(
+        evaluate(MONEY_PROGRAM, "fare", ["("]), "an argument the reader cannot read"
+    )
+    assert reader_refusal.get("category") == "malformed_value", reader_refusal
+    assert reader_refusal.get("points_into") == "argument", (
+        f"two refusals of one category place themselves in the same text: "
+        f"{entry} and {reader_refusal}. One is about the argument text and the "
+        "other about the source, and each says which."
     )
