@@ -21,7 +21,7 @@ import json
 
 from hypothesis import HealthCheck, given, settings, strategies as st
 
-from _r1_mangled_requests import ask, shipped_programs
+from _r1_mangled_requests import ask, ask_text, shipped_programs
 
 # The longest run of digits this tool reads as one integer literal, and
 # the words its refusal uses to say so.
@@ -187,6 +187,34 @@ def _digit_family() -> list[tuple[str, object]]:
     return cases
 
 
+def _json_number_family() -> list[tuple[str, str]]:
+    """A run of digits written as a number of the request itself, in
+    every place the request writes one.
+
+    Sent as text rather than as an object, because a client library
+    that wrote the object would meet the same limit before the command
+    ever did.
+    """
+    texts: list[tuple[str, str]] = []
+    for length in DIGIT_RUNS:
+        number = "9" * length
+        texts.extend(
+            [
+                (f"a field of the request written as {length} digits",
+                 '{"operation":"check","source":"x","n":' + number + "}"),
+                (f"an operation written as {length} digits",
+                 '{"operation":' + number + "}"),
+                (f"an argument written as the number {length} digits long",
+                 '{"operation":"evaluate","source":"x","arguments":['
+                 + number + "]}"),
+                (f"a number of {length} digits one object deep",
+                 '{"operation":"check","source":"x","deep":{"n":'
+                 + number + "}}"),
+            ]
+        )
+    return texts
+
+
 def mangled_requests() -> list[tuple[str, object]]:
     return _surrogate_family() + _digit_family()
 
@@ -200,12 +228,26 @@ def test_every_request_of_the_two_families_is_answered_and_the_rest_still_works(
     does read, are still answered completed.
     """
     cases = mangled_requests()
-    assert len(cases) >= A_FUZZ_WORTH_THE_NAME, (
-        f"the two families hold {len(cases)} requests, fewer than the "
-        f"{A_FUZZ_WORTH_THE_NAME} a fuzz needs to say anything."
+    texts = _json_number_family()
+    assert len(cases) + len(texts) >= A_FUZZ_WORTH_THE_NAME, (
+        f"the families hold {len(cases) + len(texts)} requests, fewer than "
+        f"the {A_FUZZ_WORTH_THE_NAME} a fuzz needs to say anything."
     )
 
     broken = []
+    for why, sent in texts:
+        answer = ask_text(sent)
+        if answer.crash is not None or answer.exit_code != 0:
+            broken.append((why, repr(answer.crash)[:200], answer.exit_code))
+            continue
+        try:
+            parsed = json.loads(answer.stdout)
+        except (json.JSONDecodeError, ValueError):
+            broken.append((why, "the answer was not JSON", answer.exit_code))
+            continue
+        if not isinstance(parsed, dict) or "status" not in parsed:
+            broken.append((why, f"the answer carried no status: {parsed}", 0))
+
     for why, request in cases:
         answer = ask(request)
         if answer.crash is not None or answer.exit_code != 0:
@@ -220,7 +262,8 @@ def test_every_request_of_the_two_families_is_answered_and_the_rest_still_works(
             broken.append((why, f"the answer carried no status: {parsed}", 0))
 
     assert not broken, (
-        f"{len(broken)} of the {len(cases)} requests were not answered. The "
+        f"{len(broken)} of the {len(cases) + len(texts)} requests were not "
+        "answered. The "
         f"first ten: {broken[:10]}. Every one of them is a client that reads a "
         "traceback instead of a refusal it can act on."
     )

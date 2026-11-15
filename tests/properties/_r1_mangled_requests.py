@@ -59,10 +59,20 @@ class Answer:
 
 def ask(request: object) -> Answer:
     """One request through the command's own entry point."""
+    return ask_text(json.dumps(request))
+
+
+def ask_text(sent: str) -> Answer:
+    """Exactly this text through the command's own entry point.
+
+    Kept apart from `ask` above so that a text no client library would
+    write -- a number longer than a JSON reader turns into a number --
+    reaches the command as it stands.
+    """
     captured = io.StringIO()
     saved_out, saved_in = sys.stdout, sys.stdin
     sys.stdout = captured
-    sys.stdin = io.StringIO(json.dumps(request))
+    sys.stdin = io.StringIO(sent)
     try:
         command_line.main()
         code = 0

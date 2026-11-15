@@ -10,6 +10,7 @@ import sys
 
 from prova import service
 from prova.budgets import Budgets, UnreadableBudget
+from prova.reader import LITERAL_DIGITS
 
 
 def main() -> None:
@@ -34,6 +35,9 @@ def main() -> None:
         request = json.loads(request_text)
     except json.JSONDecodeError as error:
         print(json.dumps(_unreadable_text(error).response_for(None)))
+        sys.exit(0)
+    except ValueError as error:
+        print(json.dumps(_unreadable_number(error).response_for(None)))
         sys.exit(0)
 
     print(service.answer_text(request, budgets))
@@ -67,6 +71,31 @@ def _unreadable_bytes(error: UnicodeDecodeError) -> service.MalformedRequest:
     return service.MalformedRequest.not_readable_as_json(
         f"the bytes sent are not UTF-8 text ({error.reason})",
         f" at byte {error.start}",
+    )
+
+
+def _unreadable_number(error: ValueError) -> service.MalformedRequest:
+    """The answer to a request whose own JSON writes a number longer
+    than the reader that reads the request turns into a number.
+
+    Answered rather than reported as a failure of the tool, for the same
+    reason text that is not JSON is. It is a refusal of its own and not
+    the one a program's over-long literal gets: that one stands at a
+    line and column of the source, and this number is written in the
+    request around the source, which has no lines of its own to open.
+    The caller is told what this command reads, and not what the
+    interpreter suggests doing about it.
+    """
+    return service.MalformedRequest.about(
+        "request",
+        "the text sent to this tool writes a number with more digits than "
+        "this command reads as one number: it reads its request with a JSON "
+        "reader that turns every number in the text into a number, and the "
+        f"interpreter it runs on reads at most {sys.get_int_max_str_digits()} "
+        "digits as one; write every number of the request itself with fewer "
+        "digits than that, and write a program's own long integers inside "
+        "the 'source' field, as the text of a program, where this tool reads "
+        f"an integer literal of up to {LITERAL_DIGITS.maximum} digits",
     )
 
 

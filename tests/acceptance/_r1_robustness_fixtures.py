@@ -84,16 +84,27 @@ class ToolRun:
         return self.response()
 
 
-def run(request: object) -> ToolRun:
+def run_text(sent: str) -> ToolRun:
+    """One run of the command over exactly this text.
+
+    The one place a request becomes the characters the command reads, so
+    a test about text that no client library would write -- a number
+    longer than a reader turns into a number, say -- sends it through
+    the same surface as every other test.
+    """
     proc = subprocess.run(
         ["prova"],
-        input=json.dumps(request),
+        input=sent,
         capture_output=True,
         text=True,
         timeout=30.0,
         check=False,
     )
     return ToolRun(proc.returncode, proc.stdout, proc.stderr)
+
+
+def run(request: object) -> ToolRun:
+    return run_text(json.dumps(request))
 
 
 def answered(request: object, why: str) -> dict:
