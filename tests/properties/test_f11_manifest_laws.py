@@ -40,6 +40,7 @@ THE_OPERATIONS_AN_AGENT_MAY_CALL = (
     "evaluate",
     "discover",
     "verify",
+    "parse",
 )
 
 # SPEC.md lines 178-189: the eleven operators of core-0, and the operand
