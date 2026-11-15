@@ -52,10 +52,11 @@ this work.
 - **Jev was not reachable** (`TYPESAFE_API_KEY` absent), so the two open
   design questions were settled locally and written down above.
 
-## What is still open
+## What was still open, and how it was closed
 
 One conflict with an existing test. `tests/unit/test_service_discover.py`
 pins the whole table of operations by equality, including
 `"parse": "unavailable"`. Criterion 5 of the request requires `parse` to be
-advertised as available. The request forbids editing an existing test's
-expected result, so this is the owner's call, asked at this pause.
+advertised as available, and the request forbids editing an existing
+test's expected result, so it was put to the owner. The owner authorised
+that one line, and nothing else in that test, in a commit of its own.
