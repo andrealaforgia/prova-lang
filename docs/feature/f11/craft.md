@@ -44,7 +44,8 @@ and were not rewritten.
 ## Test cost, measured
 
 The whole suite: `uv run pytest -q tests --durations=10`, **1153 passed in
-141.02 s** (1136 before this change, 17 added). Before the change the fifteen
+137.09 s** (the run the delivery record keeps; a second run of the same tree
+took 141.02 s) (1136 before this change, 17 added). Before the change the fifteen
 that state the promises were seen failing in 1.95 s, each because the promised
 part of the manifest was absent; the two added later, on the module itself, are
 named under the review repairs below.

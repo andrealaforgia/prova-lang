@@ -192,8 +192,14 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
+- A docs/f11-manifest/DECISIONS.md (+17 -0 lines)
+- A docs/f11-manifest/SUMMARY.md (+502 -0 lines)
+- A docs/f11-manifest/TRACE.md (+5 -0 lines)
+- A docs/feature/f11/craft.md (+115 -0 lines)
+- A docs/feature/f11/design.md (+101 -0 lines)
+- A docs/feature/f11/oracle.md (+69 -0 lines)
 - M src/prova/checker.py (+171 -76 lines)
-- A src/prova/manifest.py (+450 -0 lines)
+- A src/prova/manifest.py (+469 -0 lines)
 - M src/prova/service.py (+20 -8 lines)
 - A tests/acceptance/_f11_manifest_fixtures.py (+163 -0 lines)
 - A tests/acceptance/test_f11_b1_the_manifest_names_every_operation_category.py (+80 -0 lines)
@@ -202,11 +208,14 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - A tests/acceptance/test_f11_b4_a_request_that_breaks_the_published_shape_is_refused.py (+87 -0 lines)
 - A tests/acceptance/test_f11_b5_an_operation_the_profile_does_not_name_says_so.py (+73 -0 lines)
 - A tests/properties/test_f11_manifest_laws.py (+265 -0 lines)
+- A tests/unit/test_manifest_catalogue.py (+56 -0 lines)
 
 ## Commits (git log, BASE to HEAD)
 
 - 80d766b Let an operator say which types it takes and answers
 - 9b5754c Say what an agent may call, and what it may write
+- 22d34fb Write down what the manifest now says and what it cost
+- 73a25ad Draw the same cases twice, and refuse a category claimed twice
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
@@ -450,53 +459,54 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - **prefactoring**: yes
 - **prefactoring_reason**: The operator table carries a number of arguments and the name of a group today, and the operand rules stand in a chain of four branches that reads that group name. Publishing the argument and result types from a second table would make two units decide one fact, so first the table learns its operand rule and its result type as an object, and the four branches are replaced by asking that object. The type names are restated the same way, as one table of entries that keeps BUILTIN_TYPES as the set of their names. Behaviour is unchanged: every refusal keeps its category, its sentence, the place it stands at and the two types it names, the group names and the four sets stay exactly as the existing table test reads them, and no test is edited.
 
-## 3. craft: Craft the change (revision 1)
+## 4. craft: Craft the change (revision 2)
 
 - **refactor_commits**:
   - 80d766b
 - **refactor_check**: the check ran on the parent and on each refactor commit
   - 80d766b578cd (Let an operator say which types it takes and answers): before exit 0, after exit 0
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 139.795s
-  - tests (read from the run): 1151 passed in 139.67s
-  - slowest: 7.03s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 4.60s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 4.10s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 3.51s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 3.24s call tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
-  - slowest: 2.87s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 2.07s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  - slowest: 1.73s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.62s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 1.48s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 137.22s
+  - tests (read from the run): 1153 passed in 137.09s
+  - slowest: 6.97s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 4.54s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 4.06s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 3.46s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 3.25s call tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
+  - slowest: 2.85s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 2.04s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 1.72s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  - slowest: 1.60s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.45s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
   ```text
   ........................................................................ [  6%]
   ........................................................................ [ 12%]
   ........................................................................ [ 18%]
-  ........................................................................ [ 25%]
+  ........................................................................ [ 24%]
   ........................................................................ [ 31%]
   ........................................................................ [ 37%]
   ........................................................................ [ 43%]
-  ........................................................................ [ 50%]
+  ........................................................................ [ 49%]
   ........................................................................ [ 56%]
   ........................................................................ [ 62%]
   ........................................................................ [ 68%]
-  ........................................................................ [ 75%]
+  ........................................................................ [ 74%]
   ........................................................................ [ 81%]
   ........................................................................ [ 87%]
   ........................................................................ [ 93%]
-  .......................................................................  [100%]
+  ........................................................................ [ 99%]
+  .                                                                        [100%]
   ============================= slowest 10 durations =============================
-  7.03s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  4.60s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  4.10s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  3.51s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  3.24s call     tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
-  2.87s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  2.07s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  1.73s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.62s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  1.48s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  1151 passed in 139.67s (0:02:19)
+  6.97s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  4.54s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  4.06s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  3.46s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  3.25s call     tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
+  2.85s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  2.04s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  1.72s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  1.60s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.45s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1153 passed in 137.09s (0:02:17)
   ```
-- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.118s
+- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.052s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment and from the login shell, so the client exits 3 before any call; the design choices it would have been asked (where the catalogue lives, where the operator signatures come from, whether a formal model pays) were settled locally and written in docs/feature/f11/design.md
