@@ -1,0 +1,4 @@
+(defn add-one   (sig ((n Int)) -> Int ! pure)
+      (ensures (= result (+ n +001)))
+   (examples (example (add-one +0041) => 42))
+        (+ n +001))

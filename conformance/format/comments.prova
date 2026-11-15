@@ -1,0 +1,7 @@
+; the counter this program counts with
+(deftype Counter (record (held Int)))
+; how much it holds
+(defn held-of (sig ((counter Counter)) -> Int ! pure)
+  (examples (example (held-of (Counter 1)) => 1))
+  ; the field it reads
+  (.held counter))
