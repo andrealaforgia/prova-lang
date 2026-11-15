@@ -30,10 +30,25 @@ SPELLINGS = ("plain", "plus", "padded", "plus-padded")
 # of its clauses on a line of its own under an indent of its choosing.
 LAYOUTS = ("on-one-line", "spread")
 
-# The declaration shapes the generator writes. Each is one shape of
-# core-0 body: an operator call, a conditional, a binding, a match over
-# whole numbers, a field selection and a match over a union.
-KINDS = ("plus", "branch", "bound", "chosen", "held", "flagged")
+# The declaration shapes the generator writes. The first six are one
+# shape of core-0 body each: an operator call, a conditional, a binding,
+# a match over whole numbers, a field selection and a match over a
+# union. The last three put a conditional or a match where a form opens
+# -- in the first binding of a let, in the value a match examines, and
+# in the first operand of an operator -- which is the one place a part
+# that must be written over several lines could be flattened to fit an
+# opening line, and where nothing generated would otherwise look.
+KINDS = (
+    "plus",
+    "branch",
+    "bound",
+    "chosen",
+    "held",
+    "flagged",
+    "bound-branch",
+    "picked",
+    "summed",
+)
 
 # The two type declarations the shapes above need, written once when a
 # shape that uses one is drawn.
@@ -119,6 +134,39 @@ def _declaration(
                 "(sig ((n Int)) -> Int ! pure)",
                 f"(examples (example ({name} {a}) => {answered}))",
                 f"(match n ({k} 1) (_ 0))",
+            ],
+            "",
+            "",
+        )
+    if kind == "bound-branch":
+        answered = (second if first < second else first) + second
+        return (
+            [
+                "(sig ((n Int)) -> Int ! pure)",
+                f"(examples (example ({name} {a}) => {answered}))",
+                f"(let ((v (if (< n {k}) {k} n))) (+ v {k}))",
+            ],
+            "",
+            "",
+        )
+    if kind == "picked":
+        answered = 1 if (second if first < second else first) == second else 0
+        return (
+            [
+                "(sig ((n Int)) -> Int ! pure)",
+                f"(examples (example ({name} {a}) => {answered}))",
+                f"(match (if (< n {k}) {k} n) ({k} 1) (_ 0))",
+            ],
+            "",
+            "",
+        )
+    if kind == "summed":
+        answered = (1 if first == second else 0) + second
+        return (
+            [
+                "(sig ((n Int)) -> Int ! pure)",
+                f"(examples (example ({name} {a}) => {answered}))",
+                f"(+ (match n ({k} 1) (_ 0)) {k})",
             ],
             "",
             "",

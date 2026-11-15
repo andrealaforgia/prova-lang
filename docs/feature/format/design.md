@@ -63,6 +63,21 @@ line, and the rest each start a line two columns further in. A `defn` and a
 example per line. Nothing measures a line width, so the text is a function of
 the tree alone. Cost: a long operator call stays long.
 
+**A form opens with something that cannot break.** The first version let any
+part open a form and flattened it onto the opening line. For
+`(let ((m (if (> n 0) 1 2))) m)` that wrote the first binding on one line while
+an identical second binding was written over several — one expression, two
+layouts, decided by position. The rule was right; the code did not keep it.
+
+`Word` now carries text that stands on one line whatever the program holds — a
+name, a number, a marker token, a whole pattern — and `NoWord` is what a
+parenthesised list with no word of its own opens with (the bindings of a `let`,
+the parameters of a `sig`). A form's `opening` is typed as one of those two, so
+there is nothing a form can open with that might need a second line. The claim
+that an opening never breaks is now kept by the types, not by remembering it.
+Cost: a `let` whose first binding must break writes `(` on a line of its own.
+That is what the rule says, and the pair `nested` publishes it.
+
 **Rejected alternative: a width-aware layout.** The usual formatter breaks a
 line when it passes a column limit. It reads better and it makes idempotence a
 property to be argued rather than one that follows: the decision then depends on

@@ -30,7 +30,7 @@ from _f15_format_fixtures import (
 # The pairs this suite reads. Named here rather than discovered, so that
 # a pair that stops being published fails instead of disappearing from
 # the run.
-PUBLISHED = ("comments", "integers", "shapes")
+PUBLISHED = ("clauses", "comments", "integers", "nested", "shapes")
 
 
 def test_every_published_pair_is_one_this_suite_reads():

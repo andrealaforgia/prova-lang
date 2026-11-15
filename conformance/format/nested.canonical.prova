@@ -1,0 +1,32 @@
+(defn chosen
+  (sig ((n Int)) -> Int ! pure)
+  (examples
+    (example (chosen 1) => 1))
+  (let
+    (
+      (m
+        (if (> n 0)
+          1
+          2)))
+    m))
+
+(defn picked
+  (sig ((n Int)) -> Int ! pure)
+  (examples
+    (example (picked 1) => 7))
+  (match
+    (if (> n 0)
+      1
+      2)
+    (1 7)
+    (_ 0)))
+
+(defn summed
+  (sig ((n Int)) -> Int ! pure)
+  (examples
+    (example (summed 1) => 8))
+  (+
+    (match n
+      (1 7)
+      (_ 0))
+    1))

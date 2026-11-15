@@ -473,7 +473,12 @@ THE_OPERATIONS = Catalogue(
                         "'parse' operation stands a comment on the first node "
                         "that follows it at any depth instead, so the two "
                         "operations answer about different things and an "
-                        "agent reading both must not expect one placing",
+                        "agent reading both must not expect one placing. A "
+                        "requires or ensures clause with no condition in it "
+                        "is written away, because core-0 reads it as the "
+                        "empty conjunction, which is what an omitted clause "
+                        "already means; every condition of a clause stands in "
+                        "that one clause, in the order the source writes them",
                     ),
                 ),
             ),

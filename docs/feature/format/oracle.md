@@ -27,9 +27,19 @@ not by running a formatter.
 5. Every other form is written on one line, unless it holds a `let`, an `if` or
    a `match` anywhere inside it. Such a form writes its head and — when that
    part is itself written on one line — its first part on the opening line, and
-   every remaining part on its own line two columns further in.
+   every remaining part on its own line two columns further in. A part that
+   must be written over several lines is never flattened to fit an opening
+   line, so one expression never gets two layouts because of where it stands.
+   A parenthesised list with no head of its own — the bindings of a `let`, the
+   parameters of a `sig` — opens with `(` alone when its first part must break.
 6. Whole numbers are written canonically: no leading plus, no leading zero,
    and `-0` written `0`.
+7. A `requires` or `ensures` clause with no condition in it is written away.
+   Core-0 reads it as the empty conjunction, which is true, and SPEC.md line
+   204 says an omitted clause already means true: the two spell one thing, and
+   the typed tree cannot tell them apart.
+8. Every condition of a `requires` or an `ensures` stands in that one clause,
+   in the order the source writes them.
 
 Nothing here measures a line width. The layout is a function of the tree alone,
 which is what makes writing a program out twice give the same characters.
@@ -64,6 +74,13 @@ Every one of these checks was watched failing on the tree as it was before this
 work: 27 failed, 5 passed. The five that pass are the part of the promise the
 tool already keeps — today `format` refuses *everything*, and a refusal already
 carries no text.
+
+Two more pairs were published later, after an independent review found that the
+tool broke rule 5: `nested`, where a form that must be written over several
+lines stands where a form opens, and `clauses`, where a condition clause is
+empty and where one clause carries two conditions. Rules 5, 7 and 8 above are
+written as they now stand; rules 7 and 8 were decisions of this step that the
+list of rules had not named.
 
 ## What is still open
 

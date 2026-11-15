@@ -43,12 +43,18 @@ class WhenItHoldsABrokenPart:
     """
 
     def breaks(self, parts: tuple[object, ...]) -> bool:
-        return any(_breaks(part) for part in parts)
+        return any(part.breaks() for part in parts)
 
     def opens_with_the_first_part(self) -> bool:
         """Whether the part after the opening word may share the line
         the form opens on, which reads as `(match event` or `(let ((m n))`
-        rather than leaving the word standing alone."""
+        rather than leaving the word standing alone.
+
+        It may only when that part is itself written on one line; a part
+        that must be written over several is never squeezed onto one to
+        fit here, which would give one expression two layouts depending
+        on where it was written.
+        """
         return True
 
 
@@ -101,22 +107,65 @@ class Indent:
 
 
 @dataclass(frozen=True)
+class Word:
+    """A part of the canonical text written on one line whatever the
+    program holds: a name, a whole number, a marker token, an operator,
+    or a whole pattern -- which core-0 builds out of literals, names and
+    constructors and never out of a `let`, an `if` or a `match`.
+
+    It is also the only thing a form may open with, which is what makes
+    the opening line of a form written over several lines buildable at
+    all. The rule that a part needing several lines is never flattened
+    to fit an opening line is therefore kept by the types and not by
+    anybody remembering it: there is no Word that must be written twice
+    over, so no opening can be the thing that gets flattened.
+    """
+
+    text: str
+
+    def breaks(self) -> bool:
+        return False
+
+    def flat(self) -> str:
+        return self.text
+
+    def opens(self) -> str:
+        return self.text
+
+    def written(self, indent: Indent) -> tuple[str, ...]:
+        return (indent.before(self.text),)
+
+
+class NoWord:
+    """What a parenthesised list opens with where core-0 gives it no
+    word of its own: the bindings of a `let` and the parameters of a
+    signature are a list of forms and nothing else.
+
+    A Null Object rather than an absent word, so a form opens the same
+    way whether or not it has one to open with, and no reader of a form
+    asks whether there is a word before deciding what to write.
+    """
+
+    def opens(self) -> str:
+        return ""
+
+
+NO_WORD = NoWord()
+
+
+@dataclass(frozen=True)
 class Form:
-    """One parenthesised form of the canonical text: the parts written
-    inside it, in the order a program writes them, and how it spreads
-    over lines.
+    """One parenthesised form of the canonical text: the word it opens
+    with, the parts written inside it in the order a program writes
+    them, and how it spreads over lines.
 
     It answers how it is written and over how many lines, so no caller
     ever composes a line itself and no second place decides whether a
     form fits on one.
-
-    The first part is the word the form opens with -- `defn`, `let`, an
-    operator, a constructor name, or the pattern of a match clause --
-    and never stands over several lines, so the opening line of a form
-    written over several can always be built.
     """
 
-    parts: tuple[object, ...]
+    opening: Word | NoWord
+    parts: tuple[object, ...] = ()
     layout: WhenItHoldsABrokenPart = WHEN_IT_HOLDS_A_BROKEN_PART
 
     def breaks(self) -> bool:
@@ -124,7 +173,11 @@ class Form:
 
     def flat(self) -> str:
         """This form and everything inside it, written on one line."""
-        return "(" + " ".join(_flat(part) for part in self.parts) + ")"
+        return "(" + " ".join(self._words_of(self.opening.opens())) + ")"
+
+    def _words_of(self, opening: str) -> list[str]:
+        written = [opening, *(part.flat() for part in self.parts)]
+        return [one for one in written if one]
 
     def written(self, indent: Indent) -> tuple[str, ...]:
         """The lines this form is written over, each already carrying
@@ -134,14 +187,15 @@ class Form:
         return self._over_several_lines(indent)
 
     def _over_several_lines(self, indent: Indent) -> tuple[str, ...]:
-        opening = "(" + _flat(self.parts[0])
-        under = self.parts[1:]
-        if under and self.layout.opens_with_the_first_part() and not _breaks(under[0]):
-            opening = f"{opening} {_flat(under[0])}"
+        under = self.parts
+        shared = ""
+        if under and self.layout.opens_with_the_first_part() and not under[0].breaks():
+            shared = under[0].flat()
             under = under[1:]
-        lines = [indent.before(opening)]
+        opening = " ".join(one for one in (self.opening.opens(), shared) if one)
+        lines = [indent.before(f"({opening}")]
         for part in under:
-            lines.extend(_written(part, indent.deeper()))
+            lines.extend(part.written(indent.deeper()))
         lines[-1] += ")"
         return tuple(lines)
 
@@ -198,54 +252,50 @@ def _paragraph(declared: object, standing: AttachedComments) -> tuple[str, ...]:
     )
 
 
-def _flat(part: object) -> str:
-    return part if isinstance(part, str) else part.flat()
-
-
-def _breaks(part: object) -> bool:
-    return isinstance(part, Form) and part.breaks()
-
-
-def _written(part: object, indent: Indent) -> tuple[str, ...]:
-    if isinstance(part, str):
-        return (indent.before(part),)
-    return part.written(indent)
-
-
 def _declaration(declared: object) -> Form:
     if isinstance(declared, syntax.RecordType):
         return Form(
-            ("deftype", declared.name, Form(("record", *_fields(declared.fields))))
+            Word("deftype"),
+            (
+                Word(declared.name),
+                Form(Word("record"), _fields(declared.fields)),
+            ),
         )
     if isinstance(declared, syntax.UnionType):
         return Form(
+            Word("deftype"),
             (
-                "deftype",
-                declared.name,
-                Form(("union", *(_variant(one) for one in declared.variants))),
-            )
+                Word(declared.name),
+                Form(
+                    Word("union"),
+                    tuple(_variant(one) for one in declared.variants),
+                ),
+            ),
         )
     return _function(declared)
 
 
 def _fields(fields: tuple[tuple[str, str], ...]) -> tuple[Form, ...]:
-    return tuple(Form((name, type_name)) for name, type_name in fields)
+    return tuple(
+        Form(Word(name), (Word(type_name),)) for name, type_name in fields
+    )
 
 
 def _variant(variant: syntax.Variant) -> Form:
-    return Form((variant.name, *_fields(variant.fields)))
+    return Form(Word(variant.name), _fields(variant.fields))
 
 
 def _function(declared: syntax.Function) -> Form:
     return Form(
+        Word("defn"),
         (
-            "defn",
-            declared.name,
+            Word(declared.name),
             _signature(declared.signature),
             *_conditions("requires", declared.requires),
             *_conditions("ensures", declared.ensures),
             Form(
-                ("examples", *(_example(one) for one in declared.examples)),
+                Word("examples"),
+                tuple(_example(one) for one in declared.examples),
                 ONE_PART_PER_LINE,
             ),
             _expression(declared.body),
@@ -258,6 +308,9 @@ def _conditions(word: str, conditions: tuple[object, ...]) -> tuple[Form, ...]:
     """The requires or the ensures clause of a function, or nothing at
     all where it declares none.
 
+    Every condition of a clause stands in that one clause, in the order
+    the source writes them, which is the only shape core-0 has for them.
+
     A clause holding no condition is the empty conjunction, which is
     true, and SPEC.md line 204 says an omitted block means true: the two
     spell one thing. The typed tree cannot tell them apart in any case,
@@ -265,30 +318,39 @@ def _conditions(word: str, conditions: tuple[object, ...]) -> tuple[Form, ...]:
     """
     if not conditions:
         return ()
-    return (Form((word, *(_expression(one) for one in conditions))),)
+    return (Form(Word(word), tuple(_expression(one) for one in conditions)),)
 
 
 def _signature(signature: syntax.Signature) -> Form:
     return Form(
+        Word("sig"),
         (
-            "sig",
-            Form(tuple(Form((one.name, one.type_name)) for one in signature.params)),
-            "->",
-            signature.return_type,
-            "!",
-            "pure",
-        )
+            Form(
+                NO_WORD,
+                tuple(
+                    Form(Word(one.name), (Word(one.type_name),))
+                    for one in signature.params
+                ),
+            ),
+            Word("->"),
+            Word(signature.return_type),
+            Word("!"),
+            Word("pure"),
+        ),
     )
 
 
 def _example(example: syntax.Example) -> Form:
     return Form(
+        Word("example"),
         (
-            "example",
-            Form((example.function, *(render(one) for one in example.args))),
-            "=>",
-            render(example.expected),
-        )
+            Form(
+                Word(example.function),
+                tuple(Word(render(one)) for one in example.args),
+            ),
+            Word("=>"),
+            Word(render(example.expected)),
+        ),
     )
 
 
@@ -297,15 +359,22 @@ def _expression(expr: object) -> object:
 
 
 def _binding(binding: syntax.Binding) -> Form:
-    return Form((binding.name, _expression(binding.value)))
+    return Form(Word(binding.name), (_expression(binding.value),))
 
 
 def _clause(clause: syntax.MatchClause) -> Form:
-    return Form((_pattern(clause.pattern), _expression(clause.body)))
+    return Form(_pattern(clause.pattern), (_expression(clause.body),))
 
 
-def _pattern(pattern: object) -> object:
-    return _PATTERNS[type(pattern)](pattern)
+def _pattern(pattern: object) -> Word:
+    """One pattern of a match clause, written out.
+
+    A Word, because core-0 builds a pattern out of literals, names and
+    constructors and never out of a `let`, an `if` or a `match`: it
+    stands on one line whatever it holds, which is what lets a match
+    clause open with it.
+    """
+    return Word(_PATTERNS[type(pattern)](pattern))
 
 
 # How each part of the typed tree is written: a word already written, or
@@ -318,31 +387,33 @@ def _pattern(pattern: object) -> object:
 # which already owns how a program writes a value: that is what makes
 # `+002` come back as `2` without a second rule about spelling.
 _EXPRESSIONS = {
-    syntax.IntLit: lambda e: render(e.value),
-    syntax.BoolLit: lambda e: render(e.value),
-    syntax.UnitLit: lambda e: render(UNIT),
-    syntax.NameRef: lambda e: e.name,
-    syntax.Call: lambda e: Form((e.name, *(_expression(a) for a in e.args))),
+    syntax.IntLit: lambda e: Word(render(e.value)),
+    syntax.BoolLit: lambda e: Word(render(e.value)),
+    syntax.UnitLit: lambda e: Word(render(UNIT)),
+    syntax.NameRef: lambda e: Word(e.name),
+    syntax.Call: lambda e: Form(
+        Word(e.name), tuple(_expression(a) for a in e.args)
+    ),
     syntax.ConstructorCall: lambda e: Form(
-        (e.name, *(_expression(a) for a in e.args))
+        Word(e.name), tuple(_expression(a) for a in e.args)
     ),
     syntax.OperatorCall: lambda e: Form(
-        (e.operator, *(_expression(a) for a in e.args))
+        Word(e.operator), tuple(_expression(a) for a in e.args)
     ),
     syntax.FieldAccess: lambda e: Form(
-        (f".{e.field_name}", _expression(e.target))
+        Word(f".{e.field_name}"), (_expression(e.target),)
     ),
     syntax.Let: lambda e: Form(
+        Word("let"),
         (
-            "let",
-            Form(tuple(_binding(b) for b in e.bindings)),
+            Form(NO_WORD, tuple(_binding(b) for b in e.bindings)),
             _expression(e.body),
         ),
         ALWAYS,
     ),
     syntax.If: lambda e: Form(
+        Word("if"),
         (
-            "if",
             _expression(e.condition),
             _expression(e.then_branch),
             _expression(e.else_branch),
@@ -350,8 +421,8 @@ _EXPRESSIONS = {
         ALWAYS,
     ),
     syntax.Match: lambda e: Form(
+        Word("match"),
         (
-            "match",
             _expression(e.scrutinee),
             *(_clause(c) for c in e.clauses),
         ),
@@ -366,6 +437,6 @@ _PATTERNS = {
     syntax.PatBool: lambda p: render(p.value),
     syntax.PatUnit: lambda p: render(UNIT),
     syntax.PatConstructor: lambda p: Form(
-        (p.name, *(_pattern(s) for s in p.subpatterns))
-    ),
+        Word(p.name), tuple(_pattern(s) for s in p.subpatterns)
+    ).flat(),
 }

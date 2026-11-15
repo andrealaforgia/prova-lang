@@ -34,7 +34,13 @@ from _f15_written_programs import (
 # 40 programs per law: each case reads, checks and writes out a whole
 # program several times, and the suite's budget is a few seconds for the
 # four laws together.
-A_FEW_PROGRAMS = settings(max_examples=40, deadline=None)
+#
+# The same 40 programs every run. A law that drew different programs
+# each time would pass on Monday and fail on Tuesday with nothing
+# changed, and a reader could not tell a repaired defect from a run that
+# happened not to look; a widened generator is then a deliberate change
+# to what is checked, visible in the diff.
+A_FEW_PROGRAMS = settings(max_examples=40, deadline=None, derandomize=True)
 
 
 def _written_out(source: str) -> str:
