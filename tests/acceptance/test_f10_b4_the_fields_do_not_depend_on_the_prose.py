@@ -16,6 +16,8 @@ one fixed entry for everything is seen.
 
 from __future__ import annotations
 
+import json
+
 from _f10_diagnostic_fixtures import (
     TYPE_ERRORS,
     WELL_FORMED,
@@ -87,7 +89,9 @@ def test_two_different_defects_do_not_carry_the_same_fields():
     """Control: given the 3 different type errors, when each is checked,
     then the 3 refusals carry 3 different field sets."""
     seen = {
-        why: tuple(sorted(structured(the_one_refusal(check(case.source), why)).items(), key=str))
+        why: json.dumps(
+            structured(the_one_refusal(check(case.source), why)), sort_keys=True
+        )
         for why, case in TYPE_ERRORS.items()
     }
     assert len(set(seen.values())) == 3, (

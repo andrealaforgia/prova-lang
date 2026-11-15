@@ -88,20 +88,32 @@ def _tokenize(text: str) -> list[_Token]:
     return tokens
 
 
+def end_of(text: str) -> tuple[int, int]:
+    """The place just past the last character of `text`.
+
+    Where a refusal of the reader stands when the text ran out: the
+    reader stopped there and nowhere else, and a refusal that said
+    nothing about where would leave a reader of it with no line to open.
+    """
+    lines = text.split("\n")
+    return len(lines), len(lines[-1]) + 1
+
+
 def read_program(text: str) -> list[object]:
     """Read every top-level form in `text` into a list of Atom/SList nodes."""
     tokens = _tokenize(text)
     forms: list[object] = []
     pos = 0
     while pos < len(tokens):
-        node, pos = _read_form(tokens, pos)
+        node, pos = _read_form(tokens, pos, text)
         forms.append(node)
     return forms
 
 
-def _read_form(tokens: list[_Token], pos: int) -> tuple[object, int]:
+def _read_form(tokens: list[_Token], pos: int, text: str = "") -> tuple[object, int]:
     if pos >= len(tokens):
-        raise ReaderError("unexpected end of input", 0, 0)
+        line, column = end_of(text)
+        raise ReaderError("unexpected end of input", line, column)
     token = tokens[pos]
     if token.kind == ")":
         raise ReaderError("unexpected ')'", token.line, token.column)
@@ -118,6 +130,6 @@ def _read_form(tokens: list[_Token], pos: int) -> tuple[object, int]:
         if tokens[pos].kind == ")":
             pos += 1
             break
-        node, pos = _read_form(tokens, pos)
+        node, pos = _read_form(tokens, pos, text)
         items.append(node)
     return SList(tuple(items), open_token.line, open_token.column), pos

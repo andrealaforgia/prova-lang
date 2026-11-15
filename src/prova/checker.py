@@ -189,6 +189,110 @@ class AboutAConstruct:
         return {"construct": "construct"}
 
 
+ALWAYS = "always"
+WHEN_KNOWN = "when_known"
+NEVER = "never"
+
+
+@dataclass(frozen=True)
+class DiagnosticKind:
+    """What a refusal of one category carries: what it is about, whether
+    it is placed, what its place points into and at what granularity,
+    whether it names the declarations of a cycle, and whether it carries
+    the revision of a submitted source.
+
+    One kind per category, read both when a refusal is built and when
+    the manifest publishes the shape a client reads from the tool, so
+    the shape promised and the shape built cannot drift apart.
+    """
+
+    about: type
+    placed: str = ALWAYS
+    points_into: tuple[str, ...] = ("source",)
+    granularity: tuple[str, ...] = ("expression",)
+    names_a_cycle: bool = False
+    revision: str = ALWAYS
+
+    def fields(self) -> dict:
+        named = dict(self.about.kinds())
+        if self.names_a_cycle:
+            named["cycle"] = "names"
+        return named
+
+    def published(self) -> dict:
+        """The shape of this category as the manifest states it."""
+        return {
+            "fields": self.fields(),
+            "location": None if self.placed == NEVER else {
+                "present": self.placed,
+                "points_into": list(self.points_into),
+                "granularity": list(self.granularity),
+            },
+            "source_revision": self.revision,
+        }
+
+
+# What each category of refusal carries. A category absent from here
+# cannot be built at all, so a new rule states its shape once, where a
+# client reads it.
+DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
+    "syntax": DiagnosticKind(AboutNothingNamed, granularity=("token",)),
+    "unsupported_construct": DiagnosticKind(AboutAConstruct),
+    "unbound_type": DiagnosticKind(AboutASymbol, granularity=("declaration",)),
+    "unbound_constructor": DiagnosticKind(
+        AboutASymbol, granularity=("expression", "declaration")
+    ),
+    "unbound_name": DiagnosticKind(AboutASymbol),
+    "unbound_field": DiagnosticKind(AboutASymbol),
+    "type_mismatch": DiagnosticKind(AboutTwoTypes),
+    "arity_mismatch": DiagnosticKind(
+        AboutTwoCounts, granularity=("expression", "declaration")
+    ),
+    "non_exhaustive_match": DiagnosticKind(AboutASymbol),
+    CYCLIC_DEPENDENCY: DiagnosticKind(
+        AboutASymbol,
+        placed=WHEN_KNOWN,
+        granularity=("declaration",),
+        names_a_cycle=True,
+    ),
+    DUPLICATE_DECLARATION: DiagnosticKind(
+        AboutASymbol, granularity=("declaration",)
+    ),
+    RECURSIVE_TYPE: DiagnosticKind(
+        AboutASymbol,
+        placed=WHEN_KNOWN,
+        granularity=("declaration",),
+        names_a_cycle=True,
+    ),
+    SHADOWED_BINDING: DiagnosticKind(
+        AboutASymbol, granularity=("expression", "declaration")
+    ),
+    RESERVED_NAME: DiagnosticKind(
+        AboutASymbol, granularity=("expression", "declaration")
+    ),
+    UNRELATED_EXAMPLE: DiagnosticKind(AboutASymbol, granularity=("declaration",)),
+    "unknown_function": DiagnosticKind(AboutASymbol, placed=NEVER),
+    "malformed_value": DiagnosticKind(
+        AboutASymbol,
+        points_into=("argument", "source"),
+        granularity=("token", "declaration"),
+    ),
+    "ill_typed_value": DiagnosticKind(AboutASymbol, granularity=("declaration",)),
+    "precondition_violation": DiagnosticKind(
+        AboutASymbol, granularity=("declaration",)
+    ),
+    "postcondition_violation": DiagnosticKind(
+        AboutASymbol, granularity=("declaration",)
+    ),
+    "operation_unavailable": DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), revision=NEVER
+    ),
+    "unknown_operation": DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), revision=NEVER
+    ),
+}
+
+
 @dataclass(frozen=True)
 class Diagnostic:
     category: str
@@ -196,6 +300,52 @@ class Diagnostic:
     location: tuple[int, int] | None = None
     cycle: "DeclarationCycle | None" = None
     about: object = NOTHING_NAMED
+
+    def __post_init__(self) -> None:
+        kind = DIAGNOSTIC_KINDS.get(self.category)
+        if kind is None:
+            raise ValueError(
+                f"the category {self.category!r} is not one this tool publishes: "
+                "a client reads the shape of a refusal from the manifest, which "
+                "is written from the kinds, so a refusal of a category no kind "
+                "declares could not be read; add the category to "
+                "DIAGNOSTIC_KINDS beside the kinds it belongs with, or build "
+                f"the refusal with one of {', '.join(sorted(DIAGNOSTIC_KINDS))}"
+            )
+        if type(self.about) is not kind.about:
+            raise ValueError(
+                f"a refusal of category {self.category!r} is about "
+                f"{type(self.about).__name__}, but its kind declares "
+                f"{kind.about.__name__}: the manifest publishes the fields of "
+                "that kind, so a refusal carrying other fields would not match "
+                "what the client was promised; build it with "
+                f"{kind.about.__name__}, or change the kind of "
+                f"{self.category!r} and the manifest with it"
+            )
+        if kind.placed == ALWAYS and self.location is None:
+            raise ValueError(
+                f"a refusal of category {self.category!r} was built with no "
+                "place, but its kind declares that every one of them is placed: "
+                "a client is told it can open the text there, so an unplaced one "
+                "would break that promise; pass the line and column the refusal "
+                f"stands at, or declare {self.category!r} as {WHEN_KNOWN!r}"
+            )
+        if self.location is not None and min(self.location) < 1:
+            raise ValueError(
+                f"a refusal of category {self.category!r} was built at "
+                f"{self.location}, which is no place in any text: a client "
+                "opens the text at that line and column, and both are counted "
+                "from 1, so a 0 means the place was never found; pass the "
+                "place the refusal stands at, or build it with no place where "
+                "the tree keeps none"
+            )
+        if self.cycle is not None and not kind.names_a_cycle:
+            raise ValueError(
+                f"a refusal of category {self.category!r} carries a cycle, which "
+                "its kind does not declare: the manifest does not publish a "
+                "cycle for that category, so a client would not read it; build "
+                "it without the cycle, or declare the kind as naming one"
+            )
 
 
 def listed(parts: tuple[str, ...]) -> str:
@@ -242,7 +392,7 @@ class Cycle(DeclarationCycle):
 
     KIND: ClassVar[str] = "function"
 
-    def diagnostic(self) -> Diagnostic:
+    def diagnostic(self, place: tuple[int, int] | None = None) -> Diagnostic:
         return Diagnostic(
             CYCLIC_DEPENDENCY,
             f"the program depends on itself through {self.described()}: core-0 "
@@ -250,7 +400,9 @@ class Cycle(DeclarationCycle):
             "contracts to be acyclic, so the tool cannot promise that such a "
             "call ends; remove one of the calls that closes the cycle (a call "
             "an example makes to its own function is not part of the graph)",
+            location=place,
             cycle=self,
+            about=AboutASymbol(self.members[0]),
         )
 
 
@@ -268,7 +420,7 @@ class TypeCycle(DeclarationCycle):
     def _leads_back_to(self) -> str:
         return "itself" if len(self.members) == 1 else "each other"
 
-    def diagnostic(self) -> Diagnostic:
+    def diagnostic(self, place: tuple[int, int] | None = None) -> Diagnostic:
         return Diagnostic(
             RECURSIVE_TYPE,
             f"the declared field types of {self.described()} lead back to "
@@ -279,7 +431,9 @@ class TypeCycle(DeclarationCycle):
             "the cycle a type that does not lead back. The functions of this "
             "program were not checked, because every check that follows the "
             "fields of a type is defined only on acyclic types",
+            location=place,
             cycle=self,
+            about=AboutASymbol(self.members[0]),
         )
 
 
@@ -296,6 +450,7 @@ def _repeated_name_diagnostic(group: tuple[syntax.DeclaredName, ...]) -> Diagnos
         f"which declaration a use of {first.name!r} means; remove or rename all "
         "but one of them",
         (group[-1].line, group[-1].column),
+        about=AboutASymbol(first.name),
     )
 
 
@@ -308,6 +463,7 @@ def _redeclared_builtin_diagnostic(declared: syntax.DeclaredName) -> Diagnostic:
         "not allow a builtin type to be redeclared, so the name would stand for "
         f"two different types; give the declared type a name of its own",
         (declared.line, declared.column),
+        about=AboutASymbol(declared.name),
     )
 
 
@@ -385,6 +541,7 @@ class HiddenBinding:
             f"which {self.binder.name!r} a use means; rename "
             f"{self.binder.described()} to a name that is not already visible there",
             (self.binder.line, self.binder.column),
+            about=AboutASymbol(self.binder.name),
         )
 
 
@@ -405,6 +562,7 @@ class ReservedBinder:
             f"{self.binder.described()} and read "
             f"{RESERVED_FOR_POSTCONDITIONS!r} in a postcondition only",
             (self.binder.line, self.binder.column),
+            about=AboutASymbol(self.binder.name),
         )
 
 
@@ -426,6 +584,7 @@ class ReservedRead:
             "before there is one; read it in a postcondition only, or read a name "
             "the function binds",
             (self.line, self.column),
+            about=AboutASymbol(RESERVED_FOR_POSTCONDITIONS),
         )
 
 
@@ -656,6 +815,7 @@ class DeclaredExample:
     arguments: int
     parameters: int
     calls_a_declared_function: bool
+    place: tuple[int, int]
 
     @classmethod
     def of(
@@ -664,6 +824,7 @@ class DeclaredExample:
         example: syntax.Example,
         ordinal: int,
         program: syntax.Program,
+        place: tuple[int, int],
     ) -> "DeclaredExample":
         return cls(
             function.name,
@@ -672,6 +833,7 @@ class DeclaredExample:
             len(example.args),
             len(function.signature.params),
             example.function in program.functions,
+            place,
         )
 
     def is_about_its_own_function(self) -> bool:
@@ -718,6 +880,8 @@ class DeclaredExample:
             "every function to have an example directly calling that same function, "
             f"so {demonstrates} and leaves {self.owner!r} with no example of its "
             f"own{repair}",
+            self.place,
+            about=AboutASymbol(self.owner),
         )
 
     def _with_the_wrong_number_of_arguments(self) -> Diagnostic:
@@ -728,32 +892,58 @@ class DeclaredExample:
             f"parameter the function declares, so this example cannot be run "
             f"against {self.owner!r}; write exactly {self.parameters} argument(s) "
             "in the example",
+            self.place,
+            about=AboutTwoCounts(self.owner, self.parameters, self.arguments),
         )
 
 
 def check_program(program: syntax.Program) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = _declaration_diagnostics(program)
     known_types = BUILTIN_TYPES | set(program.types)
+    function_places = _declared_places(program)
+    type_places = {
+        declared.name: (declared.line, declared.column)
+        for declared in program.declarations.of_kind("type")
+    }
 
-    def check_type_name(type_name: str, where: str) -> None:
+    def check_type_name(type_name: str, where: str, place: tuple[int, int]) -> None:
+        """A type a declaration writes, refused when nothing declares it.
+
+        The place is the declaration the type is written in, not the
+        word itself: the parsed tree keeps no position for a type
+        written inside a signature or a record field.
+        """
         if type_name not in known_types:
             diagnostics.append(
-                Diagnostic("unbound_type", f"unknown type {type_name!r} in {where}")
+                Diagnostic(
+                    "unbound_type",
+                    f"unknown type {type_name!r} in {where}",
+                    place,
+                    about=AboutASymbol(type_name),
+                )
             )
 
     for type_decl in program.types.values():
         if isinstance(type_decl, syntax.RecordType):
             for field_name, field_type in type_decl.fields:
-                check_type_name(field_type, f"record {type_decl.name!r} field {field_name!r}")
+                check_type_name(
+                    field_type,
+                    f"record {type_decl.name!r} field {field_name!r}",
+                    type_places[type_decl.name],
+                )
         elif isinstance(type_decl, syntax.UnionType):
             for variant in type_decl.variants:
                 for field_name, field_type in variant.fields:
                     check_type_name(
                         field_type,
                         f"union {type_decl.name!r} variant {variant.name!r} field {field_name!r}",
+                        type_places[type_decl.name],
                     )
 
-    recursive = [cycle.diagnostic() for cycle in _type_cycles_in(program)]
+    recursive = [
+        cycle.diagnostic(type_places.get(cycle.names()[0]))
+        for cycle in _type_cycles_in(program)
+    ]
     if recursive:
         # Every check below follows the fields of a type -- whether a
         # match covers its scrutinee, whether a value has the shape its
@@ -763,16 +953,22 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
     diagnostics += _binding_diagnostics(program)
 
     for function in program.functions.values():
+        within = function.name
+        place = function_places[within]
         for param_name, param_type in function.signature.params:
-            check_type_name(param_type, f"function {function.name!r} parameter {param_name!r}")
-        check_type_name(function.signature.return_type, f"function {function.name!r} return type")
+            check_type_name(
+                param_type, f"function {within!r} parameter {param_name!r}", place
+            )
+        check_type_name(
+            function.signature.return_type, f"function {within!r} return type", place
+        )
 
         params_env = {name: type_ for name, type_ in function.signature.params}
         for clause_expr in function.requires:
-            _check_contract_clause_is_bool(clause_expr, params_env, program, diagnostics)
+            _check_contract_clause_is_bool(clause_expr, params_env, program, diagnostics, within)
 
         return_type = function.signature.return_type
-        body_type = _infer(function.body, params_env, program, diagnostics)
+        body_type = _infer(function.body, params_env, program, diagnostics, within)
         if body_type is not None and body_type != return_type:
             diagnostics.append(
                 Diagnostic(
@@ -780,24 +976,28 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
                     f"function {function.name!r} body has type {body_type}, "
                     f"declared return type {return_type}",
                     (function.body.line, function.body.column),
+                    about=AboutTwoTypes(within, return_type, body_type),
                 )
             )
 
         result_env = dict(params_env)
         result_env["result"] = return_type
         for clause_expr in function.ensures:
-            _check_contract_clause_is_bool(clause_expr, result_env, program, diagnostics)
+            _check_contract_clause_is_bool(clause_expr, result_env, program, diagnostics, within)
 
         for ordinal, example in enumerate(function.examples):
             where = f"function {function.name!r} example {ordinal}"
             diagnostics += DeclaredExample.of(
-                function, example, ordinal, program
+                function, example, ordinal, program, place
             ).diagnostics()
             for arg in example.args:
-                _check_value(arg, program, where, diagnostics)
-            _check_value(example.expected, program, where, diagnostics)
+                _check_value(arg, program, where, diagnostics, place)
+            _check_value(example.expected, program, where, diagnostics, place)
 
-    diagnostics.extend(cycle.diagnostic() for cycle in _cycles_in(program))
+    diagnostics.extend(
+        cycle.diagnostic(function_places.get(cycle.names()[0]))
+        for cycle in _cycles_in(program)
+    )
 
     return diagnostics
 
@@ -951,29 +1151,45 @@ def _is_a_cycle(component: list[str], edges: dict[str, list[str]]) -> bool:
 
 
 def _check_contract_clause_is_bool(
-    expr: object, env: dict[str, str], program: syntax.Program, diagnostics: list[Diagnostic]
+    expr: object,
+    env: dict[str, str],
+    program: syntax.Program,
+    diagnostics: list[Diagnostic],
+    within: str,
 ) -> None:
-    clause_type = _infer(expr, env, program, diagnostics)
+    clause_type = _infer(expr, env, program, diagnostics, within)
     if clause_type is not None and clause_type != "Bool":
         diagnostics.append(
             Diagnostic(
                 "type_mismatch",
                 f"contract clause expects Bool, got {clause_type}",
                 (expr.line, expr.column),
+                about=AboutTwoTypes(within, "Bool", clause_type),
             )
         )
 
 
-def _check_value(value: object, program: syntax.Program, where: str, diagnostics: list[Diagnostic]) -> None:
+def _check_value(
+    value: object,
+    program: syntax.Program,
+    where: str,
+    diagnostics: list[Diagnostic],
+    place: tuple[int, int],
+) -> None:
     if not isinstance(value, ConstructorValue):
         return
     if syntax.resolve_constructor_fields(value.constructor, program) is None:
         diagnostics.append(
-            Diagnostic("unbound_constructor", f"unknown constructor {value.constructor!r} in {where}")
+            Diagnostic(
+                "unbound_constructor",
+                f"unknown constructor {value.constructor!r} in {where}",
+                place,
+                about=AboutASymbol(value.constructor),
+            )
         )
         return
     for field_value in value.fields:
-        _check_value(field_value, program, where, diagnostics)
+        _check_value(field_value, program, where, diagnostics, place)
 
 
 def _declared_fields(type_decl: object) -> tuple[tuple[str, str], ...]:
@@ -1058,6 +1274,7 @@ def _pattern_bindings(
     program: syntax.Program,
     diagnostics: list[Diagnostic],
     location: tuple[int, int],
+    within: str,
 ) -> dict[str, str]:
     if isinstance(pattern, syntax.PatVar):
         return {pattern.name: scrutinee_type} if scrutinee_type is not None else {}
@@ -1069,6 +1286,7 @@ def _pattern_bindings(
                     "type_mismatch",
                     f"{literal_type} literal pattern against scrutinee of type {scrutinee_type}",
                     location,
+                    about=AboutTwoTypes(within, scrutinee_type, literal_type),
                 )
             )
         return {}
@@ -1080,10 +1298,11 @@ def _pattern_bindings(
                     "unbound_constructor",
                     f"unknown constructor {pattern.name!r} in match pattern",
                     location,
+                    about=AboutASymbol(pattern.name),
                 )
             )
             for subpattern in pattern.subpatterns:
-                _pattern_bindings(subpattern, None, program, diagnostics, location)
+                _pattern_bindings(subpattern, None, program, diagnostics, location, within)
             return {}
         owning_type, fields = resolved
         if scrutinee_type is not None and owning_type != scrutinee_type:
@@ -1093,6 +1312,7 @@ def _pattern_bindings(
                     f"match pattern {pattern.name!r} has type {owning_type}, "
                     f"scrutinee has type {scrutinee_type}",
                     location,
+                    about=AboutTwoTypes(pattern.name, scrutinee_type, owning_type),
                 )
             )
         if len(fields) != len(pattern.subpatterns):
@@ -1102,17 +1322,24 @@ def _pattern_bindings(
                     f"match pattern {pattern.name!r} takes {len(fields)} field(s), "
                     f"got {len(pattern.subpatterns)}",
                     location,
+                    about=AboutTwoCounts(
+                        pattern.name, len(fields), len(pattern.subpatterns)
+                    ),
                 )
             )
         bindings: dict[str, str] = {}
         for (field_name, field_type), subpattern in zip(fields, pattern.subpatterns):
-            bindings.update(_pattern_bindings(subpattern, field_type, program, diagnostics, location))
+            bindings.update(_pattern_bindings(subpattern, field_type, program, diagnostics, location, within))
         return bindings
     return {}
 
 
 def _infer(
-    expr: object, env: dict[str, str], program: syntax.Program, diagnostics: list[Diagnostic]
+    expr: object,
+    env: dict[str, str],
+    program: syntax.Program,
+    diagnostics: list[Diagnostic],
+    within: str,
 ) -> str | None:
     if isinstance(expr, syntax.IntLit):
         return "Int"
@@ -1133,6 +1360,7 @@ def _infer(
                     "unbound_name",
                     f"unbound name {expr.name!r}",
                     (expr.line, expr.column),
+                    about=AboutASymbol(expr.name),
                 )
             )
         return None
@@ -1140,51 +1368,53 @@ def _infer(
     if isinstance(expr, syntax.Let):
         local_env = dict(env)
         for name, bound_expr in expr.bindings:
-            local_env[name] = _infer(bound_expr, local_env, program, diagnostics)
-        return _infer(expr.body, local_env, program, diagnostics)
+            local_env[name] = _infer(bound_expr, local_env, program, diagnostics, within)
+        return _infer(expr.body, local_env, program, diagnostics, within)
 
     if isinstance(expr, syntax.If):
-        condition_type = _infer(expr.condition, env, program, diagnostics)
+        condition_type = _infer(expr.condition, env, program, diagnostics, within)
         if condition_type is not None and condition_type != "Bool":
             diagnostics.append(
                 Diagnostic(
                     "type_mismatch",
                     f"'if' condition expects Bool, got {condition_type}",
                     (expr.line, expr.column),
+                    about=AboutTwoTypes(within, "Bool", condition_type),
                 )
             )
-        then_type = _infer(expr.then_branch, env, program, diagnostics)
-        else_type = _infer(expr.else_branch, env, program, diagnostics)
+        then_type = _infer(expr.then_branch, env, program, diagnostics, within)
+        else_type = _infer(expr.else_branch, env, program, diagnostics, within)
         if then_type is not None and else_type is not None and then_type != else_type:
             diagnostics.append(
                 Diagnostic(
                     "type_mismatch",
                     f"'if' branches disagree: {then_type} vs {else_type}",
                     (expr.line, expr.column),
+                    about=AboutTwoTypes(within, then_type, else_type),
                 )
             )
             return None
         return then_type if then_type is not None else else_type
 
     if isinstance(expr, syntax.Match):
-        scrutinee_type = _infer(expr.scrutinee, env, program, diagnostics)
+        scrutinee_type = _infer(expr.scrutinee, env, program, diagnostics, within)
         result_type: str | None = None
-        disagreement = False
+        disagreement: tuple[str, str] | None = None
         diagnostics_before_patterns = len(diagnostics)
         for clause in expr.clauses:
             clause_env = dict(env)
             clause_env.update(
                 _pattern_bindings(
-                    clause.pattern, scrutinee_type, program, diagnostics, (expr.line, expr.column)
+                    clause.pattern, scrutinee_type, program, diagnostics, (expr.line, expr.column), within
                 )
             )
-            clause_type = _infer(clause.body, clause_env, program, diagnostics)
+            clause_type = _infer(clause.body, clause_env, program, diagnostics, within)
             if clause_type is None:
                 continue
             if result_type is None:
                 result_type = clause_type
-            elif result_type != clause_type:
-                disagreement = True
+            elif result_type != clause_type and disagreement is None:
+                disagreement = (result_type, clause_type)
         patterns_well_formed = len(diagnostics) == diagnostics_before_patterns
         if (
             scrutinee_type is not None
@@ -1196,6 +1426,7 @@ def _infer(
                     "non_exhaustive_match",
                     f"'match' does not cover every value of type {scrutinee_type}",
                     (expr.line, expr.column),
+                    about=AboutASymbol(scrutinee_type),
                 )
             )
         if disagreement:
@@ -1204,13 +1435,14 @@ def _infer(
                     "type_mismatch",
                     "'match' clauses disagree on result type",
                     (expr.line, expr.column),
+                    about=AboutTwoTypes(within, *disagreement),
                 )
             )
             return None
         return result_type
 
     if isinstance(expr, syntax.FieldAccess):
-        target_type = _infer(expr.target, env, program, diagnostics)
+        target_type = _infer(expr.target, env, program, diagnostics, within)
         if target_type is None:
             return None
         field_type = _field_type(target_type, expr.field_name, program)
@@ -1220,13 +1452,14 @@ def _infer(
                     "unbound_field",
                     f"type {target_type!r} has no field {expr.field_name!r}",
                     (expr.line, expr.column),
+                    about=AboutASymbol(f"{target_type}.{expr.field_name}"),
                 )
             )
         return field_type
 
     if isinstance(expr, syntax.OperatorCall):
-        arg_types = [_infer(arg, env, program, diagnostics) for arg in expr.args]
-        return _check_operator(expr, arg_types, diagnostics)
+        arg_types = [_infer(arg, env, program, diagnostics, within) for arg in expr.args]
+        return _check_operator(expr, arg_types, diagnostics, within)
 
     if isinstance(expr, syntax.ConstructorCall):
         fields = syntax.resolve_constructor_fields(expr.name, program)
@@ -1236,10 +1469,11 @@ def _infer(
                     "unbound_constructor",
                     f"unknown constructor {expr.name!r}",
                     (expr.line, expr.column),
+                    about=AboutASymbol(expr.name),
                 )
             )
             for arg in expr.args:
-                _infer(arg, env, program, diagnostics)
+                _infer(arg, env, program, diagnostics, within)
             return None
         if len(fields) != len(expr.args):
             diagnostics.append(
@@ -1247,10 +1481,11 @@ def _infer(
                     "arity_mismatch",
                     f"constructor {expr.name!r} takes {len(fields)} field(s), got {len(expr.args)}",
                     (expr.line, expr.column),
+                    about=AboutTwoCounts(expr.name, len(fields), len(expr.args)),
                 )
             )
         for (field_name, field_type), arg in zip(fields, expr.args):
-            arg_type = _infer(arg, env, program, diagnostics)
+            arg_type = _infer(arg, env, program, diagnostics, within)
             if arg_type is not None and arg_type != field_type:
                 diagnostics.append(
                     Diagnostic(
@@ -1258,10 +1493,13 @@ def _infer(
                         f"constructor {expr.name!r} field {field_name!r} expects "
                         f"{field_type}, got {arg_type}",
                         (expr.line, expr.column),
+                        about=AboutTwoTypes(
+                            f"{expr.name}.{field_name}", field_type, arg_type
+                        ),
                     )
                 )
         for arg in expr.args[len(fields):]:
-            _infer(arg, env, program, diagnostics)
+            _infer(arg, env, program, diagnostics, within)
         return syntax.resolve_constructor(expr.name, program)[0]
 
     if isinstance(expr, syntax.Call):
@@ -1272,10 +1510,11 @@ def _infer(
                     "unbound_name",
                     f"call to undeclared function {expr.name!r}",
                     (expr.line, expr.column),
+                    about=AboutASymbol(expr.name),
                 )
             )
             for arg in expr.args:
-                _infer(arg, env, program, diagnostics)
+                _infer(arg, env, program, diagnostics, within)
             return None
         params = callee.signature.params
         if len(expr.args) != len(params):
@@ -1285,10 +1524,11 @@ def _infer(
                     f"call to {expr.name!r} passes {len(expr.args)} argument(s), "
                     f"expected {len(params)}",
                     (expr.line, expr.column),
+                    about=AboutTwoCounts(expr.name, len(params), len(expr.args)),
                 )
             )
         for (param_name, param_type), arg in zip(params, expr.args):
-            arg_type = _infer(arg, env, program, diagnostics)
+            arg_type = _infer(arg, env, program, diagnostics, within)
             if arg_type is not None and arg_type != param_type:
                 diagnostics.append(
                     Diagnostic(
@@ -1296,10 +1536,13 @@ def _infer(
                         f"call to {expr.name!r} argument {param_name!r} expects "
                         f"{param_type}, got {arg_type}",
                         (expr.line, expr.column),
+                        about=AboutTwoTypes(
+                            f"{expr.name}.{param_name}", param_type, arg_type
+                        ),
                     )
                 )
         for arg in expr.args[len(params):]:
-            _infer(arg, env, program, diagnostics)
+            _infer(arg, env, program, diagnostics, within)
         return callee.signature.return_type
 
     raise TypeError(f"unrecognised expression node: {expr!r}")
@@ -1318,7 +1561,10 @@ def arity_of(operator: str) -> int:
 
 
 def _check_operator(
-    expr: syntax.OperatorCall, arg_types: list[str | None], diagnostics: list[Diagnostic]
+    expr: syntax.OperatorCall,
+    arg_types: list[str | None],
+    diagnostics: list[Diagnostic],
+    within: str,
 ) -> str:
     op = expr.operator
     takes = arity_of(op)
@@ -1330,6 +1576,7 @@ def _check_operator(
                 f"got {len(expr.args)}; operators have no variable arity, so write "
                 f"the call with exactly {takes}",
                 (expr.line, expr.column),
+                about=AboutTwoCounts(op, takes, len(expr.args)),
             )
         )
     if op in NUMERIC_OPERATORS:
@@ -1340,6 +1587,7 @@ def _check_operator(
                         "type_mismatch",
                         f"operator {op!r} expects Int operands, got {arg_type}",
                         (expr.line, expr.column),
+                        about=AboutTwoTypes(op, "Int", arg_type),
                     )
                 )
         return "Int"
@@ -1351,6 +1599,7 @@ def _check_operator(
                         "type_mismatch",
                         f"operator {op!r} expects Int operands, got {arg_type}",
                         (expr.line, expr.column),
+                        about=AboutTwoTypes(op, "Int", arg_type),
                     )
                 )
         return "Bool"
@@ -1362,6 +1611,7 @@ def _check_operator(
                     "type_mismatch",
                     f"'=' operands have different types: {known}",
                     (expr.line, expr.column),
+                    about=AboutTwoTypes(op, known[0], known[1]),
                 )
             )
         return "Bool"
@@ -1373,6 +1623,7 @@ def _check_operator(
                         "type_mismatch",
                         f"operator {op!r} expects Bool operands, got {arg_type}",
                         (expr.line, expr.column),
+                        about=AboutTwoTypes(op, "Bool", arg_type),
                     )
                 )
         return "Bool"

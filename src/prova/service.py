@@ -9,7 +9,7 @@ import hashlib
 from dataclasses import dataclass
 
 from prova import checker, evaluator, obligations, syntax
-from prova.reader import ReaderError, read_program
+from prova.reader import ReaderError, end_of, read_program
 from prova.values import render
 
 AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify")
@@ -44,30 +44,11 @@ STATUSES = {
     "unavailable": "the operation is not one this tool answers yet",
 }
 
-DIAGNOSTIC_CATEGORIES = (
-    "syntax",
-    UNSUPPORTED_CONSTRUCT,
-    "unbound_type",
-    "unbound_constructor",
-    "unbound_name",
-    "unbound_field",
-    "type_mismatch",
-    "arity_mismatch",
-    "non_exhaustive_match",
-    checker.CYCLIC_DEPENDENCY,
-    checker.DUPLICATE_DECLARATION,
-    checker.RECURSIVE_TYPE,
-    checker.SHADOWED_BINDING,
-    checker.RESERVED_NAME,
-    checker.UNRELATED_EXAMPLE,
-    "unknown_function",
-    "malformed_value",
-    "ill_typed_value",
-    "precondition_violation",
-    "postcondition_violation",
-    "operation_unavailable",
-    "unknown_operation",
-)
+# Every category a refusal carries, read from the kinds that say what
+# each of them carries: the published list and the published shape are
+# the same table, so a category can never be announced without its shape
+# or carry a field the manifest does not name.
+DIAGNOSTIC_CATEGORIES = tuple(checker.DIAGNOSTIC_KINDS)
 
 
 # The two refusals in `handle` below are the only ones written as a
@@ -130,6 +111,10 @@ def _run_discover() -> dict:
             "operations": availability,
             "statuses": dict(STATUSES),
             "diagnostic_categories": list(DIAGNOSTIC_CATEGORIES),
+            "diagnostic_schemas": {
+                category: checker.DIAGNOSTIC_KINDS[category].published()
+                for category in DIAGNOSTIC_CATEGORIES
+            },
             "documentation": {
                 "evaluate": (
                     "A completed evaluate response means the function's postconditions "
@@ -142,6 +127,16 @@ def _run_discover() -> dict:
                     "here: the command answers it with the status "
                     "'tool_failure' and exits 1, and 'tool_failure' is "
                     "therefore not one of the statuses listed."
+                ),
+                "diagnostic_schemas": (
+                    "What a diagnostic of each category carries beside its "
+                    "category and its sentence: the fields and the kind of "
+                    "value each carries, where its place stands and what "
+                    "that place points into, and whether it carries the revision "
+                    "of a submitted source. A revision says which text the "
+                    "diagnostic is about and claims nothing about that text: "
+                    "a source the tool refused before checking it through "
+                    "carries one too."
                 ),
                 "verify": (
                     "A completed verify response is an inventory only: it lists the "
@@ -182,14 +177,33 @@ def _source_digest(source: str) -> str:
     return SourceRevision.of(source).rendered()
 
 
-def _diagnostic_dict(diagnostic: checker.Diagnostic) -> dict:
+def _diagnostic_dict(
+    diagnostic: checker.Diagnostic, revision: SourceRevision | None = None
+) -> dict:
     """The one builder of the dictionary a client reads a refusal from.
 
     Every refusal of every operation comes through here, so a refusal of
     the reader and a refusal of a rule of core-0 reach a caller in the
     same shape, and nothing else in the tool writes a diagnostic.
+
+    The revision of the text the request submitted is stamped here, in
+    the one place every refusal passes, so no rule has to remember to
+    carry it. It says which text the refusal is about and nothing else:
+    an answer about a source the tool stopped reading still says which
+    source that was.
     """
     entry = {"category": diagnostic.category, "reason": diagnostic.reason}
+    if checker.DIAGNOSTIC_KINDS[diagnostic.category].revision == checker.ALWAYS:
+        if revision is None:
+            raise ValueError(
+                f"a refusal of category {diagnostic.category!r} is being "
+                "rendered without the revision of the text it is about, which "
+                "its kind declares it carries: a client reads which version of "
+                "its source the answer is about from that field; pass the "
+                "SourceRevision of the submitted source, or declare the kind "
+                "as carrying none"
+            )
+        entry["source_revision"] = revision.rendered()
     entry.update(diagnostic.about.fields())
     if diagnostic.location is not None:
         line, column = diagnostic.location
@@ -208,8 +222,7 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> checker.Diag
     operation met it, carrying the place the refusal stands at so a
     reader is sent to the line to repair.
     """
-    place = (error.line, error.column) if error.line else None
-    return checker.Diagnostic("syntax", error.message, place)
+    return checker.Diagnostic("syntax", error.message, (error.line, error.column))
 
 
 def _out_of_profile_diagnostic(
@@ -240,12 +253,15 @@ class Refusal:
 
     status: str
     diagnostics: tuple
+    revision: SourceRevision
 
     def response_for(self, operation: str) -> dict:
         return {
             "operation": operation,
             "status": self.status,
-            "diagnostics": [_diagnostic_dict(d) for d in self.diagnostics],
+            "diagnostics": [
+                _diagnostic_dict(d, self.revision) for d in self.diagnostics
+            ],
         }
 
 
@@ -257,16 +273,19 @@ def _checked_program(source: str):
     one of them is refused the same way for all of them, and a caller
     moving between operations never meets two answers for one source.
     """
+    revision = SourceRevision.of(source)
     try:
         program = syntax.parse_program(read_program(source))
     except syntax.UnsupportedConstruct as outside:
-        return Refusal(UNSUPPORTED_STATUS, (_out_of_profile_diagnostic(outside),))
+        return Refusal(
+            UNSUPPORTED_STATUS, (_out_of_profile_diagnostic(outside),), revision
+        )
     except (ReaderError, syntax.SyntaxError_) as error:
-        return Refusal("invalid_program", (_syntax_diagnostic(error),))
+        return Refusal("invalid_program", (_syntax_diagnostic(error),), revision)
 
     diagnostics = checker.check_program(program)
     if diagnostics:
-        return Refusal("invalid_program", tuple(diagnostics))
+        return Refusal("invalid_program", tuple(diagnostics), revision)
     return program
 
 
@@ -342,10 +361,35 @@ def _run_examples(source: str) -> dict:
 
 
 def _parse_value_text(text: str) -> object:
+    """The one value `text` writes, or the reader's refusal to read one.
+
+    A refusal stands where the reader stopped in that text: at the value
+    after the first when there are several, and at the end of the text
+    when there is none.
+    """
     forms = read_program(text)
     if len(forms) != 1:
-        raise ReaderError(f"expected exactly one value, got {len(forms)}", 0, 0)
+        extra = forms[1] if len(forms) > 1 else None
+        line, column = (
+            (extra.line, extra.column) if extra is not None else end_of(text)
+        )
+        raise ReaderError(
+            f"expected exactly one value, got {len(forms)}", line, column
+        )
     return syntax.parse_value(forms[0])
+
+
+def _declared_place(program, name: str) -> tuple[int, int]:
+    """Where `program` declares the function `name`.
+
+    A refusal about a call the request makes stands at the declaration
+    it is a call to: the request carries no text of its own for a
+    reader to open.
+    """
+    for declared in program.declarations.of_kind("function"):
+        if declared.name == name:
+            return (declared.line, declared.column)
+    raise KeyError(name)
 
 
 def _run_evaluate(source: str, function_name: object, argument_texts: list) -> dict:
@@ -353,6 +397,7 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
     if isinstance(checked, Refusal):
         return checked.response_for("evaluate")
     program = checked
+    revision = SourceRevision.of(source)
 
     function = program.functions.get(function_name)
     if function is None:
@@ -364,11 +409,14 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
                     checker.Diagnostic(
                         "unknown_function",
                         f"no function named {function_name!r}",
-                    )
+                        about=checker.AboutASymbol(str(function_name)),
+                    ),
+                    revision,
                 )
             ],
         }
 
+    place = _declared_place(program, function.name)
     try:
         args = tuple(_parse_value_text(text) for text in argument_texts)
     except (ReaderError, syntax.SyntaxError_) as error:
@@ -376,7 +424,15 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "operation": "evaluate",
             "status": "invalid_input",
             "diagnostics": [
-                _diagnostic_dict(checker.Diagnostic("malformed_value", error.message))
+                _diagnostic_dict(
+                    checker.Diagnostic(
+                        "malformed_value",
+                        error.message,
+                        (error.line, error.column),
+                        about=checker.AboutASymbol(function.name),
+                    ),
+                    revision,
+                )
             ],
         }
 
@@ -391,7 +447,12 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
                         "arity_mismatch",
                         f"function {function_name!r} expects {len(params)} argument(s), "
                         f"got {len(args)}",
-                    )
+                        place,
+                        about=checker.AboutTwoCounts(
+                            function.name, len(params), len(args)
+                        ),
+                    ),
+                    revision,
                 )
             ],
         }
@@ -404,7 +465,15 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "operation": "evaluate",
             "status": "invalid_input",
             "diagnostics": [
-                _diagnostic_dict(checker.Diagnostic("malformed_value", error.reason))
+                _diagnostic_dict(
+                    checker.Diagnostic(
+                        "malformed_value",
+                        error.reason,
+                        place,
+                        about=checker.AboutASymbol(function.name),
+                    ),
+                    revision,
+                )
             ],
         }
     except evaluator.IllTypedValue as error:
@@ -412,7 +481,15 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "operation": "evaluate",
             "status": "invalid_input",
             "diagnostics": [
-                _diagnostic_dict(checker.Diagnostic("ill_typed_value", error.reason))
+                _diagnostic_dict(
+                    checker.Diagnostic(
+                        "ill_typed_value",
+                        error.reason,
+                        place,
+                        about=checker.AboutASymbol(function.name),
+                    ),
+                    revision,
+                )
             ],
         }
 
@@ -426,7 +503,13 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "source_digest": _source_digest(source),
             "diagnostics": [
                 _diagnostic_dict(
-                    checker.Diagnostic("precondition_violation", str(violation))
+                    checker.Diagnostic(
+                        "precondition_violation",
+                        str(violation),
+                        place,
+                        about=checker.AboutASymbol(function.name),
+                    ),
+                    revision,
                 )
             ],
         }
@@ -438,7 +521,13 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "source_digest": _source_digest(source),
             "diagnostics": [
                 _diagnostic_dict(
-                    checker.Diagnostic("postcondition_violation", str(violation))
+                    checker.Diagnostic(
+                        "postcondition_violation",
+                        str(violation),
+                        place,
+                        about=checker.AboutASymbol(function.name),
+                    ),
+                    revision,
                 )
             ],
         }
