@@ -65,8 +65,33 @@ def test_discover_lists_diagnostic_categories_and_resource_limits():
     assert "resource_limits" in result
 
 
-def test_discover_makes_no_verification_proof_or_build_claim():
-    text = json.dumps(service.handle(DISCOVER)).lower()
+def test_discover_makes_no_verification_or_build_claim():
+    """The manifest still claims no program verified and none built.
 
-    for word in ("verified", "proved", "built", "holds"):
-        assert word not in text
+    Superseded in part by F18: the manifest now has to describe the four
+    words an obligation can stand as, one of which is `proved`, so the
+    word itself can no longer be forbidden outright. The claim it was
+    there to catch is not the word but the assertion -- that this tool
+    verified a program, that it built one, or that something holds -- so
+    the two words naming those stay forbidden, and `proved` is allowed
+    only where the manifest also says what it rests on.
+    """
+    manifest_text = json.dumps(service.handle(DISCOVER)).lower()
+
+    for word in ("verified", "built", "holds"):
+        assert word not in manifest_text, (
+            f"WHAT: the manifest contains {word!r}. "
+            "WHY: this tool verifies no program as a whole and builds none, "
+            "so a reader of the manifest must not be told otherwise. "
+            "HOW: reword the entry that says it."
+        )
+
+    for owed in ("trust", "discharged_by", "rechecked_by_this_tool"):
+        assert owed in manifest_text, (
+            f"WHAT: the manifest uses the word 'proved' and does not publish "
+            f"{owed!r}. "
+            "WHY: a reader who meets 'proved' must be able to look up what it "
+            "rests on -- the solver's word, or a rule of core-0 -- before "
+            "sending a single request. "
+            "HOW: publish it beside the operation that answers it."
+        )
