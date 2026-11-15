@@ -112,6 +112,55 @@ EXAMPLES_PLUS_A_SELF_CALLING_BODY = """\
   (+ n (doubled n)))
 """
 
+# --- three functions that call each other round, declared in the order in
+# --- which they call: `gather` calls `summarise`, `summarise` calls
+# --- `publish`, `publish` calls `gather` again
+
+REPORT_CYCLE_DECLARED_IN_CALL_ORDER = """\
+(defn gather
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (gather 1) => 1))
+  (+ (summarise n) n))
+
+(defn summarise
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (summarise 1) => 1))
+  (+ (publish n) n))
+
+(defn publish
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (publish 1) => 1))
+  (+ (gather n) n))
+"""
+
+REPORT_CYCLE_IN_DECLARATION_ORDER = ("gather", "summarise", "publish")
+
+# --- three functions that call each other round, declared against the
+# --- order in which they call: `audit` calls `refund`, `refund` calls
+# --- `settle`, `settle` calls `audit` again, but the program declares
+# --- them audit, settle, refund. No rotation of the call chain gives that
+# --- order, so a report written from the order the calls run in differs
+# --- from a report written from the order the program declares.
+
+LEDGER_CYCLE_DECLARED_AGAINST_CALL_ORDER = """\
+(defn audit
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (audit 1) => 1))
+  (+ (refund n) n))
+
+(defn settle
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (settle 1) => 1))
+  (+ (audit n) n))
+
+(defn refund
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (refund 1) => 1))
+  (+ (settle n) n))
+"""
+
+LEDGER_CYCLE_IN_DECLARATION_ORDER = ("audit", "settle", "refund")
+
 # --- the shipped programs, and the one-call edit that makes each cyclic
 
 HOUR_CLOCK_GUARD = "(>= (.hr current) 1)"
@@ -203,6 +252,22 @@ def reported_cycles(response: dict) -> list[frozenset[str]]:
     ]
 
 
+def cycle_members(response: dict) -> list[tuple[str, ...]]:
+    """The function names each reported cycle diagnostic names, in the
+    order that diagnostic writes them, one entry per such diagnostic.
+
+    `reported_cycles` reads the same field as a set, for the tests whose
+    promise is membership alone; this reader keeps the order, for the
+    tests whose promise is that a reader meets the names in the order the
+    program declares them.
+    """
+    return [
+        tuple(diagnostic.get("cycle") or ())
+        for diagnostic in response.get("diagnostics") or []
+        if diagnostic.get("category") == CYCLE_CATEGORY
+    ]
+
+
 def cycle_reasons(response: dict) -> list[str]:
     return [
         diagnostic.get("reason") or ""
@@ -223,14 +288,19 @@ __all__ = [
     "EXAMPLES_NAME_THEIR_OWN_FUNCTION",
     "EXAMPLES_PLUS_A_SELF_CALLING_BODY",
     "HOUR_CLOCK_GUARD",
+    "LEDGER_CYCLE_DECLARED_AGAINST_CALL_ORDER",
+    "LEDGER_CYCLE_IN_DECLARATION_ORDER",
     "MUTUALLY_CALLING_STEPS",
     "ONE_STEP_COUNTDOWN",
     "ONE_WAY_STEPS",
+    "REPORT_CYCLE_DECLARED_IN_CALL_ORDER",
+    "REPORT_CYCLE_IN_DECLARATION_ORDER",
     "RESERVATION_GUARD",
     "SELF_CALLING_COUNTDOWN",
     "ToolRun",
     "accepted",
     "check",
+    "cycle_members",
     "cycle_reasons",
     "declared_examples",
     "evaluate",

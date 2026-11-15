@@ -1186,8 +1186,10 @@ there.
   on the port itself. (14-15 November 2026.)
 - **Unify the builtin type names.** `syntax.BUILTIN_TYPE_NAMES` duplicates
   `checker.BUILTIN_TYPES`. Raised during F6.
-- **Locate `recursive_type` and `unbound_type` diagnostics.** Both carry no location
-  today (`docs/spec-trace.md` row 8.6 is Partial for this reason). Fits F10.
+- **Locate `cyclic_dependency`, `recursive_type` and `unbound_type` diagnostics.**
+  All three carry no location today (`docs/spec-trace.md` row 8.6 is Partial for
+  this reason). Fits F10. `cyclic_dependency` was added to this follow-up by the
+  late independent review of F2.
 - **Forms accepted with text dropped.** `(deftype T (record (x Int)) extra)`,
   `(requires)`, `(ensures)` and `(if true 1 2 3)` are accepted and the extra text is
   silently ignored. Same on the pre-F6 base. Raised by the F6 and F9 reviews.

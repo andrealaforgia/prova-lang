@@ -147,7 +147,7 @@ checked as an ordinary function, but no machine layer exists around it.
 | 8.3 | Operation categories: discovery, parsing, formatting, checking, verification, examples, building | Partial | 3 of 7 exist (`discover`, `check`, `examples`), plus `evaluate` which SPEC.md does not name |
 | 8.4 | Unimplemented operations advertised unavailable and refused | Done | probes S1-S3 |
 | 8.5 | Diagnostics carry a stable category | Done | `DIAGNOSTIC_CATEGORIES` |
-| 8.6 | Diagnostics carry location | Partial | probe S5; reader and syntax refusals carry line and column; `recursive_type` and `unbound_type` carry none |
+| 8.6 | Diagnostics carry location | Partial | probe S5; reader and syntax refusals carry line and column; `cyclic_dependency`, `recursive_type` and `unbound_type` carry none |
 | 8.7 | Diagnostics carry source revision, symbol or obligation identity, expected and actual | Missing | probes S4, S6 |
 | 8.8 | Invalid programs, unsupported reasoning and tool failures are distinct | Partial | `invalid_program` and `tool_failure` exist; "unsupported" is not a separate status |
 | 8.9 | Results bind to a source revision | Partial | `source_digest` only |
@@ -216,10 +216,19 @@ They are the cheapest next work, because `core-0` and `check` already exist.
    was measured at `533271a` and is not re-scored here.
 2. **Duplicate function names are accepted silently** (2.3). The second definition
    replaces the first and the program evaluates with it.
+   *Fixed by feature F3.* `check` now refuses a program that declares one name
+   twice, with the category `duplicate_declaration` naming the repeated name and
+   the places it is declared at.
 3. **Seven more `check` gaps share a fix location.** Cyclic types (2.2),
    builtin redeclaration (2.4), duplicate constructors (2.5), duplicate fields (2.6),
    shadowing (2.8), `result` as a binder (2.10) and repeated pattern variables (2.13)
    are all accepted.
+   *Fixed by features F3, F4 and F5*, not by one of them: F3 refuses builtin
+   redeclaration (2.4), duplicate constructors (2.5) and duplicate fields (2.6);
+   F4 refuses cyclic types (2.2) as recursive data outside this profile; F5
+   refuses shadowing (2.8), `result` as a binder (2.10) and repeated pattern
+   variables (2.13). The row counts in the table above were measured before
+   these features and are not re-scored here.
 4. **Reserved words and name shape are not enforced** (1.3, 1.4).
 5. **Operator arity is not fully enforced** (3.5). `(not b b)` passes.
 6. **An example can call a different function** (4.6).
