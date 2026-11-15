@@ -106,20 +106,27 @@ was edited and none broke.
 
 ## Test cost
 
-The new test files were run nine times in a row: 46 tests each, all
-nine green, median 4.98s, slowest 5.01s. That measurement was taken
-before the last commit added two more files; the suite total above is
-the current one.
+All nine new test files were run nine times in a row: 68 tests each,
+all nine green, median 6.83s, slowest 6.86s. No run differed from
+another by more than 0.1s, so nothing in them is flaky.
 
-The single slowest test is the sweep of mangled requests. It sends over
-ten thousand: the three programs this repository ships, cut off and
-dented at every character, every field of every operation holding every
-kind of JSON value, chains of functions from 1 to 2000 long, and 500
-requests drawn from a fixed seed. It calls the command's own entry
-point in this process with standard input and output replaced, because
-that many subprocesses would cost minutes; the acceptance tests keep
-real subprocesses, one per family, where the cost of a process is paid
-once.
+| | |
+|---|---|
+| Tests | 68 |
+| Runs | 9, all green |
+| Median | 6.83s |
+| Slowest | 6.86s |
+| Slowest single test | 3.29s, the sweep of mangled requests |
+| Every other test | under 0.2s |
+
+The sweep sends over ten thousand requests: the three programs this
+repository ships, cut off and dented at every character, every field of
+every operation holding every kind of JSON value, chains of functions
+from 1 to 2000 long, and 500 requests drawn from a fixed seed. It calls
+the command's own entry point in this process with standard input and
+output replaced, because that many subprocesses would cost minutes; the
+acceptance tests keep real subprocesses, one per family, where the cost
+of a process is paid once.
 
 ## Each new behaviour was broken on purpose
 
