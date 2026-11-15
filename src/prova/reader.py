@@ -170,7 +170,14 @@ def _tokenize(text: str) -> tuple[list[_Token], list[Comment]]:
             while i < n and text[i] != "\n":
                 i += 1
                 column += 1
-            comments.append(Comment(text[start:i], start_line, start_column))
+            # A text written on a system that ends its lines with
+            # two characters leaves the first of them inside the
+            # comment; it ends the line and is not one of the reader's
+            # own characters, so it is not kept.
+            written = text[start:i]
+            if written.endswith("\r"):
+                written = written[:-1]
+            comments.append(Comment(written, start_line, start_column))
             continue
         if ch in "()":
             tokens.append(_Token(ch, ch, line, column))

@@ -73,7 +73,16 @@ class AttachedComments:
         return tuple(taken)
 
     def left_over(self) -> tuple[Comment, ...]:
-        return tuple(self._pending)
+        """Every comment no node followed, handed out once.
+
+        The walk has ended when this is asked, so these comments are
+        given up here: publishing them is itself a walk over comment
+        nodes, and one that could still take them would attach each to
+        the one written after it.
+        """
+        left = tuple(self._pending)
+        self._pending.clear()
+        return left
 
 
 @dataclass(frozen=True)
@@ -153,12 +162,16 @@ class TreeSchema:
             "position": (
                 "The line and the column the form the node was read from "
                 "starts at, counted from line 1 column 1, with the column "
-                "counted again from 1 after each line break."
+                "counted again from 1 after each line break. A field and a "
+                "parameter stand at the name they declare, not at the "
+                "parenthesis that opens the pair: the name is the word a "
+                "reader of the tree is sent to."
             ),
             "comments": (
                 "The comments written before a node stand on it, under "
                 "'comments', each one a node of kind 'comment' carrying the "
-                "characters from its ';' to the end of its line. The key is "
+                "characters from its ';' up to but not including the line "
+                "terminator that ends it. The key is "
                 "absent when a node carries none. A comment that no node "
                 "follows stands on the program, under 'trailing_comments'."
             ),
@@ -175,7 +188,10 @@ SCHEMA = TreeSchema(
                 "trailing_comments": "the comments no node follows, absent when there are none",
             },
         ),
-        NodeKind("comment", {"text": "the characters written, from the ';' to the end of the line"}),
+        NodeKind(
+            "comment",
+            {"text": "the characters written, from the ';' to the end of the line, without the line terminator"},
+        ),
         NodeKind("record_type", {"name": "the declared type name", "fields": "the fields it declares"}),
         NodeKind("union_type", {"name": "the declared type name", "variants": "the variants it declares"}),
         NodeKind("variant", {"name": "the constructor it declares", "fields": "the fields it carries"}),
@@ -229,6 +245,7 @@ SCHEMA = TreeSchema(
         NodeKind("match", {"scrutinee": "the expression examined", "clauses": "the clauses, in source order"}),
         NodeKind("match_clause", {"pattern": "the pattern it answers for", "body": "the expression it answers with"}),
         NodeKind("pattern_wildcard", {}),
+
         NodeKind("pattern_name", {"name": "the name the pattern binds"}),
         NodeKind("pattern_integer", {"value": "the whole number matched"}),
         NodeKind("pattern_boolean", {"value": "true or false"}),
