@@ -91,25 +91,38 @@ def test_the_logical_result_and_the_execution_status_speak_their_own_words():
         )
 
 
-def test_this_tool_owes_every_obligation_and_ran_none_of_them():
-    """Given the same answer, then every entry is still owed and says
-    that nothing supported running it, and the totals count 0 attempted
-    against the whole list."""
+def test_this_tool_settles_every_obligation_it_lists():
+    """Given the same answer, then no entry is left for nobody to have
+    attempted, an entry that is proved says its attempt completed, and
+    the totals count the whole list as attempted.
+
+    A reader still cannot take one of the two fields for the other: the
+    two tests above require each to come from its own vocabulary, and
+    this one requires the pair to belong together.
+    """
     entries = _entries()
     owed = [entry for entry in entries if entry["result"] == "not_attempted"]
-    unrun = [entry for entry in entries if entry["execution_status"] == "unsupported"]
+    unfinished = [
+        entry
+        for entry in entries
+        if entry["result"] == "proved" and entry["execution_status"] != "completed"
+    ]
 
-    assert len(owed) == len(entries) and len(unrun) == len(entries), (
-        f"WHAT: of {len(entries)} entries, {len(owed)} are still owed and "
-        f"{len(unrun)} say nothing supported running them. WHY: this tool has "
-        "no solver, so an entry saying otherwise reports work nobody did. "
-        "HOW: answer not_attempted beside unsupported for every entry."
+    assert not owed and not unfinished, (
+        f"WHAT: of {len(entries)} entries, {len(owed)} are reported as "
+        f"attempted by nobody and {len(unfinished)} are proved without a "
+        "completed attempt. WHY: every obligation is put to the solver or "
+        "settled by a rule of core-0, and SPEC.md lines 275-277 let only a "
+        "completed justified result be proved. "
+        "HOW: settle every entry, and pair proved with completed."
     )
 
     totals = (
         (answer_about("verify", A_PROGRAM).get("result") or {}).get("inventory") or {}
     ).get("totals") or {}
-    assert totals.get("attempted") == 0 and totals.get("obligations") == len(entries), (
+    assert totals.get("attempted") == len(entries) and totals.get(
+        "obligations"
+    ) == len(entries), (
         f"WHAT: the totals say {totals} for a list of {len(entries)} entries. "
         "WHY: a count that does not add up to its own list cannot be read. "
         "HOW: count the entries."
