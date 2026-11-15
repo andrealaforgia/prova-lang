@@ -31,7 +31,15 @@ from prova import encoding, syntax
 # own words, which share none. This tool has no solver, so nothing here
 # supported an attempt and every entry carries both constants.
 NOT_ATTEMPTED = "not_attempted"
-UNSUPPORTED = "unsupported"
+
+# Which refusal of the reference semantics confirms a candidate
+# counterexample to an obligation. Each kind names one of these, and the
+# unit that replays a candidate reads the same four words, so neither of
+# them spells a word the other does not know.
+BY_A_PRECONDITION = "precondition"
+BY_A_POSTCONDITION = "postcondition"
+BY_THE_EXAMPLE_ITSELF = "example"
+BY_NOTHING = "nothing"
 
 # The two rules of core-0 that settle an obligation with no solver, each
 # named once here and written out once in an answer that used it. An
@@ -195,11 +203,10 @@ class Obligation:
     def identity(self) -> str:
         return f"{self.kind}:{self.function}:{self.site.text()}"
 
-    # Which refusal of the reference semantics confirms a candidate
-    # counterexample to this obligation. `nothing` means no input can
-    # refute it: the kinds a rule of the profile settles are never
-    # disproved, so nothing is ever replayed for them.
-    confirmed_by = "nothing"
+    # `BY_NOTHING` means no input can refute this kind: the kinds a rule
+    # of the profile settles are never disproved, so nothing is ever
+    # replayed for them.
+    confirmed_by = BY_NOTHING
 
     def to_show(self) -> str:
         raise NotImplementedError("each kind of obligation says what it owes")
@@ -244,7 +251,7 @@ class CallPrecondition(Obligation):
     call: syntax.Call
 
     kind = "call_precondition"
-    confirmed_by = "precondition"
+    confirmed_by = BY_A_PRECONDITION
 
     def to_show(self) -> str:
         return (
@@ -311,7 +318,7 @@ class BodyPostcondition(Obligation):
     postcondition_clauses: int
 
     kind = "body_postcondition"
-    confirmed_by = "postcondition"
+    confirmed_by = BY_A_POSTCONDITION
 
     def to_show(self) -> str:
         return (
@@ -349,7 +356,7 @@ class ExampleValidity(Obligation):
     example: syntax.Example
 
     kind = "example_validity"
-    confirmed_by = "example"
+    confirmed_by = BY_THE_EXAMPLE_ITSELF
 
     def to_show(self) -> str:
         return (

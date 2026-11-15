@@ -24,10 +24,14 @@ from prova.reader import ReaderError, read_program
 from prova.values import render
 
 # The four words a logical result may carry (SPEC.md lines 270-284).
+# The last of them is read from the module that lists what a program
+# owes, which has carried that word since before anything could settle
+# one: two spellings of it would let an entry nothing attempted and an
+# entry counted as attempted disagree.
 PROVED = "proved"
 DISPROVED = "disproved"
 UNKNOWN = "unknown"
-NOT_ATTEMPTED = "not_attempted"
+NOT_ATTEMPTED = obligations.NOT_ATTEMPTED
 
 # What settled an obligation: a solver that was asked, or a rule of the
 # profile that needs none.
@@ -120,12 +124,6 @@ class Finding:
     @classmethod
     def not_attempted_because(cls, reason: str) -> "Finding":
         return cls(NOT_ATTEMPTED, "unsupported", reason=reason)
-
-    def asked_a_solver(self) -> bool:
-        return self.discharged_by == BY_THE_SOLVER or self.result in (
-            DISPROVED,
-            UNKNOWN,
-        )
 
     def written_into(self, entry: dict) -> None:
         entry["result"] = self.result
@@ -239,9 +237,13 @@ class Discharge:
                 )
             answered = evaluator.call_function(function, args, self._program)
         except evaluator.PreconditionViolation as refusal:
-            return self._if_confirmed(obligation, "precondition", texts, refusal)
+            return self._if_confirmed(
+                obligation, obligations.BY_A_PRECONDITION, texts, refusal
+            )
         except evaluator.PostconditionViolation as refusal:
-            return self._if_confirmed(obligation, "postcondition", texts, refusal)
+            return self._if_confirmed(
+                obligation, obligations.BY_A_POSTCONDITION, texts, refusal
+            )
         except (
             evaluator.EvaluationTooDeep,
             evaluator.MalformedValue,
@@ -253,8 +255,9 @@ class Discharge:
     def _if_confirmed(
         self, obligation, refusal_kind: str, texts: tuple, refusal
     ) -> ValidatedWitness | None:
-        if obligation.confirmed_by == refusal_kind or (
-            obligation.confirmed_by == "example"
+        if obligation.confirmed_by in (
+            refusal_kind,
+            obligations.BY_THE_EXAMPLE_ITSELF,
         ):
             return ValidatedWitness(obligation.function, texts, str(refusal))
         return None
@@ -262,7 +265,7 @@ class Discharge:
     def _if_answered_another_value(
         self, obligation, texts: tuple, answered: object
     ) -> ValidatedWitness | None:
-        if obligation.confirmed_by != "example":
+        if obligation.confirmed_by != obligations.BY_THE_EXAMPLE_ITSELF:
             return None
         if evaluator.values_equal(answered, obligation.example.expected):
             return None
@@ -281,7 +284,7 @@ class Discharge:
         replayed over the example's own arguments; every other claim is
         replayed over the solution the solver found.
         """
-        if obligation.confirmed_by == "example":
+        if obligation.confirmed_by == obligations.BY_THE_EXAMPLE_ITSELF:
             values = tuple(obligation.example.args)
             return tuple(render(value) for value in values), values
         names = tuple(name for name, _ in claim.variables)
