@@ -25,7 +25,7 @@ from _f12_tree_fixtures import (
 # The pairs this suite reads. Named here rather than discovered, so that
 # a pair that stops being published fails instead of disappearing from
 # the run.
-PUBLISHED = ("comments", "record-and-function")
+PUBLISHED = ("comments", "let-and-match", "record-and-function")
 
 
 def test_every_published_source_is_one_this_suite_reads():

@@ -1,0 +1,6 @@
+(deftype Flag (union (On) (Off)))
+(defn choose
+  (sig ((flag Flag) (n Int)) -> Int ! pure)
+  (examples (example (choose (On) 1) => 1))
+  (let ((m n))
+    (match flag ((On) m) (_ 0))))

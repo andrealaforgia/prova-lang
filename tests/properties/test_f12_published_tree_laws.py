@@ -27,6 +27,21 @@ from prova import service
 
 CASES = 40
 
+# The kinds core-0 writes as a parenthesised form: a node of one of them
+# stands on the parenthesis that opens it. The kinds left out stand on a
+# word -- a name, a number, a type -- and the law below only asks that
+# they stand on a character the source really has. The program node is
+# left out too: it stands at the start of the document, which is no form
+# of its own.
+WRITTEN_AS_A_FORM = frozenset(
+    {
+        "record_type", "union_type", "variant", "function", "signature",
+        "example", "unit", "call", "constructor", "operator",
+        "field_access", "let", "binding", "conditional", "match",
+        "match_clause", "pattern_unit", "pattern_constructor",
+    }
+)
+
 
 def _record(i: int) -> str:
     return f"(deftype T{i} (record (a{i} Int) (b{i} Bool)))"
@@ -133,6 +148,13 @@ def test_every_node_stands_where_the_source_holds_a_character(source):
             f"where the source holds {standing!r}: a node stands where its "
             "form starts, never past the end of a line and never on blank space"
         )
+        if node["kind"] in WRITTEN_AS_A_FORM:
+            assert standing == "(", (
+                f"a {node['kind']!r} node stands at line {line} column "
+                f"{column}, where the source holds {standing!r}: core-0 "
+                "writes it as a parenthesised form, so it stands on the "
+                "parenthesis that opens it and nowhere else"
+            )
 
 
 @settings(max_examples=CASES, deadline=None, derandomize=True)

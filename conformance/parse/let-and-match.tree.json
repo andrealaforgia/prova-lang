@@ -1,0 +1,77 @@
+{
+  "kind": "program",
+  "position": {"line": 1, "column": 1},
+  "declarations": [
+    {
+      "kind": "union_type",
+      "position": {"line": 1, "column": 1},
+      "name": "Flag",
+      "variants": [
+        {"kind": "variant", "position": {"line": 1, "column": 22}, "name": "On", "fields": []},
+        {"kind": "variant", "position": {"line": 1, "column": 27}, "name": "Off", "fields": []}
+      ]
+    },
+    {
+      "kind": "function",
+      "position": {"line": 2, "column": 1},
+      "name": "choose",
+      "signature": {
+        "kind": "signature",
+        "position": {"line": 3, "column": 3},
+        "parameters": [
+          {"kind": "parameter", "position": {"line": 3, "column": 10}, "name": "flag", "type": "Flag"},
+          {"kind": "parameter", "position": {"line": 3, "column": 22}, "name": "n", "type": "Int"}
+        ],
+        "return_type": "Int",
+        "effect": "pure"
+      },
+      "requires": [],
+      "ensures": [],
+      "examples": [
+        {
+          "kind": "example",
+          "position": {"line": 4, "column": 13},
+          "function": "choose",
+          "arguments": ["(On)", "1"],
+          "expected": "1"
+        }
+      ],
+      "body": {
+        "kind": "let",
+        "position": {"line": 5, "column": 3},
+        "bindings": [
+          {
+            "kind": "binding",
+            "position": {"line": 5, "column": 9},
+            "name": "m",
+            "value": {"kind": "name", "position": {"line": 5, "column": 12}, "name": "n"}
+          }
+        ],
+        "body": {
+          "kind": "match",
+          "position": {"line": 6, "column": 5},
+          "scrutinee": {"kind": "name", "position": {"line": 6, "column": 12}, "name": "flag"},
+          "clauses": [
+            {
+              "kind": "match_clause",
+              "position": {"line": 6, "column": 17},
+              "pattern": {
+                "kind": "pattern_constructor",
+                "position": {"line": 6, "column": 18},
+                "name": "On",
+                "subpatterns": []
+              },
+              "body": {"kind": "name", "position": {"line": 6, "column": 23}, "name": "m"}
+            },
+            {
+              "kind": "match_clause",
+              "position": {"line": 6, "column": 26},
+              "pattern": {"kind": "pattern_wildcard", "position": {"line": 6, "column": 27}},
+              "body": {"kind": "integer", "position": {"line": 6, "column": 29}, "value": 0}
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
