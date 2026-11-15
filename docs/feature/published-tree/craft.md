@@ -28,7 +28,7 @@ that cannot say where it stands can no longer be built at all.
 
 ## What was measured
 
-- Full suite: 1188 passed on top of main (1153 before this change).
+- Full suite: 1198 passed on top of main (1153 before this change).
 - The seven test files this change adds: 9 runs in a row, 35 tests green
   each time, median 0.30s for the whole set, slowest single test 0.04s.
 - Every repair has a delete-check: the wrong behaviour was put back and
@@ -61,6 +61,18 @@ each the same authorised change:
 | `tests/unit/test_service_discover.py` | `"parse": "unavailable"` becomes `"available"`. |
 | `tests/unit/test_obligation_inventory_refuses_what_it_cannot_list.py` | the program it builds in memory passes line 1 column 1 for its signature, its example and its function. |
 | `tests/properties/test_f11_manifest_laws.py` | `"parse"` joins the operations an agent may call. |
+
+## What the second review added
+
+It approved the work and left three notes. The place of a pattern, of a
+clause of a match and of a binding was watched by nothing: a tool that
+published all of them at line 1 column 1 kept every test green. A third
+published pair, a program with a `let` and a `match`, now fixes each of
+those places, and all three of those mutants fail it. The refusal to
+build a part of a program without its place is observed by a unit test
+of its own. The third note is answered in the handoff: the sentence it
+concerns is prose inside a published document, which the test mandates
+forbid pinning, so it is verified by reading.
 
 ## Still open
 
