@@ -72,9 +72,23 @@ layouts, decided by position. The rule was right; the code did not keep it.
 `Word` now carries text that stands on one line whatever the program holds — a
 name, a number, a marker token, a whole pattern — and `NoWord` is what a
 parenthesised list with no word of its own opens with (the bindings of a `let`,
-the parameters of a `sig`). A form's `opening` is typed as one of those two, so
-there is nothing a form can open with that might need a second line. The claim
-that an opening never breaks is now kept by the types, not by remembering it.
+the parameters of a `sig`). A form's `opening` is one of those two, so there is
+nothing a form can open with that might need a second line.
+
+**What enforces that, honestly.** This repository runs no type checker, so the
+annotation `opening: Word | NoWord` proves nothing on its own. Two things keep
+the rule: every form is built by the builders inside `formatter.py`, so there
+is one place where an opening is chosen; and a form handed to another form as
+its opening fails loudly instead of quietly, because a `Form` answers no
+`opens` —
+
+```
+AttributeError: 'Form' object has no attribute 'opens'
+```
+
+Centralised construction plus a loud runtime failure. Not a proof, and not a
+static guarantee.
+
 Cost: a `let` whose first binding must break writes `(` on a line of its own.
 That is what the rule says, and the pair `nested` publishes it.
 

@@ -113,12 +113,19 @@ class Word:
     or a whole pattern -- which core-0 builds out of literals, names and
     constructors and never out of a `let`, an `if` or a `match`.
 
-    It is also the only thing a form may open with, which is what makes
-    the opening line of a form written over several lines buildable at
-    all. The rule that a part needing several lines is never flattened
-    to fit an opening line is therefore kept by the types and not by
-    anybody remembering it: there is no Word that must be written twice
-    over, so no opening can be the thing that gets flattened.
+    It is also the only thing a form may open with, beside the NoWord
+    below, which is what makes the opening line of a form written over
+    several lines buildable at all: neither of the two can ever need a
+    second line, so no opening is ever the thing that gets flattened.
+
+    How much that is worth saying plainly. This repository runs no type
+    checker, so the annotation on `Form.opening` proves nothing by
+    itself. What keeps the rule is that every form is built in this
+    module, by the builders below, and that a form handed to another
+    form as its opening fails loudly rather than quietly: a Form answers
+    no `opens`, so it raises where it is written rather than producing a
+    flattened line. Centralised construction and a loud failure, not a
+    proof.
     """
 
     text: str
