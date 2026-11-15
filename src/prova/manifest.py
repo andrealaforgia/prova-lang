@@ -453,7 +453,31 @@ THE_OPERATIONS = Catalogue(
                 ),
             ),
         ),
-        Operation("format", InACategory("formatting"), NotAnsweredYet()),
+        Operation(
+            "format",
+            InACategory("formatting"),
+            answering(
+                SOURCE_READING_REQUEST,
+                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                + (
+                    Field.when_completed(
+                        "result",
+                        "object",
+                        "the one text the submitted program is written as, "
+                        "under 'text': the same characters whichever way the "
+                        "program was written, with every comment kept once "
+                        "and in the order it was written. A comment stands "
+                        "over the declaration that follows it, or after the "
+                        "last declaration when none follows; so a comment "
+                        "written inside a declaration rises out of it. The "
+                        "'parse' operation stands a comment on the first node "
+                        "that follows it at any depth instead, so the two "
+                        "operations answer about different things and an "
+                        "agent reading both must not expect one placing",
+                    ),
+                ),
+            ),
+        ),
         Operation("build", InACategory("building"), NotAnsweredYet()),
     )
 )

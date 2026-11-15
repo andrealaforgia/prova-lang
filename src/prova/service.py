@@ -9,7 +9,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from prova import checker, evaluator, manifest, obligations, syntax, tree
+from prova import checker, evaluator, formatter, manifest, obligations, syntax, tree
 from prova.budgets import BudgetExhausted, Budgets, Exhaustion, Run, UnreadableBudget
 from prova.reader import (
     READING_LIMIT,
@@ -21,13 +21,28 @@ from prova.reader import (
 )
 from prova.values import render
 
-AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify", "parse")
+AVAILABLE_OPERATIONS = (
+    "check",
+    "examples",
+    "evaluate",
+    "discover",
+    "verify",
+    "parse",
+    "format",
+)
 
 # The operations that read a program from the `source` field of the
 # request. Each of them is answered about a text, so each of them refuses
 # a request whose `source` is not one.
-SOURCE_READING_OPERATIONS = ("check", "examples", "evaluate", "verify", "parse")
-UNAVAILABLE_OPERATIONS = frozenset({"format", "build"})
+SOURCE_READING_OPERATIONS = (
+    "check",
+    "examples",
+    "evaluate",
+    "verify",
+    "parse",
+    "format",
+)
+UNAVAILABLE_OPERATIONS = frozenset({"build"})
 
 # What the tool answers when the source is not a program it can check.
 # `invalid_program` means the source is a core-0 program that breaks a
@@ -122,6 +137,8 @@ def _answer(request: "Request", run: Run) -> dict:
             return _run_verify(source, run)
         if operation == "parse":
             return _run_parse(source, run)
+        if operation == "format":
+            return _run_format(source, run)
         asked = request.evaluation_asked()
         if isinstance(asked, MalformedRequest):
             return asked.response_for(operation)
@@ -779,6 +796,38 @@ def _run_parse(source: str, run: Run) -> dict:
         "source_digest": _source_digest(source),
         "diagnostics": [],
         "result": {"tree": tree.tree_of(program, read_source(source).comments)},
+    }
+
+
+def _run_format(source: str, run: Run) -> dict:
+    """The one text the submitted program is written as.
+
+    Reads the source through the rule every operation that reads one
+    shares, so a source refused here is refused exactly as a check
+    refuses it, and an answer that refuses carries no text at all: text
+    beside a refusal would read as a program this tool had understood
+    and tidied, and an agent would write it to a file.
+
+    The comments are asked of the reader again rather than carried
+    through that shared rule, as `parse` already does and for the same
+    reason: every other operation answers about the program alone, and
+    widening what they all share for the two that read prose would make
+    every one of them carry it.
+    """
+    checked = _checked_program(source, run)
+    if isinstance(checked, Refusal):
+        return checked.response_for("format")
+    program = checked
+
+    return {
+        "operation": "format",
+        "status": "completed",
+        "claim": {"kind": "canonical_text", "scope": "this input"},
+        "source_digest": _source_digest(source),
+        "diagnostics": [],
+        "result": {
+            "text": formatter.canonical_text(program, read_source(source).comments)
+        },
     }
 
 
