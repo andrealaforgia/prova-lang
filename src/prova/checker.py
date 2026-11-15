@@ -28,28 +28,60 @@ from prova import syntax
 from prova.values import ConstructorValue
 
 BUILTIN_TYPES = {"Unit", "Bool", "Int"}
-NUMERIC_OPERATORS = {"+", "-", "*"}
-COMPARISON_OPERATORS = {"<", "<=", ">", ">="}
-BOOLEAN_OPERATORS = {"and", "or", "not"}
 
-# SPEC.md lines 178-189: how many arguments each builtin operator takes.
-# Operators have no variable arity, so each one of these numbers is the
-# only number of arguments its operator accepts, and a call written with
-# any other number is refused rather than read as a shorter or longer
-# operator.
-OPERATOR_ARITIES = {
-    "+": 2,
-    "-": 2,
-    "*": 2,
-    "<": 2,
-    "<=": 2,
-    ">": 2,
-    ">=": 2,
-    "=": 2,
-    "and": 2,
-    "or": 2,
-    "not": 1,
+NUMERIC = "numeric"
+COMPARISON = "comparison"
+EQUALITY = "equality"
+BOOLEAN = "boolean"
+
+
+@dataclass(frozen=True)
+class BuiltinOperator:
+    """One builtin operator as SPEC.md lines 178-189 give it: how many
+    arguments it takes, and which group of operands and answers it
+    belongs to.
+
+    Operators have no variable arity, so `arity` is the only number of
+    arguments its operator accepts, and a call written with any other
+    number is refused rather than read as a shorter or longer operator.
+    """
+
+    arity: int
+    family: str
+
+
+# The eleven operators of core-0, and nothing else. This is the one
+# place the checker learns which operators exist, how many arguments
+# each takes and how each reads its operands: the groups below and the
+# answer to `arity_of` are all read from here, so an operator added to
+# the language is added once.
+BUILTIN_OPERATORS = {
+    "+": BuiltinOperator(2, NUMERIC),
+    "-": BuiltinOperator(2, NUMERIC),
+    "*": BuiltinOperator(2, NUMERIC),
+    "<": BuiltinOperator(2, COMPARISON),
+    "<=": BuiltinOperator(2, COMPARISON),
+    ">": BuiltinOperator(2, COMPARISON),
+    ">=": BuiltinOperator(2, COMPARISON),
+    "=": BuiltinOperator(2, EQUALITY),
+    "and": BuiltinOperator(2, BOOLEAN),
+    "or": BuiltinOperator(2, BOOLEAN),
+    "not": BuiltinOperator(1, BOOLEAN),
 }
+
+
+def _operators_of(family: str) -> frozenset[str]:
+    return frozenset(
+        operator
+        for operator, builtin in BUILTIN_OPERATORS.items()
+        if builtin.family == family
+    )
+
+
+NUMERIC_OPERATORS = _operators_of(NUMERIC)
+COMPARISON_OPERATORS = _operators_of(COMPARISON)
+EQUALITY_OPERATORS = _operators_of(EQUALITY)
+BOOLEAN_OPERATORS = _operators_of(BOOLEAN)
 
 CYCLIC_DEPENDENCY = "cyclic_dependency"
 DUPLICATE_DECLARATION = "duplicate_declaration"
@@ -1079,7 +1111,7 @@ def arity_of(operator: str) -> int:
     and the refusal a wrongly written call draws, read the same number.
     """
     try:
-        return OPERATOR_ARITIES[operator]
+        return BUILTIN_OPERATORS[operator].arity
     except KeyError:
         raise ValueError(f"unknown operator {operator!r}") from None
 
@@ -1121,7 +1153,7 @@ def _check_operator(
                     )
                 )
         return "Bool"
-    if op == "=":
+    if op in EQUALITY_OPERATORS:
         known = [t for t in arg_types if t is not None]
         if len(set(known)) > 1:
             diagnostics.append(
