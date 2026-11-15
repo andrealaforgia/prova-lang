@@ -10,7 +10,7 @@ LAW1 every function owes one contract-definedness, one body-to-postcondition
      and one structural-termination entry, every declared example owes a
      validity entry, and every call owes a precondition entry. The
      structural-termination entry counts the calls that function makes.
-LAW2 no obligation is ever reported as anything but `not_attempted`, the
+LAW2 no obligation is ever left for nobody to have attempted, the
      counts partition the list, and no word in the answer reports work done.
 LAW3 the same source always owes exactly the same list, in the same order.
 LAW4 putting a call behind a condition that can never hold keeps the
@@ -393,25 +393,27 @@ def test_a_call_in_every_position_a_body_can_hold_owes_its_entry():
 
 @settings(derandomize=True, max_examples=25, deadline=None)
 @given(plans=_plans)
-def test_no_obligation_is_ever_answered_as_attempted(plans):
-    """LAW2. Given any program, when the Owner reads the answer, then every
-    obligation is `not_attempted`, the counts add up to the list, and no
-    word in the answer reports work the tool did not do."""
+def test_no_obligation_is_ever_left_unattempted(plans):
+    """LAW2. Given any program, when the Owner reads the answer, then no
+    obligation is left for nobody to have attempted, the counts add up to
+    the list, and no word in an entry the tool did not settle reports work
+    it did not do."""
     source = render_program(plans)
     response = ask_what_is_owed(source)
     entries = _obligations(response, source)
     inventory = response["result"]["inventory"]
 
     results = {entry["result"] for entry in entries}
-    assert results == {"not_attempted"}, (
+    assert "not_attempted" not in results, (
         f"WHAT: obligations are reported as {sorted(results)}. "
-        "WHY: nothing ran, and a check that never ran is `not_attempted`. "
+        "WHY: every obligation listed is put to the solver or settled by a "
+        "rule of core-0; one nobody attempted would be silently skipped. "
         f"HOW: the program was:\n{source}"
     )
 
     totals = inventory["totals"]
     assert totals["obligations"] == len(entries), (totals, len(entries), source)
-    assert totals["attempted"] == 0, (totals, source)
+    assert totals["attempted"] == len(entries), (totals, source)
     assert totals["attempted"] + totals["not_attempted"] == len(entries), (totals, source)
     assert sum(totals["by_kind"].values()) == len(entries), (
         f"WHAT: the per-kind counts {totals['by_kind']} do not add up to the "
@@ -420,7 +422,9 @@ def test_no_obligation_is_ever_answered_as_attempted(plans):
         f"HOW: the program was:\n{source}"
     )
 
-    hits = _claim_words(response)
+    hits = _claim_words(
+        [entry for entry in entries if entry["result"] != "proved"]
+    )
     assert not hits, (
         f"WHAT: the answer contains {sorted(set(hits))}. "
         "WHY: no obligation was attempted, so the answer may report no outcome. "
