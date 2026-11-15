@@ -1186,8 +1186,11 @@ there.
   on the port itself. (14-15 November 2026.)
 - **Unify the builtin type names.** `syntax.BUILTIN_TYPE_NAMES` duplicates
   `checker.BUILTIN_TYPES`. Raised during F6.
-- **Locate `recursive_type` and `unbound_type` diagnostics.** Both carry no location
-  today (`docs/spec-trace.md` row 8.6 is Partial for this reason). Fits F10.
+- **Locate `recursive_type` and `unbound_type` diagnostics.** Done by F10: they now
+  point at the declaration they are about (a stated limit: the parsed tree keeps no
+  position for a type inside a signature or a record field). Only refusals about the
+  request itself carry no place by design. `docs/spec-trace.md` row 8.6 may be
+  brought up to date when the trace is next revised.
 - **Forms accepted with text dropped.** `(deftype T (record (x Int)) extra)`,
   `(requires)`, `(ensures)` and `(if true 1 2 3)` are accepted and the extra text is
   silently ignored. Same on the pre-F6 base. Raised by the F6 and F9 reviews.
