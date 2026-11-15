@@ -101,6 +101,11 @@ UNRELATED_EXAMPLE = "unrelated_example"
 # 503-508). It is kept apart from every category above so that a budget
 # can never be read as a statement about what a program means.
 NESTING_LIMIT_EXCEEDED = "nesting_limit_exceeded"
+# More evaluation steps standing inside one another than this tool
+# takes. A budget too, and for the same reason: a chain of functions
+# each calling the next breaks no rule of core-0, and the one thing
+# that would make such a chain endless, a cycle, is already refused.
+EVALUATION_DEPTH_EXCEEDED = "evaluation_depth_exceeded"
 
 # The one name core-0 reserves: a postcondition reads it as the
 # function's return value, so no binder may take it.
@@ -271,6 +276,7 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         points_into=("source", "argument"),
         granularity=("token",),
     ),
+    EVALUATION_DEPTH_EXCEEDED: DiagnosticKind(AboutTwoCounts),
     "non_exhaustive_match": DiagnosticKind(AboutASymbol),
     CYCLIC_DEPENDENCY: DiagnosticKind(
         AboutASymbol,

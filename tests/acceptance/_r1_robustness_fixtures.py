@@ -35,12 +35,17 @@ RESOURCE_EXHAUSTED = "resource_exhausted"
 ARITY_MISMATCH = "arity_mismatch"
 MALFORMED_REQUEST = "malformed_request"
 NESTING_LIMIT_EXCEEDED = "nesting_limit_exceeded"
+EVALUATION_DEPTH_EXCEEDED = "evaluation_depth_exceeded"
 UNKNOWN_OPERATION = "unknown_operation"
 
 # The name the manifest gives the limit on how deeply one form may stand
 # inside another. A caller reads the number from the manifest under this
 # name and meets the same name again in the refusal.
 NESTING_LIMIT_NAME = "expression_nesting"
+
+# The name the manifest gives the limit on how far a run of a program
+# may stand inside itself.
+EVALUATION_LIMIT_NAME = "evaluation_depth"
 
 
 @dataclass(frozen=True)
@@ -159,6 +164,44 @@ def program_nested(depth: int) -> str:
         "  (examples (example (deeply-nested) => true))\n"
         f"  {body})\n"
     )
+
+
+def chained_functions(count: int) -> str:
+    """A legal program of `count` functions where each one calls the
+    next and the last answers 1.
+
+    Nothing in it is recursive: the calls run one way, down the chain,
+    and every function declares the example that calls it. Only its
+    length makes it hard to run.
+    """
+    written = []
+    for place in range(count):
+        body = f"(f{place + 1})" if place < count - 1 else "1"
+        written.append(
+            f"(defn f{place}\n"
+            "  (sig () -> Int ! pure)\n"
+            f"  (examples (example (f{place}) => 1))\n"
+            f"  {body})"
+        )
+    return "\n".join(written) + "\n"
+
+
+def published_evaluation_limit(manifest: dict) -> int:
+    """How far the manifest says a run of a program may stand inside
+    itself."""
+    declared = (
+        manifest["result"]
+        .get("resource_limits", {})
+        .get("limits", {})
+        .get(EVALUATION_LIMIT_NAME)
+    )
+    assert isinstance(declared, dict) and isinstance(declared.get("maximum"), int), (
+        f"the manifest publishes no {EVALUATION_LIMIT_NAME!r} limit with a "
+        f"whole number maximum: {manifest['result'].get('resource_limits')}. A "
+        "caller that generates a long chain of calls has no number to stay "
+        "under, so it learns the limit by crashing into it."
+    )
+    return declared["maximum"]
 
 
 def published_nesting_limit(manifest: dict) -> int:

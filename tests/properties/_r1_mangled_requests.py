@@ -106,6 +106,18 @@ def nested(depth: int) -> str:
     return "(" * depth + "1" + ")" * depth
 
 
+def chained_functions(count: int) -> str:
+    """A legal program of `count` functions, each calling the next."""
+    written = []
+    for place in range(count):
+        body = f"(f{place + 1})" if place < count - 1 else "1"
+        written.append(
+            f"(defn f{place} (sig () -> Int ! pure) "
+            f"(examples (example (f{place}) => 1)) {body})"
+        )
+    return "\n".join(written) + "\n"
+
+
 def nested_program(depth: int) -> str:
     body = "(not " * (depth - 1) + "true" + ")" * (depth - 1)
     return (
@@ -203,6 +215,16 @@ def corpus() -> list[tuple[str, object]]:
              {"operation": "evaluate", "source": clock, "function": "valid-state",
               "arguments": ["(" * depth + "Clock" + ")" * depth]})
         )
+
+    for length in (1, 2, 80, 159, 160, 161, 300, 600, 2000):
+        chain = chained_functions(length)
+        cases.append((f"a chain of {length} functions, run",
+                      {"operation": "examples", "source": chain}))
+        cases.append((f"a chain of {length} functions, its head evaluated",
+                      {"operation": "evaluate", "source": chain,
+                       "function": "f0", "arguments": []}))
+        cases.append((f"a chain of {length} functions, checked",
+                      {"operation": "check", "source": chain}))
 
     cases.extend(_shuffled_fields())
     return cases

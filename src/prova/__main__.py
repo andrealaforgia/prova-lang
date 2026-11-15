@@ -20,12 +20,26 @@ def main() -> None:
     try:
         request = json.loads(request_text)
     except json.JSONDecodeError as error:
-        print(json.dumps({"status": "tool_failure", "reason": str(error)}))
-        sys.exit(1)
+        print(json.dumps(_unreadable_text(error).response_for(None)))
+        sys.exit(0)
 
     response = service.handle(request)
     print(json.dumps(response))
     sys.exit(0)
+
+
+def _unreadable_text(error: json.JSONDecodeError) -> service.MalformedRequest:
+    """The answer to text this command cannot read as a request.
+
+    The command answers it rather than reporting that the tool failed:
+    a client that sent nothing, or stopped partway, wrote a bad request
+    and is owed the place its text stopped at, not the news that the
+    tool is broken. The answer carries the same category every other
+    unreadable field carries, built in the one place that builds it.
+    """
+    return service.MalformedRequest.not_readable_as_json(
+        error.msg, f" at line {error.lineno} column {error.colno}"
+    )
 
 
 if __name__ == "__main__":

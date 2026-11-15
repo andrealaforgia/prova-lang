@@ -148,6 +148,26 @@ class MalformedRequest:
     def about(cls, field: str, reason: str) -> "MalformedRequest":
         return cls(((field, reason),))
 
+    @classmethod
+    def not_readable_as_json(cls, why: str, place: str) -> "MalformedRequest":
+        """The answer to text that is not a JSON request at all.
+
+        Answered rather than reported as a failure of the tool: text
+        that stops partway, or holds nothing, is a client that built its
+        request wrongly, and telling it the tool broke sends it to look
+        in the wrong place. A failure of the tool itself is a different
+        thing and keeps the name it had.
+        """
+        return cls.about(
+            "request",
+            f"the text sent to this tool is not JSON{place}: {why}. This tool "
+            "reads one JSON object per request from its standard input, and "
+            "text that stops partway or holds nothing carries no request to "
+            "read; send one complete JSON object carrying at least an "
+            "'operation' field, and read the operations this tool answers "
+            "from the 'discover' operation",
+        )
+
     def and_also(self, other: "MalformedRequest") -> "MalformedRequest":
         return MalformedRequest(self.defects + other.defects)
 
@@ -355,10 +375,12 @@ def _run_discover() -> dict:
                     "for all inputs."
                 ),
                 "statuses": (
-                    "Every status an answered request carries. A request this "
-                    "service cannot read as a request at all is not answered "
-                    "here: the command answers it with the status "
-                    "'tool_failure' and exits 1, and 'tool_failure' is "
+                    "Every status an answered request carries, and every "
+                    "request is answered: text that is not JSON at all is "
+                    "answered too, with 'invalid_input', so a caller never "
+                    "has to tell a refusal from a tool that broke. "
+                    "'tool_failure' is kept for a failure of this tool "
+                    "itself, which is not an answer to a request, and is "
                     "therefore not one of the statuses listed."
                 ),
                 "diagnostic_schemas": (
@@ -386,7 +408,14 @@ def _run_discover() -> dict:
                         "status": RESOURCE_EXHAUSTED,
                         "category": checker.NESTING_LIMIT_EXCEEDED,
                         "reason": READING_LIMIT.reason(),
-                    }
+                    },
+                    evaluator.EVALUATION_LIMIT.name: {
+                        "maximum": evaluator.EVALUATION_LIMIT.maximum,
+                        "unit": "evaluation steps standing inside one another",
+                        "status": RESOURCE_EXHAUSTED,
+                        "category": checker.EVALUATION_DEPTH_EXCEEDED,
+                        "reason": evaluator.EVALUATION_LIMIT.reason(),
+                    },
                 },
             },
         },
@@ -467,6 +496,36 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> checker.Diag
     reader is sent to the line to repair.
     """
     return checker.Diagnostic("syntax", error.message, (error.line, error.column))
+
+
+def _too_deep_to_run_diagnostic(
+    refusal: evaluator.EvaluationTooDeep,
+) -> checker.Diagnostic:
+    """The one diagnostic a program the tool cannot run to the end
+    carries: the limit beside the depth it reached, and the step that
+    would have gone past it."""
+    return checker.Diagnostic(
+        checker.EVALUATION_DEPTH_EXCEEDED,
+        refusal.message,
+        (refusal.line, refusal.column),
+        about=checker.AboutTwoCounts(
+            evaluator.EVALUATION_LIMIT.name, refusal.limit, refusal.reached
+        ),
+    )
+
+
+def _too_deep_to_run(
+    operation: str, source: str, refusal: evaluator.EvaluationTooDeep
+) -> dict:
+    return {
+        "operation": operation,
+        "status": RESOURCE_EXHAUSTED,
+        "diagnostics": [
+            _diagnostic_dict(
+                _too_deep_to_run_diagnostic(refusal), SourceRevision.of(source)
+            )
+        ],
+    }
 
 
 def _too_deeply_nested_diagnostic(
@@ -615,6 +674,8 @@ def _run_examples(source: str) -> dict:
             }
             try:
                 actual = evaluator.call_function(function, example.args, program)
+            except evaluator.EvaluationTooDeep as too_deep:
+                return _too_deep_to_run("examples", source, too_deep)
             except (evaluator.PreconditionViolation, evaluator.PostconditionViolation) as violation:
                 entry["actual"] = None
                 entry["passed"] = False
@@ -783,6 +844,8 @@ def _run_evaluate(source: str, asked: EvaluationAsked) -> dict:
 
     try:
         result = evaluator.call_function(function, args, program)
+    except evaluator.EvaluationTooDeep as too_deep:
+        return _too_deep_to_run("evaluate", source, too_deep)
     except evaluator.PreconditionViolation as violation:
         return {
             "operation": "evaluate",
