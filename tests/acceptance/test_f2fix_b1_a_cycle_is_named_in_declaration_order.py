@@ -3,9 +3,9 @@ calls form a cycle names the whole cycle, and writes the names in the
 order the program declares them.
 
 SPEC.md lines 163-165 require the dependency graph to be acyclic. The
-refusal carries no location (`docs/spec-trace.md` row 8.6), so the list of
-names, and the order a reader meets them in, is all the reader gets to
-find the calls to repair.
+refusal points at one declaration of the cycle, so the list of names, and
+the order a reader meets them in, is what tells the reader which other
+functions to read and in which order to walk the source.
 
 Drives only the `prova` command's real JSON stdin/stdout surface. No
 imports from src/prova.
@@ -73,5 +73,5 @@ def test_a_cycle_is_named_in_declaration_order_when_the_calls_run_in_another_ord
         f"the refusal reports {cycle_members(response)} instead of one cycle "
         f"reading {list(LEDGER_CYCLE_IN_DECLARATION_ORDER)}: {response}. Write the "
         "members of a cycle in the order the program declares them, so a reader "
-        "with no line number can walk the source from the top."
+        "walks the source from the first of them downwards."
     )

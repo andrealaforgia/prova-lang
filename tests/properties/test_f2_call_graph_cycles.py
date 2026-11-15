@@ -209,9 +209,9 @@ def test_a_program_is_refused_exactly_when_its_calls_form_a_cycle(graph):
 @example(graph=A_CYCLE_OF_THREE_WITH_A_FOURTH_HANGING_OFF_IT)
 def test_a_refusal_names_the_members_of_a_cycle_in_declaration_order(graph):
     """LAW3: however the calls of a cycle run, the refusal writes its
-    members in the order the program declares them, so a reader who has no
-    line number to go to still meets the names in the order they appear in
-    the source.
+    members in the order the program declares them, so a reader meets the
+    names in the order they appear in the source and can walk it from the
+    first of them.
 
     The program declares `task0` first, then `task1`, and so on, so the
     order a reader should see is the order of the numbers -- read here

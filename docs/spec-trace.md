@@ -147,7 +147,7 @@ checked as an ordinary function, but no machine layer exists around it.
 | 8.3 | Operation categories: discovery, parsing, formatting, checking, verification, examples, building | Partial | 3 of 7 exist (`discover`, `check`, `examples`), plus `evaluate` which SPEC.md does not name |
 | 8.4 | Unimplemented operations advertised unavailable and refused | Done | probes S1-S3 |
 | 8.5 | Diagnostics carry a stable category | Done | `DIAGNOSTIC_CATEGORIES` |
-| 8.6 | Diagnostics carry location | Partial | probe S5; reader and syntax refusals carry line and column; `cyclic_dependency`, `recursive_type` and `unbound_type` carry none |
+| 8.6 | Diagnostics carry location | Partial | probe S5; reader and syntax refusals carry line and column; `recursive_type` and `unbound_type` carry none |
 | 8.7 | Diagnostics carry source revision, symbol or obligation identity, expected and actual | Missing | probes S4, S6 |
 | 8.8 | Invalid programs, unsupported reasoning and tool failures are distinct | Partial | `invalid_program` and `tool_failure` exist; "unsupported" is not a separate status |
 | 8.9 | Results bind to a source revision | Partial | `source_digest` only |
