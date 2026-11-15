@@ -22,11 +22,13 @@ from prova import obligations, syntax
 def _function(name: str, body: object, requires: tuple = (), ensures: tuple = ()) -> syntax.Function:
     return syntax.Function(
         name=name,
-        signature=syntax.Signature((("n", "Int"),), "Int"),
+        signature=syntax.Signature((("n", "Int"),), "Int", 1, 1),
         requires=requires,
         ensures=ensures,
-        examples=(syntax.Example(name, (1,), 1),),
+        examples=(syntax.Example(name, (1,), 1, 1, 1),),
         body=body,
+        line=1,
+        column=1,
     )
 
 
