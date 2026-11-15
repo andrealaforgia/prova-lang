@@ -1174,3 +1174,24 @@ there.
 - **Remove or reconsider the record-over-union-variant branch of
   `syntax.resolve_constructor`.** After F3 (constructor names must be unique) no
   accepted program can reach it. Raised during F3.
+- **One launcher for the tool in the tests (prepares an implementation-neutral
+  contract suite).** Seven fixture modules (`_f2` to `_f9`) each define their own
+  `ToolRun`, and about 48 test files start the tool as a subprocess. Consolidate them
+  into one launcher that reads the command from an environment variable
+  (default: `python -m prova`), so the acceptance suite can run against any
+  implementation of the JSON protocol. Behaviour-preserving, no test expectation
+  changes. Do it after F10 and F17 have fixed the response shapes. Reason: a possible
+  later port of the compiler to Rust (D4 would be reopened, and D2 would need a
+  decision on whether the artefact stays generated Python). The Owner chose to wait
+  on the port itself. (14-15 November 2026.)
+- **Unify the builtin type names.** `syntax.BUILTIN_TYPE_NAMES` duplicates
+  `checker.BUILTIN_TYPES`. Raised during F6.
+- **Locate `recursive_type` and `unbound_type` diagnostics.** Both carry no location
+  today (`docs/spec-trace.md` row 8.6 is Partial for this reason). Fits F10.
+- **Forms accepted with text dropped.** `(deftype T (record (x Int)) extra)`,
+  `(requires)`, `(ensures)` and `(if true 1 2 3)` are accepted and the extra text is
+  silently ignored. Same on the pre-F6 base. Raised by the F6 and F9 reviews.
+- **The `source` field of a request must be a string.** `{"source": 7}` ends the
+  command with a traceback. Pre-existing; raised by the F9 review.
+- **Independent review owed for F2, F3 and F16.** They were merged on the author's
+  checks and a green suite, not an independent review.
