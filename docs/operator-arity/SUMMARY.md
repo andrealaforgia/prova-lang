@@ -157,27 +157,74 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
-- A docs/feature/operator-arity/craft.md (+74 -0 lines)
-- A docs/feature/operator-arity/oracle.md (+95 -0 lines)
-- M src/prova/checker.py (+42 -0 lines)
-- A tests/acceptance/_f7_operator_arity_fixtures.py (+417 -0 lines)
+- A docs/f6-names-and-markers/DECISIONS.md (+18 -0 lines)
+- A docs/f6-names-and-markers/SUMMARY.md (+671 -0 lines)
+- A docs/f6-names-and-markers/TRACE.md (+6 -0 lines)
+- A docs/feature/f6-names-and-markers/craft.md (+66 -0 lines)
+- A docs/feature/f6-names-and-markers/design.md (+90 -0 lines)
+- A docs/feature/f6-names-and-markers/oracle.md (+94 -0 lines)
+- A docs/feature/operator-arity/craft.md (+101 -0 lines)
+- A docs/feature/operator-arity/oracle.md (+108 -0 lines)
+- A docs/operator-arity/DECISIONS.md (+11 -0 lines)
+- A docs/operator-arity/SUMMARY.md (+405 -0 lines)
+- A docs/operator-arity/TRACE.md (+5 -0 lines)
+- M docs/spec-trace.md (+1 -1 lines)
+- M src/prova/checker.py (+78 -4 lines)
+- M src/prova/service.py (+19 -4 lines)
+- M src/prova/syntax.py (+427 -29 lines)
+- A tests/acceptance/_f6_spelling_fixtures.py (+287 -0 lines)
+- A tests/acceptance/_f7_operator_arity_fixtures.py (+486 -0 lines)
+- M tests/acceptance/test_f5_b11_odd_but_parseable_binders_are_answered.py (+21 -5 lines)
+- A tests/acceptance/test_f6_b1_a_function_named_as_a_reserved_word_is_refused.py (+77 -0 lines)
+- A tests/acceptance/test_f6_b2_names_that_start_with_the_wrong_case_are_refused.py (+102 -0 lines)
+- A tests/acceptance/test_f6_b3_a_mangled_signature_marker_is_refused.py (+97 -0 lines)
+- A tests/acceptance/test_f6_b4_an_example_with_the_wrong_arrow_is_refused.py (+50 -0 lines)
+- A tests/acceptance/test_f6_b5_a_source_declaring_nothing_is_refused.py (+66 -0 lines)
+- A tests/acceptance/test_f6_b6_the_shipped_programs_still_check.py (+43 -0 lines)
 - A tests/acceptance/test_f7_b1_an_operator_given_an_extra_argument_is_refused.py (+69 -0 lines)
 - A tests/acceptance/test_f7_b2_a_sum_with_too_few_or_too_many_arguments_is_refused.py (+56 -0 lines)
 - A tests/acceptance/test_f7_b3_every_operator_with_a_wrong_count_is_refused.py (+109 -0 lines)
 - A tests/acceptance/test_f7_b4_every_operator_applied_correctly_is_accepted.py (+69 -0 lines)
 - A tests/acceptance/test_f7_b5_an_operator_with_no_arguments_is_answered_not_crashed.py (+92 -0 lines)
-- A tests/acceptance/test_f7_b6_a_wrong_count_and_a_wrong_operand_are_both_reported.py (+85 -0 lines)
+- A tests/acceptance/test_f7_b6_a_wrong_count_and_a_wrong_operand_are_both_reported.py (+90 -0 lines)
 - A tests/acceptance/test_f7_b7_the_refusal_uses_a_category_the_manifest_publishes.py (+65 -0 lines)
+- A tests/acceptance/test_f7_b8_a_wrong_count_in_a_contract_or_a_clause_is_refused.py (+111 -0 lines)
+- M tests/properties/test_f3_duplicate_declarations.py (+4 -1 lines)
+- A tests/properties/test_f6_every_malformed_source_still_answers.py (+195 -0 lines)
+- A tests/properties/test_f6_name_and_marker_spelling.py (+137 -0 lines)
 - A tests/properties/test_f7_operator_arity.py (+170 -0 lines)
+- A tests/unit/test_checker_operator_table.py (+69 -0 lines)
+- M tests/unit/test_verify_inventory_edges.py (+29 -12 lines)
 
 ## Commits (git log, BASE to HEAD)
 
-- dfd6908 [F7] refuse an operator written with the wrong number of arguments
+- 66aebff [F6] build a source refusal in one place
+- 84d6e30 [F6] state in tests how names and markers must be spelled
+- 6f0467c [F6] record who owns each spelling rule, before writing one
+- 7170431 [F6] refuse a name or marker core-0 does not spell that way
+- 1c43659 Correct two expectations the empty-program rule contradicts
+- fce2918 [F6] answer every source the reader cannot read, never raise
+- 0f22ce1 [F6] cover the pattern a constructor position must hold
+- 6183193 [F6] record the delivery beside the change
+- 6d74308 [F6] regenerate the record after the design step was recorded again
+- 01e9411 [F6] regenerate the record after the craft step was recorded again
+- e2d1f60 Narrow the diagnostic-location row to what the tool really does
+- 93157d7 [F6] state the totality laws as the generated properties they are
+- e9295ba [F6] record the self-review and the handoff beside the change
+- fdce455 Leave the postcondition name to the rule that owns it
+- d4ec9b6 Expect the empty source refused in the binding control too
+- 5024bf2 [F6] say in the record which rule owns the postcondition name
+- 8ae2b52 [F7] refuse an operator written with the wrong number of arguments
+- 8b0abfa [F7] keep the delivery's record beside the change
+- 8180a19 [F7] pin acceptance on a program with no operator, not on an empty one
+- d5bbaeb [F7] let one table say which operators the language has
+- 0b75c34 [F7] count an operator's arguments in a contract and in a clause too
+- 6dacb88 [F7] restate the counts this branch actually measured
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
 - **request**:
-  - /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-f7/request.md
+  - the delivery request, which lives in the run workspace outside this repository; its sentences are quoted in full in docs/operator-arity/SUMMARY.md
 - **promises**:
   - P1: A program that applies `not` to two arguments is refused, and the refusal gives the number of arguments `not` takes and the number the program gave.
   - P2: A program that applies `+` to one argument, or to three, is refused the same way, with both counts.
@@ -403,3 +450,50 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ```
 - **scorecard**: `uv run python -m compileall -q src` exited 0 in 0.032s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this run environment; the client was invoked from a shell command and exited 3, so the two open choices (reuse the published word for a wrong number of arguments, and report a wrong count beside a wrong operand) were decided locally and recorded as DEC1 and DEC2 in the oracle record
+
+## 3. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the change is the one table and one rule the decisions named: checker.py only, no new published category, service.py and syntax.py untouched
+  - D2: pass - src/prova/checker.py:58 is the single table; the four operand groups and arity_of:1107 are derived from it, and a unit test holds it to the language list
+  - D3: pass - the rule sits in the checker beside the other whole-program rules; it reads parsed syntax and writes diagnostics, and touches no transport, file or command code
+  - D4: pass - src/prova/checker.py:39 the frozen BuiltinOperator carries the arity with the operand group, so an entry cannot say one without the other, and arity_of refuses an unknown name instead of defaulting; the operator itself stays the string the parser produces, which this change may not alter
+  - D5: pass - src/prova/checker.py:73 _operators_of is one short derivation with one reason to change, and arity_of:1107 answers one question; the module keeps the procedural style of the file it sits in, as the paradigm of the touched code requires
+  - D6: n/a: no pattern was introduced; a dict of value objects read by a guard clause is the simplest thing that works here
+  - D7: pass - the words are the language own: operator, argument, takes exactly, got, and the refusal names the construct a reader repairs
+  - D8: pass - no file, process, clock or transport is reached by the rule; the checker stays a pure function from a parsed program to diagnostics
+  - D9: pass - tests/acceptance/_f7_operator_arity_fixtures.py:352 drives the real prova command over its JSON surface, and tests/properties/test_f7_operator_arity.py:98 uses the published request interface; the one unit test reads the checker own published table and nothing private
+  - D10: pass - every name is a sentence about what a reader observes, with no production symbol beyond the published vocabulary the promise is about
+  - D11: pass - one fixtures module owns the programs, the command runs and the two assertion helpers; no test re-implements them, and site_of works out a place from the program text the test wrote
+  - D12: pass - tests/properties/test_f7_operator_arity.py:98 draws an operator and a count from none to six and observes both halves of the law; its companion observes that both counts are stated, and both failed on the pre-feature tree
+  - D13: pass - ten files, 30 observations, nine runs of nine green, median 1.22 s, slowest single observation 0.07 s, recorded in the craft note with the method
+  - D14: pass - each observation adds a distinct one: a single wrong call, 22 wrong calls answered in one pass, the three contract and clause places, the crash path, the manifest word, and the two generated laws
+  - D15: pass - src/prova/checker.py:1128 says what failed, how many the operator takes, how many were given and that operators have no variable arity, at the place of the call; every added assertion carries what, why and how
+  - D16: n/a: the rule compares two numbers inside one expression, with no state, protocol, concurrency or interruption for a model to explore, as DEC4 recorded
+  - D17: fixed: the notes claimed 899 and 921, which were the counts before the rebase; measured again (932 on the tree this branch started from, 962 here, one failure in both belonging to another feature property generator) and restated in 6dacb88
+- **independent_review**:
+  - REV1 | reviewer=impl-review-f7 | findings=4 (verdict APPROVE at 8180a19, all non-blocking): operator names enumerated in three places; stale suite counts in the notes; no observation of a wrong count in a contract or a match clause; generated brief duplicating the record home and carrying a machine-local path | resolution=all four fixed - d5bbaeb one table with the groups and the arity derived from it plus a unit test holding it to the language list, 6dacb88 counts measured again and restated, 0b75c34 three refusals in a precondition, a postcondition and a match clause body with one nested control, and the brief regenerated with its path made repo-relative in the commit that closes this delivery
+
+## 4. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+- **not_verified**:
+  - The one failing test in the whole-suite run is not this feature: tests/properties/test_f5_binding_scope.py::test_a_binder_is_refused_exactly_when_its_name_is_taken draws a free binder name from any lower-case word of one to eight letters without excluding the word-shaped builtin operators, so when it draws and, or or not the tool refuses the binding correctly and the test reads that as a defect. It failed 5 of 10 runs here before its example database learned the case and 6 of 6 after, and it fails the same way on the commit this branch started from. Reported to its owner, not fixed here, and not re-verified as green.
+  - The recorded edge case for an empty source was not re-recorded after the rule that a program is one or more declarations landed, so that one line of the oracle record contradicts the tool as it stands today.
+  - docs/spec-trace.md still records this clause as missing. It is a snapshot measured at a named commit and already carried rows an earlier delivery overtook, so it was left to its owner and no row was rewritten.
+  - No linter and no type checker are configured in this project, so the mechanical check compiles the package and nothing more. No style, typing or security claim is made.
+  - The question service was unavailable for this run, the key being absent from the environment, so the two open choices were decided locally against the sibling rules and recorded as decisions rather than put to it.
+  - The generated laws sample the eleven operators and counts from none to six. They are evidence over those bounds and over no larger program, not proof, and nothing was mutation tested beyond the three deliberate breaks named in the notes.
+  - Nothing was pushed, nothing was merged, and the branch was not run in continuous integration; every figure here comes from this machine, on Python 3.12.13.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit 6dacb880cf41bc0b2d55b08eeef2506ec85b676d
+  - no checks declared
+
+## Not backed by the diff
+
+- A builtin operator written with a number of arguments other than the one SPEC.md gives it is now refused, where it used to be accepted with the extras quietly ignored and where asking to run such a program stopped the command with no answer at all.: a guarantee names no test function of the change
+- The refusal names the operator, says how many arguments it takes and how many the program gave, points at the call, and carries the word the manifest already publishes for a wrong number of arguments, so no new category was published and the manifest file was left alone.: a guarantee names no test function of the change
+- One table in the checker now holds every operator with its number of arguments and the group whose operands it reads; the operand groups and the answer to how many it takes are derived from that table, and a unit test holds it to the language own list of operators so adding one to the language alone cannot make the checker raise a fault instead of answering.: a guarantee names no test function of the change
+- Checked through the real command over its JSON surface for every operator, with a wrong count in a body, in a precondition, in a postcondition and in a match clause body, with controls that accept almost the same programs, and with two generated laws over the eleven operators and counts from none to six.: a guarantee names no test function of the change
+- Three deliberate breaks were run and restored: refusing only extra arguments, switching the comparison off, and removing an operator from the table; each was caught.: a guarantee names no test function of the change
+- One thing the next reader must know: the edge case recorded in the oracle as an empty source accepted with no diagnostics is stale, because the rule that a program is one or more declarations landed beside this work and now refuses an empty source for a reason of its own; the control that pinned it was moved onto a whole valid program that writes no operator anywhere, and the recorded edge line itself was not re-recorded.: a guarantee names no test function of the change
