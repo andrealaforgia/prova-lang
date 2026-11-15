@@ -138,6 +138,17 @@ class _Question:
             for name, type_name in claim.variables
         }
 
+    @property
+    def z3(self):
+        return self._z3
+
+    @property
+    def sorts(self) -> "_Sorts":
+        return self._sorts
+
+    def constant_named(self, name: str):
+        return self._constants[name]
+
     def answered(self, milliseconds_left: int):
         z3 = self._z3
         solver = z3.Solver()
@@ -179,42 +190,56 @@ class _Question:
         )
 
     def _built(self, term: encoding.Term):
-        z3 = self._z3
-        parts = tuple(self._built(part) for part in term.parts)
-        primitive = term.primitive
-        if primitive is encoding.INTEGER:
-            return z3.IntVal(term.carried)
-        if primitive is encoding.VARIABLE:
-            return self._constants[term.carried[0]]
-        if primitive is encoding.TRUTH:
-            return z3.BoolVal(True)
-        if primitive is encoding.FALSITY:
-            return z3.BoolVal(False)
-        if primitive is encoding.UNIT:
-            return self._sorts.the_unit_value()
-        if primitive is encoding.SHAPE:
-            return self._sorts.constructor(term.carried)(*parts)
-        if primitive is encoding.FIELD:
-            constructor, field_name = term.carried
-            return self._sorts.accessor(constructor, field_name)(parts[0])
-        if primitive is encoding.IS_SHAPE:
-            return self._sorts.recognizer(term.carried)(parts[0])
-        return _OF_TWO_OR_MORE[primitive.name](z3, parts)
+        """`term` in the solver's own terms.
+
+        One table below says how each primitive of the translation is
+        built, so a primitive the translation declares and this adapter
+        does not build is a missing row in one table rather than a case
+        missing from a chain of tests. Each row is handed the question
+        itself, the terms the primitive is built from and whatever it
+        carries of its own.
+        """
+        built = _HOW_EACH_PRIMITIVE_IS_BUILT.get(term.primitive.name)
+        if built is None:
+            raise KeyError(
+                f"WHAT: the translation emitted the primitive "
+                f"{term.primitive.name!r} and this adapter has no row for "
+                "it, so the claim could not be put to the solver. "
+                "WHY: every primitive the translation declares must be "
+                "built here; one missing would silently leave a claim "
+                "unasked. "
+                "HOW: add the row to _HOW_EACH_PRIMITIVE_IS_BUILT in "
+                "prova/solving.py, beside the others."
+            )
+        return built(
+            self, tuple(self._built(part) for part in term.parts), term.carried
+        )
 
 
-_OF_TWO_OR_MORE = {
-    encoding.SUM.name: lambda z3, p: p[0] + p[1],
-    encoding.DIFFERENCE.name: lambda z3, p: p[0] - p[1],
-    encoding.PRODUCT.name: lambda z3, p: p[0] * p[1],
-    encoding.LESS.name: lambda z3, p: p[0] < p[1],
-    encoding.AT_MOST.name: lambda z3, p: p[0] <= p[1],
-    encoding.GREATER.name: lambda z3, p: p[0] > p[1],
-    encoding.AT_LEAST.name: lambda z3, p: p[0] >= p[1],
-    encoding.EQUALS.name: lambda z3, p: p[0] == p[1],
-    encoding.CONJUNCTION.name: lambda z3, p: z3.And(*p),
-    encoding.DISJUNCTION.name: lambda z3, p: z3.Or(*p),
-    encoding.NEGATION.name: lambda z3, p: z3.Not(p[0]),
-    encoding.CONDITIONAL.name: lambda z3, p: z3.If(p[0], p[1], p[2]),
+# How each primitive of the translation is built in the solver's own
+# terms: one row per primitive `prova.encoding` declares, each taking the
+# question, the terms the primitive is built from and what it carries.
+_HOW_EACH_PRIMITIVE_IS_BUILT = {
+    encoding.INTEGER.name: lambda q, p, c: q.z3.IntVal(c),
+    encoding.VARIABLE.name: lambda q, p, c: q.constant_named(c[0]),
+    encoding.TRUTH.name: lambda q, p, c: q.z3.BoolVal(True),
+    encoding.FALSITY.name: lambda q, p, c: q.z3.BoolVal(False),
+    encoding.UNIT.name: lambda q, p, c: q.sorts.the_unit_value(),
+    encoding.SHAPE.name: lambda q, p, c: q.sorts.constructor(c)(*p),
+    encoding.FIELD.name: lambda q, p, c: q.sorts.accessor(c[0], c[1])(p[0]),
+    encoding.IS_SHAPE.name: lambda q, p, c: q.sorts.recognizer(c)(p[0]),
+    encoding.SUM.name: lambda q, p, c: p[0] + p[1],
+    encoding.DIFFERENCE.name: lambda q, p, c: p[0] - p[1],
+    encoding.PRODUCT.name: lambda q, p, c: p[0] * p[1],
+    encoding.LESS.name: lambda q, p, c: p[0] < p[1],
+    encoding.AT_MOST.name: lambda q, p, c: p[0] <= p[1],
+    encoding.GREATER.name: lambda q, p, c: p[0] > p[1],
+    encoding.AT_LEAST.name: lambda q, p, c: p[0] >= p[1],
+    encoding.EQUALS.name: lambda q, p, c: p[0] == p[1],
+    encoding.CONJUNCTION.name: lambda q, p, c: q.z3.And(*p),
+    encoding.DISJUNCTION.name: lambda q, p, c: q.z3.Or(*p),
+    encoding.NEGATION.name: lambda q, p, c: q.z3.Not(p[0]),
+    encoding.CONDITIONAL.name: lambda q, p, c: q.z3.If(p[0], p[1], p[2]),
 }
 
 
