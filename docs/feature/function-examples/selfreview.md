@@ -18,16 +18,18 @@ line is pass or a justified n/a.
 | D10 | test naming | pass | every name is a sentence about what a reader gets, e.g. `test_f8_b1_...py:32` |
 | D11 | test DSL and helpers | pass | programs and the two assertion helpers live once, in the fixtures module |
 | D12 | property tests | pass | `test_f8_example_subject.py:108` draws the case first from a closed set of 5, then builds a program in that case by construction, no filtering; bounds declared in the module |
-| D13 | test speed | pass | 9 runs of the 8 new files: 24 passed each time, 1.13-1.16s; full suite 986 passed in 95.56s |
+| D13 | test speed | pass | 9 runs of the 8 new files: 26 passed each time, 1.22-1.24s; full suite 1007 passed in 100.11s |
 | D14 | test duplication | pass | each test adds a distinct observation; no finite example repeats the property's pair |
 | D15 | readability and failure messages | pass | refusals say what, why and how with the facts held (`checker.py:607`, `checker.py:630`); assertions state expected, actual and contract (`_f8_example_subject_fixtures.py:283`) |
 | D16 | formal model | n/a | a pure check with no state, protocol, concurrency or crash window; recorded as DEC6 |
 | D17 | documents honest | pass | `oracle.md` and `craft.md` carry the measured numbers and name what is not proved |
 
-## Still open
+## The independent review
 
-The independent review is not mine to write. The `selfreview` step of the
-workspace is therefore not recorded yet: it refuses a record without an
-`independent_review` entry, and the answers above are the executor's half
-of it. The brief in `docs/function-examples/` must be generated again
-once that record exists.
+REV1 approved the change with 2 Medium findings, neither blocking. Both
+are fixed:
+
+| finding | fix | check that turns red without it |
+|---|---|---|
+| the branch for a name that is no function had no falsifier: treating every name called as declared kept the suite green | both halves of the refusal are now stated in the tests | treating every name as declared fails 3 tests; treating none as declared fails 2 |
+| "which this program does not declare" was false of a declared constructor and of a builtin operator | the refusal says "which is not a function this program declares", and both programs are observed | the earlier wording fails 3 tests |

@@ -44,6 +44,15 @@ ARITY_MISMATCH_CATEGORY = "arity_mismatch"
 # The category a source the tool cannot read as a core-0 program carries.
 SYNTAX_CATEGORY = "syntax"
 
+# What a refusal says about a name the example calls that is no function
+# of the program: a name declared nowhere, but a constructor and a
+# builtin operator too, which are not functions either.
+THE_CLAUSE_FOR_A_NAME_THAT_IS_NO_FUNCTION = "is not a function this program declares"
+
+# The repair a refusal offers only when the name called is a declared
+# function: the example may be moved to that function instead.
+THE_REPAIR_THAT_MOVES_THE_EXAMPLE = "declare it among the examples of"
+
 
 # --- the headline programs, written out so a reader sees them whole
 
@@ -93,6 +102,26 @@ AN_EXAMPLE_NAMING_A_FUNCTION_THE_PROGRAM_DOES_NOT_DECLARE = """\
 (defn double
   (sig ((cents Int)) -> Int ! pure)
   (examples (example (treble 2) => 4))
+  (+ cents cents))
+"""
+
+# An example whose call is not a call of any function: the head of the
+# first is a declared constructor, the head of the second a builtin
+# operator. Neither is a function, so neither can be this function's
+# example.
+AN_EXAMPLE_WHOSE_CALL_IS_A_CONSTRUCTOR = """\
+(deftype Box (record (held Int)))
+
+(defn double
+  (sig ((cents Int)) -> Int ! pure)
+  (examples (example (Box 3) => 4))
+  (+ cents cents))
+"""
+
+AN_EXAMPLE_WHOSE_CALL_IS_AN_OPERATOR = """\
+(defn double
+  (sig ((cents Int)) -> Int ! pure)
+  (examples (example (+ 2 2) => 4))
   (+ cents cents))
 """
 
@@ -249,12 +278,21 @@ def assert_refused_as_an_example_of_another_function(
     called: str,
     occurrences: int = 1,
     alone: bool = True,
+    calls_a_declared_function: bool = True,
 ) -> None:
     """The program was refused as invalid with `occurrences` refusals
     saying an example is about another function, and every one of them
-    names the function that declares the example and the function the
-    example calls, so a reader learns which two functions the repair
-    stands between."""
+    names the function that declares the example and the name the
+    example calls, so a reader learns which two names the repair stands
+    between.
+
+    `calls_a_declared_function` says which of the two refusals a reader
+    must get. When the name called is a declared function, the refusal
+    offers the second repair -- move the example to that function -- and
+    says nothing about the name being unknown. When it is not a function
+    of this program, the refusal says so and offers no repair that would
+    send the reader to a function that is not there.
+    """
     response = assert_answered(
         run_result, f"the program whose example of {owner!r} calls {called!r}"
     )
@@ -285,10 +323,33 @@ def assert_refused_as_an_example_of_another_function(
             f"{reason!r}. Name the function that declares the example."
         )
         assert repr(called) in reason, (
-            f"the refusal does not name {called!r}, the function the example calls, "
+            f"the refusal does not name {called!r}, the name the example calls, "
             f"so a reader cannot see why the example is not about its own function: "
-            f"{reason!r}. Name the function the example calls."
+            f"{reason!r}. Name what the example calls."
         )
+        if calls_a_declared_function:
+            assert THE_CLAUSE_FOR_A_NAME_THAT_IS_NO_FUNCTION not in reason, (
+                f"the refusal says {called!r} is no function of this program, but "
+                f"the program declares it as one: {reason!r}. Say that only of a "
+                "name the program declares as no function."
+            )
+            assert f"{THE_REPAIR_THAT_MOVES_THE_EXAMPLE} {called!r}" in reason, (
+                f"the refusal does not offer to move the example to {called!r}, "
+                f"which is a declared function and could own it: {reason!r}. Offer "
+                "that repair when the name called is a function of the program."
+            )
+        else:
+            assert THE_CLAUSE_FOR_A_NAME_THAT_IS_NO_FUNCTION in reason, (
+                f"the refusal does not say that {called!r} is no function of this "
+                f"program, so a reader looks for a function that is not there: "
+                f"{reason!r}. Say that the name called is not a function the program "
+                "declares."
+            )
+            assert THE_REPAIR_THAT_MOVES_THE_EXAMPLE not in reason, (
+                f"the refusal offers to move the example to {called!r}, which is no "
+                f"function of this program and can own no example: {reason!r}. Offer "
+                "that repair only when the name called is a declared function."
+            )
 
 
 def assert_refused_for_its_argument_count(

@@ -38,7 +38,9 @@ examples got no answer at all, only a crash.
 - **P5** The word such a refusal carries is one the tool's manifest
   publishes.
 
-Seven scenarios (SC1-SC7) carry those promises; they are recorded in the
+Eight scenarios (SC1-SC8) carry those promises; SC8 was added after the
+independent review, for an example whose call names a declared
+constructor, which is no function of the program either; they are recorded in the
 workspace journal and rendered in `docs/function-examples/TRACE.md`.
 
 ## Conflicts

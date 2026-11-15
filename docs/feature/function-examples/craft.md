@@ -22,8 +22,11 @@ examples. One line was added to the published list of categories in
   this example demonstrates 'triple' and leaves 'double' with no example
   of its own; write the example as a call to 'double', or declare it
   among the examples of 'triple'`
-- An example naming a function the program never declares: the same
-  word, with `, which this program does not declare` after the name.
+- An example whose call names no function of the program — a name
+  declared nowhere, but a declared constructor or a builtin operator
+  too: the same word, with `, which is not a function this program
+  declares` after the name, and without the repair that would send a
+  reader to a function that is not there.
 - An example with the wrong number of arguments:
   `example 0 of function 'double' passes 2 argument(s), expected 1: an
   example supplies one closed value for each parameter the function
@@ -50,8 +53,8 @@ examples. One line was added to the published list of categories in
 
 | what | measured |
 |---|---|
-| full suite after the change | 986 passed in 95.56s (`uv run pytest -q tests --durations=10`) |
-| the 8 new files, 9 runs in a row | 24 passed every time; pytest-reported 1.13-1.16s, median wall 1.25s, slowest 1.26s |
+| full suite after the change | 1007 passed in 100.11s (`uv run pytest -q tests`), after the branch was rebased on main |
+| the 8 new files, 9 runs in a row | 26 passed every time; pytest-reported 1.22-1.24s, median wall 1.34s, slowest 1.39s |
 | slowest new test | under 0.2s; the acceptance tests each start the real `prova` command once |
 
 The new acceptance tests are integration tests: each one runs the real
@@ -69,6 +72,9 @@ run, and the code was restored:
 | a checker that never reads the name an example calls | 7 tests failed |
 | a checker that never counts an example's arguments | 5 tests failed |
 | a refusal naming only the function that declares the example | 2 tests failed |
+| every name called treated as a declared function | 3 tests failed |
+| no name called treated as a declared function | 2 tests failed |
+| the earlier wording, which called a constructor and an operator undeclared | 3 tests failed |
 
 ## Jev
 
@@ -85,3 +91,22 @@ The repository declares no linter and no type checker; its CI runs
 `uv run pytest -q tests` alone. The scorecard command recorded for this
 delivery is `uv run python -m compileall -q src tests`, which exits 0
 here and on the pre-feature tree.
+
+
+## What the independent review found, and what changed
+
+Two findings, both non-blocking, both now fixed and each with a check
+that turns red when the fix is removed:
+
+1. **The branch for a name that is no function had no falsifier.**
+   Treating every name called as a declared function kept the whole
+   suite green. The tests now state both halves: a refusal about a
+   declared function offers to move the example to it and says nothing
+   about the name being unknown; a refusal about a name that is no
+   function says so and offers no such move.
+2. **The wording was false for a constructor and for an operator.**
+   `(example (Box 3) => 4)` and `(example (+ 2 2) => 4)` were answered
+   with "which this program does not declare", although `Box` is a
+   declared constructor and `+` is a builtin operator. The refusal now
+   says "which is not a function this program declares", which is true
+   of all three, and both programs are observed in the tests.

@@ -32,10 +32,14 @@ from _f8_example_subject_fixtures import (
 def test_an_example_calling_a_different_function_is_refused_naming_both():
     """Given `double`, whose only example is `(example (triple 2) => 6)`,
     and `triple`, which answers 6 for 2, when the program is checked,
-    then it is invalid and the refusal names `double` and `triple`."""
+    then it is invalid, the refusal names `double` and `triple`, and it
+    offers to declare the example among the examples of `triple`, which
+    is a function that could own it."""
     run = check(AN_EXAMPLE_ABOUT_ANOTHER_FUNCTION)
 
-    assert_refused_as_an_example_of_another_function(run, owner="double", called="triple")
+    assert_refused_as_an_example_of_another_function(
+        run, owner="double", called="triple", calls_a_declared_function=True
+    )
 
 
 def test_the_same_two_functions_with_their_own_examples_are_accepted():
@@ -56,7 +60,8 @@ def test_two_examples_about_another_function_are_both_reported():
     run = check(TWO_EXAMPLES_BOTH_ABOUT_ANOTHER_FUNCTION)
 
     assert_refused_as_an_example_of_another_function(
-        run, owner="double", called="triple", occurrences=2
+        run, owner="double", called="triple", occurrences=2,
+        calls_a_declared_function=True,
     )
 
 

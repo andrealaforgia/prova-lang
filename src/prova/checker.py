@@ -550,8 +550,10 @@ class DeclaredExample:
     SPEC.md lines 228-234 require an example to call directly the
     function that declares it, and its arguments to be closed values of
     the declared types, one for each parameter. An example that calls
-    another name demonstrates that other name, whether or not the
-    program declares it, and leaves its own function with no example;
+    another name demonstrates that other name, whether the program
+    declares that name as a function or not at all -- a constructor and
+    a builtin operator are not functions either -- and leaves its own
+    function with no example;
     an example that calls its own function with another number of
     arguments cannot be run against it at all.
 
@@ -606,7 +608,9 @@ class DeclaredExample:
 
     def _about_another_function(self) -> Diagnostic:
         undeclared = (
-            "" if self.calls_a_declared_function else ", which this program does not declare"
+            ""
+            if self.calls_a_declared_function
+            else ", which is not a function this program declares"
         )
         demonstrates = (
             f"this example demonstrates {self.called!r}"
