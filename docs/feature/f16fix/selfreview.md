@@ -79,6 +79,16 @@ one list, so a model would restate the code.
 recorded in this delivery. The three tests whose expected text changed are
 named, with the Owner decision that allowed it.
 
+## What an independent reviewer said
+
+REV1 rejected the merged F16 at `371d1d8` with seven findings; findings 1 to 4
+are what this delivery fixes, in `bd12621` and `fde357c`, and 5 to 7 were
+notes. REV2 approved this change at `b171e36` with no finding. The three notes
+the reviewer left open are carried in `handoff.md`, one of them about this
+file's own neighbour: the generated test writes out the joining rule the
+product also uses, and what stops a shared mistake is the acceptance test
+beside it, whose conditions are literal strings read from the program by hand.
+
 ## What this change does not prove
 
 - That the seeded condition is the one a solver would need. Nothing here

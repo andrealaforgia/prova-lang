@@ -154,12 +154,12 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
-- A docs/f16fix/DECISIONS.md (+12 -0 lines)
-- A docs/f16fix/SUMMARY.md (+372 -0 lines)
-- A docs/f16fix/TRACE.md (+5 -0 lines)
-- A docs/feature/f16fix/craft.md (+79 -0 lines)
-- A docs/feature/f16fix/oracle.md (+61 -0 lines)
-- A docs/feature/f16fix/selfreview.md (+84 -0 lines)
+- A docs/f16fix/DECISIONS.md (+13 -0 lines)
+- A docs/f16fix/SUMMARY.md (+406 -0 lines)
+- A docs/f16fix/TRACE.md (+6 -0 lines)
+- A docs/feature/f16fix/craft.md (+85 -0 lines)
+- A docs/feature/f16fix/oracle.md (+71 -0 lines)
+- A docs/feature/f16fix/selfreview.md (+89 -0 lines)
 - M src/prova/obligations.py (+37 -4 lines)
 - M tests/acceptance/test_verify_lists_the_obligations_owed.py (+187 -10 lines)
 - M tests/properties/test_obligation_inventory_laws.py (+146 -5 lines)
@@ -170,8 +170,9 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - e9163f4 [F16fix] record what the obligation tests now notice
 - 23639bd [F16fix] state the condition a contract call is really reached under
 - fde357c [F16fix] carry a function's own precondition into what its body owes
+- b171e36 [F16fix] record the rule the Owner decided to apply
 
-## 3. oracle: Frame the work and write the oracle (revision 2)
+## 5. oracle: Frame the work and write the oracle (revision 3)
 
 - **request**:
   - /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-f16fix/request.md
@@ -308,14 +309,14 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - I1.concurrent => n/a: one run reads one source on stdin and writes one answer; no state is shared between runs
   - I1.crash => n/a: the operation writes no file, so an interrupted run leaves nothing half-made to recover
 - **laws**:
-  - LAW1 | every call a body makes owes its own precondition entry, wherever in the body it sits | generator=test_a_call_in_every_position_a_body_can_hold_owes_its_entry | observation=the exact set of obligation identities the answer lists | mutant=stop walking the else arm, the let bindings, the field-access target, the match scrutinee or the if condition
-  - LAW2 | a path condition names every condition on the way to the call, joined in the order the program writes them, and a pattern that always matches adds none | generator=test_a_call_behind_several_conditions_is_owed_under_all_of_them | observation=the path_condition text of each call entry | mutant=drop the negation of the earlier clauses, treat every pattern as one that can fail, or print only the first clause
-  - LAW3 | the entry that says a function ends counts the calls that same function makes | generator=test_the_ending_entry_says_how_many_calls_the_function_makes | observation=direct_calls reported per function | mutant=report a fixed 0
+  - LAW1 | every call a body makes owes its own precondition entry, wherever in the body it sits | generator=test_every_function_example_and_call_owes_its_entry | observation=the exact set of obligation identities the answer lists, against the plan | mutant=stop walking the else arm, the let bindings, the field-access target, the match scrutinee or the if condition
+  - LAW2 | the condition reported for a call is the function's own precondition followed by the conditions of the positions the call sits in, joined in that order | generator=test_every_function_example_and_call_owes_its_entry | observation=the path_condition of each call entry, against the plan | mutant=seed nothing from the precondition, replace the conditions instead of extending them, or print only the first clause
+  - LAW3 | the entry that says a function ends counts the calls that same function makes | generator=test_every_function_example_and_call_owes_its_entry | observation=direct_calls reported per function, against the plan | mutant=report a fixed 0
 - **messages**:
   - MSG0 | none: this delivery adds no refusal path and no new edge form; every message the inventory can print already exists and is unchanged
-- **red**: `uv run python /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-f16fix/mine/mutants.py --red` exited 1 in 154.975s
+- **red**: `uv run python /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-f16fix/mine/mutants.py --red` exited 1 in 161.021s
   - failing on the pre-feature tree (7): tests/properties/test_obligation_inventory_laws.py::test_every_function_example_and_call_owes_its_entry, tests/properties/test_obligation_inventory_laws.py::test_a_call_in_every_position_a_body_can_hold_owes_its_entry, tests/properties/test_obligation_inventory_laws.py::test_putting_a_call_out_of_reach_keeps_what_it_owes, tests/acceptance/test_verify_lists_the_obligations_owed.py::test_each_call_owes_its_precondition_under_the_condition_that_reaches_it, tests/acceptance/test_verify_lists_the_obligations_owed.py::test_a_call_behind_several_conditions_is_owed_under_all_of_them, tests/acceptance/test_verify_lists_the_obligations_owed.py::test_a_call_in_a_contract_or_a_body_is_owed_under_the_functions_own_precondition, tests/acceptance/test_verify_lists_the_obligations_owed.py::test_the_ending_entry_says_how_many_calls_the_function_makes
-  - tests (read from the run): 6 failed, 14 passed in 29.17s
+  - tests (read from the run): 6 failed, 14 passed in 30.55s
   ```text
   >       assert counted == NESTED_DIRECT_CALLS, (
               f"WHAT: the ending entries report {counted} calls, not the "
@@ -355,24 +356,24 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   FAILED tests/acceptance/test_verify_lists_the_obligations_owed.py::test_each_call_owes_its_precondition_under_the_condition_that_reaches_it
   FAILED tests/acceptance/test_verify_lists_the_obligations_owed.py::test_a_call_in_a_contract_or_a_body_is_owed_under_the_functions_own_precondition
   FAILED tests/acceptance/test_verify_lists_the_obligations_owed.py::test_the_ending_entry_says_how_many_calls_the_function_makes
-  6 failed, 14 passed in 29.17s
+  6 failed, 14 passed in 30.55s
 
   ```
 
-## 4. craft: Craft the change (revision 2)
+## 6. craft: Craft the change (revision 3)
 
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 108.525s
-  - tests (read from the run): 1011 passed in 108.39s
-  - slowest: 6.49s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 108.605s
+  - tests (read from the run): 1011 passed in 108.47s
+  - slowest: 6.35s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
   - slowest: 4.21s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 3.75s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 3.23s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 2.64s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 1.90s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 3.82s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 3.26s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 2.56s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 1.93s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
   - slowest: 1.58s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 1.50s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 1.44s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
   - slowest: 1.36s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  - slowest: 1.35s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  - slowest: 1.33s call tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
   ```text
   ........................................................................ [  7%]
   ........................................................................ [ 14%]
@@ -390,17 +391,64 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ........................................................................ [ 99%]
   ...                                                                      [100%]
   ============================= slowest 10 durations =============================
-  6.49s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  6.35s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
   4.21s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  3.75s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  3.23s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  2.64s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  1.90s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  3.82s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  3.26s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  2.56s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  1.93s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
   1.58s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  1.50s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  1.44s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
   1.36s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  1.35s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
-  1011 passed in 108.39s (0:01:48)
+  1.33s call     tests/properties/test_i1_s1_p6.py::test_p6_refused_build_preserves_pre_existing_outputs
+  1011 passed in 108.47s (0:01:48)
   ```
-- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.044s
+- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.041s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this environment; the client exits 3, so the conflict on S30 was decided locally from a measured whole-suite run
+
+## 7. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the one production change keeps the shape that was there: the walk already carried a condition down and now starts from the function own precondition; no new collaborator, layer or file
+  - D2: pass - the condition a site is reached under is decided once, in _precondition_of, and read by the two call sites that need it; the tests still derive the expected answer from one plan
+  - D3: pass - both changed test files drive the prova command over its JSON surface and import nothing from src/prova
+  - D4: pass - PathCondition stays the only carrier of a condition and is extended, never replaced, so a site cannot lose the clauses already in front of it: src/prova/obligations.py:313
+  - D5: pass - _precondition_of answers one question and says in its own words why a requires site is not seeded: src/prova/obligations.py:313
+  - D6: n/a: nothing new was introduced; the walk is the same recursive descent it was, so no pattern was chosen or missed
+  - D7: pass - the names are the language of the specification, precondition and path condition, and the rule lives beside the type that carries it
+  - D8: n/a: no infrastructure is involved; the operation reads no file, opens no socket and spawns nothing
+  - D9: pass - every new assertion reads the answer the prova command prints, and names no production symbol: tests/acceptance/test_verify_lists_the_obligations_owed.py:392
+  - D10: pass - the new tests are named for what the Owner is owed, in the words of the request, with no production symbol in any name
+  - D11: pass - the new tests reuse the plan, the renderer and the runner already in those files and add no parallel machinery
+  - D12: pass - the generated plan draws from all nine call positions and derives the expected condition from the plan own precondition, so the law holds with a contract as well as without one: tests/properties/test_obligation_inventory_laws.py:188
+  - D13: pass - measured over nine runs of the two files: median 4.89 s, slowest 4.91 s, nine passes of nine; the whole suite is 1011 passed in 100 s
+  - D14: pass - the two new acceptance tests read one program for two different questions, so a failure names which of the two the tool got wrong
+  - D15: pass - each new assertion says what was found, why it is owed and prints the program that produced it: tests/acceptance/test_verify_lists_the_obligations_owed.py:408
+  - D16: n/a: the inventory keeps no state, runs no protocol and has no concurrency, so a formal model would restate a pure function of one syntax tree
+  - D17: pass - every number in the documents comes from a run recorded in this delivery, and the three tests whose expected text changed are named with the Owner decision that allowed it
+- **independent_review**:
+  - REV1 | reviewer=impl-review-f16 | findings=7 (verdict REJECT of merged F16 at 371d1d8) | resolution=findings 1-4 fixed in bd12621 and fde357c, 5-7 notes
+  - REV2 | reviewer=impl-review-f16 | findings=0 (verdict APPROVE at b171e36) | resolution=none needed: the reviewer recorded no finding to resolve
+
+## 8. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+- **not_verified**:
+  - that the condition now reported is the one a solver would need: nothing here attempts an obligation, and every entry still carries not_attempted
+  - that a deletion other than the ten re-run here would be noticed; ten were re-run, which is not a whole mutation sweep
+  - that the seeded clauses are minimal: a trivially true clause, or one that repeats a branch test already in the list, is still printed in full
+  - that a reader can resolve a condition from the answer alone: a condition can name a value bound by a let whose definition is in no entry, which the request assigns to another delivery
+  - that the generated test would catch a mistake it shares with the product: it writes out the same joining rule, and what stands against that is the acceptance test beside it, whose conditions are literal strings read from the program by hand
+  - anything about performance, memory or external behaviour: none was measured and none is claimed
+  - the Jev service: TYPESAFE_API_KEY is absent from this environment and the client exits 3, so every choice was made locally from measured runs
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit b171e361ee1adc6525eee0767837cc923c3264bf with uncommitted changes
+  - no checks declared
+
+## Not backed by the diff
+
+- A call in a function's postcondition or body is now listed under that function's own precondition, as SPEC.md's 'Pre_f(x) implies ...' requires, so the assumption the work may use is no longer dropped; a call inside a 'requires' keeps an empty condition, because a precondition may not assume itself true to justify a partial call.: a guarantee names no test function of the change
+- Beside that, the tests now notice when the answer loses something: a generated call is placed in every position a body can hold and one program holds them all at once, a condition made of several parts is read whole including the clause whose pattern matches anything, and the call count on the entry that says a function ends is read against a count taken from the program by hand.: a guarantee names no test function of the change
+- It was checked by re-running every deletion the review measured as surviving, plus one that removes the new rule: each turns at least one test red, and the file is byte-identical to its committed form after each run.: a guarantee names no test function of the change
+- The three tests that stated the old condition were reported to the Owner before anything was edited and changed only in that text, on the Owner's decision, in a commit of their own that is red by itself and says so.: a guarantee names no test function of the change
+- The reviewer left three notes open, all carried in docs/feature/f16fix/handoff.md: the seeded clauses are not simplified, the generated test writes out the same joining rule the product uses, and conditions can name let-bound values that no entry defines.: a guarantee names no test function of the change

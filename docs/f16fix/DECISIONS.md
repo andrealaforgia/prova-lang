@@ -2,7 +2,7 @@
 
 kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: none
 
-## oracle (revision 2)
+## oracle (revision 3)
 
 - **decisions**:
   - S30: applied, after the conflict was reported. It fails 3 existing tests (measured, whole suite: 3 failed, 1007 passed), so the question went to the Owner, who decided that those 3 may be rewritten to the new text and nothing else in them. They were changed in their own commit, which is red on its own and says so, and the rule landed in the commit after it with the chain case the request asks for.
