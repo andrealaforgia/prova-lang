@@ -1195,3 +1195,24 @@ there.
   command with a traceback. Pre-existing; raised by the F9 review.
 - **Independent review owed for F2, F3 and F16.** They were merged on the author's
   checks and a green suite, not an independent review.
+- **Tool never ends in a traceback (robustness delivery).** Known crashes found by
+  the F6 to F10 reviews, all older than the features that found them: an
+  `IndexError` in `src/prova/evaluator.py` for `examples` on `examples/hour-clock.prova`
+  with character 550 or 1191 deleted; `evaluate` with `"function": ["f"]`
+  (`TypeError: unhashable`) and with `"arguments": 7` (`TypeError: not iterable`);
+  an expression nested about 700 deep (`RecursionError` in `syntax.parse_expr`;
+  450 deep is answered) and 1000 or more in `reader._read_form`. Each should be
+  answered with a located refusal (an explicit nesting limit for the last two),
+  never a traceback. (Raised by the F9, F10 and F2/F3 reviews.)
+- **F10 review notes.** `symbol`, `expected` and `actual` mean different things inside
+  one category (`malformed_value`; symmetric disagreements such as `=` operands);
+  publish the symbol's role per kind or give symmetric disagreements their own
+  subject. The enclosing declaration is threaded through four checker functions as a
+  bare `within: str`; move it into a small checker context.
+- **F16 review notes, for F18.** Path conditions are not simplified
+  (`(and (p n) (matches t (A)) (p n))`, `(and (small b) false)`), and they mention
+  let-bound names whose definition is in no entry. The solver work needs a normalised
+  form and self-contained entries.
+- **nwstep baseline after a rebase.** Re-initialising the workspace baseline after
+  rebasing a delivery would let `record craft` run again; today craft stays at the
+  pre-rebase revision. Tool gap, not a Prova defect.
