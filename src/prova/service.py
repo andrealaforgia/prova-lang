@@ -650,7 +650,11 @@ def _run_discover() -> dict:
                 "verify": (
                     "A completed verify response is an inventory only: it lists the "
                     "obligations the program owes and attempts none of them, so every "
-                    "entry's result is not_attempted. This tool has no solver."
+                    "entry's result is not_attempted. This tool has no solver, which "
+                    "is also what every entry's execution_status says: 'unsupported', "
+                    "the word for an attempt nothing here could support. The two "
+                    "fields are read apart; the shape published under "
+                    "operation_schemas for 'verify' says the same."
                 ),
             },
             "resource_limits": {
