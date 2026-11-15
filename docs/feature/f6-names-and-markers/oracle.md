@@ -41,7 +41,7 @@ drive the same public operation in process.
 
 | File | What it observes |
 |---|---|
-| `tests/acceptance/test_f6_b1_a_function_named_as_a_reserved_word_is_refused.py` | each of the 27 reserved words refused as a function name, plus an unreserved control |
+| `tests/acceptance/test_f6_b1_a_function_named_as_a_reserved_word_is_refused.py` | each of the 26 words whose spelling this rule refuses as a function name, plus an unreserved control |
 | `tests/acceptance/test_f6_b2_names_that_start_with_the_wrong_case_are_refused.py` | `Add-one`, the parameter `N`, the type `point`, the variant `red`, plus the same programs with the defined first letters |
 | `tests/acceptance/test_f6_b3_a_mangled_signature_marker_is_refused.py` | the arrowless signature answering instead of crashing, the three mangled markers, the placement on line 2 |
 | `tests/acceptance/test_f6_b4_an_example_with_the_wrong_arrow_is_refused.py` | the example arrow, and the placement on line 3 |
@@ -64,8 +64,14 @@ them.
   the error already holds. This adds a field to a response and removes nothing.
 - **Scope of the name rules.** They apply to declared function names, parameter
   names, type names and constructor names. Field names are a value-name
-  position too, but no criterion names them, and the `result` name in binding
-  positions belongs to the delivery running beside this one.
+  position too, but no criterion names them.
+- **`result` is not swept (owner decision, after the parallel delivery landed).**
+  SPEC.md reserves `result` for the value a postcondition speaks about: a rule
+  about what a name *binds*, not about how a name is *spelled*. The
+  whole-program check owns it and publishes its own refusal for it, so the
+  spelling rule lets the word through and the sweep covers the other 26 words.
+  Sweeping it here asked the spelling rule for an answer another rule owns, and
+  made a parameter named `result` come back in the wrong category.
 - **Uses of a name are untouched.** A lower-case type *reference* keeps its
   present answer, the checker's unknown-type refusal.
 - **Conflict found and decided (request sentence S34).** One unit test sends the
