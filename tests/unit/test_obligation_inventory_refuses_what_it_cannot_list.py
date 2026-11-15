@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from prova import obligations, syntax
+from prova import discharge, obligations, syntax
 
 
 def _function(name: str, body: object, requires: tuple = (), ensures: tuple = ()) -> syntax.Function:
@@ -68,6 +68,22 @@ def test_two_obligations_may_not_claim_one_identity():
     assert "contract_definedness:step:contract" in str(refusal.value), refusal.value
 
 
+def _settling_none_of(inventory) -> dict:
+    """One finding per obligation saying nobody attempted it.
+
+    The inventory lists what a program owes and asks no solver, so this
+    is what it says on its own. Written here because rendering the list
+    now takes one finding per obligation: an obligation with none refuses
+    to be written out at all, so nothing can be silently dropped.
+    """
+    return {
+        obligation.identity: discharge.Finding.not_attempted_because(
+            "this test lists what a program owes and settles none of it"
+        )
+        for obligation in inventory.obligations
+    }
+
+
 def test_a_program_built_by_hand_owes_all_five_kinds():
     """Given a one-function program that calls a function it does declare,
     when its obligations are listed, then the five kinds SPEC.md names are
@@ -76,7 +92,8 @@ def test_a_program_built_by_hand_owes_all_five_kinds():
     caller = _function("outer", syntax.Call("inner", (syntax.NameRef("n"),)))
     program = syntax.Program(types={}, functions={"inner": callee, "outer": caller})
 
-    listed = obligations.inventory_for(program).as_dict()
+    owed = obligations.inventory_for(program)
+    listed = owed.as_dict(_settling_none_of(owed))
 
     assert set(listed["totals"]["by_kind"]) == {
         "call_precondition",
