@@ -298,6 +298,7 @@ def run(request: dict) -> ToolRun:
         capture_output=True,
         text=True,
         timeout=30.0,
+        check=False,
     )
     return ToolRun(proc.returncode, proc.stdout, proc.stderr)
 

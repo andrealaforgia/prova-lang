@@ -15,6 +15,15 @@ split or merge rows, so the totals are a guide and not a precise measurement.
 - *Existing tests*: a test file in `tests/` that covers the clause.
 - *Code*: the source shows the feature is absent. This is the weakest kind of evidence.
 
+**The table below is a snapshot, and it is older than the code.** It was measured at
+`533271a`; F5, F6 and F9 have landed since, so several rows no longer describe what the
+probes report. Re-running `uv run python docs/spec-trace/probe.py` today reports 45 of 53
+scored probes agreeing with SPEC.md. Rows 1.11 and 1.12 are the two F9 changed: probes
+G3, G4 and L5 now agree, because an out-of-profile source is answered with its own
+`unsupported` status and an `unsupported_construct` diagnostic that names the construct.
+The rows themselves are left as the dated measurement they are; re-measuring the whole
+table is its own piece of work.
+
 **Statuses.**
 - `Done`: behaviour matches the clause on the cases probed.
 - `Partial`: some of the clause works.

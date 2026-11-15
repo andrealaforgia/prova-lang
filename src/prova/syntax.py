@@ -43,6 +43,35 @@ class SyntaxError_(Exception):
         self.column = column
 
 
+class UnsupportedConstruct(Exception):
+    """A construct core-0 does not have, met in the source.
+
+    A different answer from `SyntaxError_`: that one says the tool cannot
+    read the source as a core-0 program, and a reader repairs it by
+    writing the form the way core-0 writes it. This one says core-0 has
+    no such construct at all, so no spelling repairs it and the reader
+    must stop writing it (SPEC.md lines 51-54, 96-99).
+
+    It cannot be built without naming the construct it refuses: a
+    refusal that did not say what is outside the profile would leave a
+    reader with nothing to stop writing.
+    """
+
+    def __init__(self, message: str, construct: str, line: int, column: int):
+        if not construct:
+            raise ValueError(
+                "an out-of-profile refusal must name the construct it refuses: "
+                "this one was built with none, so a reader could not tell what "
+                "core-0 does not have; build it from the OutOfProfileConstruct "
+                "that met the source"
+            )
+        super().__init__(message)
+        self.message = message
+        self.construct = construct
+        self.line = line
+        self.column = column
+
+
 # --- how core-0 spells a name, and the tokens it fixes ------------------
 
 @dataclass(frozen=True)
@@ -220,6 +249,176 @@ MATCH_CLAUSES = AtLeastOne(
     "clause",
     "write it as (match expr (pattern expr) ...)",
 )
+
+
+# --- what core-0 does not have ------------------------------------------
+
+@dataclass(frozen=True)
+class OutOfProfileConstruct:
+    """One construct core-0 does not have: the name a reader knows it
+    by, what is absent that makes it meaningless here, and how to write
+    the same intent with what core-0 does have.
+
+    Mirrors `MarkerToken`, which owns one token core-0 fixes at a single
+    grammar position. This owns a construct core-0 fixes nowhere at all,
+    and builds its own refusal, so no caller composes that sentence.
+    """
+
+    construct: str
+    absence: str
+    repair: str
+
+    def refuse(self, named: str, line: int, column: int) -> UnsupportedConstruct:
+        return UnsupportedConstruct(
+            f"{named} is unsupported in the core-0 profile: {self.absence}; "
+            f"{self.repair}",
+            self.construct,
+            line,
+            column,
+        )
+
+
+DIVISION = OutOfProfileConstruct(
+    "division",
+    "core-0 declares no division operator, so the tool can give it no meaning "
+    "here",
+    "write the calculation with an operator core-0 has, '+', '-' or '*'; exact "
+    "division arrives with a later numeric profile",
+)
+DECIMAL_LITERAL = OutOfProfileConstruct(
+    "a decimal literal",
+    "the core-0 literals are 'true', 'false', the unit value '()' and whole "
+    "numbers",
+    "write a whole number, such as 1; decimal arithmetic arrives with a later "
+    "numeric profile",
+)
+TEXT_LITERAL = OutOfProfileConstruct(
+    "a text literal",
+    "core-0 has no text values and no operator that reads one",
+    "remove it, or say what it stands for with a type core-0 declares; text "
+    "arrives with a later profile",
+)
+TOP_LEVEL_EXPRESSION = OutOfProfileConstruct(
+    "a top-level expression",
+    "core-0 writes only 'deftype' and 'defn' forms at the top level, so a call "
+    "written beside them has no place to run",
+    "move the call into a function body, or ask for it with the 'evaluate' "
+    "operation",
+)
+DECLARATION_FORM = OutOfProfileConstruct(
+    "a declaration form core-0 does not have",
+    "core-0 declares only 'deftype' and 'defn'",
+    "write the declaration as (defn name (sig (parameters) -> Type ! pure) "
+    "(examples (example (name arguments) => value)) body)",
+)
+
+# The declaration words of the historical language that core-0 leaves out
+# (SPEC.md lines 96-99). Each one is a word a reader may well have meant,
+# so each is answered by name.
+OUT_OF_PROFILE_DECLARATION_WORDS = frozenset({"defspec", "fn", "trust", "module"})
+
+DIVISION_SIGN = "/"
+TEXT_OPENING = '"'
+DECIMAL_SHAPE = re.compile(r"[+-]?(?:[0-9]+\.[0-9]*|\.[0-9]+)$")
+
+DECLARATION_WORDS = ("deftype", "defn")
+
+
+@dataclass(frozen=True)
+class ProfileBoundary:
+    """What core-0 does not have, read over one source before its typed
+    tree is built.
+
+    It holds the function names that source declares, and that is what
+    lets it tell a call written after the declarations -- the trailing
+    top-level expression core-0 does not have -- from a declaration word
+    the reader simply cannot place, which is a misspelling that its own
+    refusal already answers.
+    """
+
+    declared_functions: frozenset
+
+    @classmethod
+    def of(cls, forms: tuple) -> ProfileBoundary:
+        return cls(frozenset(_declared_function_names(forms)))
+
+    def refuse_what_core_0_does_not_have(self, forms: tuple) -> None:
+        """Refuse the first construct core-0 does not have, in source
+        order; return when the source uses only what core-0 has.
+
+        Read before the typed tree is built, so an out-of-profile source
+        never reaches the spelling rules or the checker and cannot be
+        answered as a misspelling or a type error.
+        """
+        for form in forms:
+            self._read_top_level(form)
+            self._read_every_token(form)
+
+    def _read_top_level(self, form: object) -> None:
+        head = _head_symbol(form)
+        if head in DECLARATION_WORDS:
+            return
+        line, column = _position(form)
+        if head in OUT_OF_PROFILE_DECLARATION_WORDS:
+            raise DECLARATION_FORM.refuse(
+                f"the declaration form {head!r}", line, column
+            )
+        if self._is_an_expression(head):
+            raise TOP_LEVEL_EXPRESSION.refuse(
+                self._named_expression(form, head), line, column
+            )
+
+    def _is_an_expression(self, head: object) -> bool:
+        """Whether a top-level form that declares nothing is recognisably
+        an expression. A word that is none of these is one the reader
+        cannot place at all, and keeps the refusal that owns it."""
+        if head is None:
+            return True
+        if head in OPERATORS or head in SPECIAL_FORMS:
+            return True
+        if head.startswith(".") or head[:1].isupper():
+            return True
+        return head in self.declared_functions
+
+    @staticmethod
+    def _named_expression(form: object, head: object) -> str:
+        if head is not None:
+            return f"the top-level expression calling {head!r}"
+        if isinstance(form, Atom):
+            return f"the top-level expression {form.text!r}"
+        return "the top-level expression standing there"
+
+    def _read_every_token(self, node: object) -> None:
+        if isinstance(node, Atom):
+            self._read_token(node)
+            return
+        for item in node.items:
+            self._read_every_token(item)
+
+    @staticmethod
+    def _read_token(atom: Atom) -> None:
+        if atom.text == DIVISION_SIGN:
+            raise DIVISION.refuse(f"the operator {atom.text!r}", atom.line, atom.column)
+        if DECIMAL_SHAPE.match(atom.text):
+            raise DECIMAL_LITERAL.refuse(
+                f"the decimal literal {atom.text!r}", atom.line, atom.column
+            )
+        if atom.text.startswith(TEXT_OPENING):
+            raise TEXT_LITERAL.refuse(
+                f"the text literal {atom.text!r}", atom.line, atom.column
+            )
+
+
+def _declared_function_names(forms: tuple) -> list:
+    """The name of every function the source declares, read before
+    anything else, because core-0 allows forward references."""
+    return [
+        form.items[1].text
+        for form in forms
+        if _head_symbol(form) == "defn"
+        and len(form.items) > 1
+        and isinstance(form.items[1], Atom)
+    ]
 
 
 def _symbol_text(role: str, node: object) -> str:
@@ -525,6 +724,7 @@ Pattern = object
 
 def parse_program(forms: list[object]) -> Program:
     declarations = PROGRAM_DECLARATIONS.demand(tuple(forms), "the source", 1, 1)
+    ProfileBoundary.of(declarations).refuse_what_core_0_does_not_have(declarations)
     types: dict[str, object] = {}
     functions: dict[str, Function] = {}
     declared: list[DeclaredName] = []

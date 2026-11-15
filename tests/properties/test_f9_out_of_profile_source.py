@@ -45,7 +45,7 @@ from prova import service
 # most, and is loaded from there rather than copied.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "acceptance"))
 
-from _f9_profile_fixtures import (  # noqa: E402
+from _f9_profile_fixtures import (
     MISSPELLED_DECLARATION_WORD,
     OUT_OF_PROFILE,
     PRESERVED_CASES,
@@ -70,7 +70,8 @@ def _ask(operation: str, source: str) -> dict:
 def _answer_for(operation: str, source: str, described: str) -> dict:
     try:
         return _ask(operation, source)
-    except Exception as error:  # noqa: BLE001 - the law is that none escapes
+    # Catching everything is the law itself: no error may escape as a crash.
+    except Exception as error:
         raise AssertionError(
             f"WHAT: asking {operation!r} about {described} ended in "
             f"{type(error).__name__}: {error}. "

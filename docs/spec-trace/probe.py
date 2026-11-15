@@ -14,7 +14,11 @@ def check(src): return service.handle({"operation": "check", "source": src})
 def ev(src, f, *args): return service.handle({"operation": "evaluate", "source": src, "function": f, "arguments": list(args)})
 def examples(src): return service.handle({"operation": "examples", "source": src})
 accepted = lambda r: r["status"] == "completed" and not r.get("diagnostics")
-rejected = lambda r: r["status"] == "invalid_program"
+# A source is refused either as a core-0 program that breaks a rule of
+# core-0, or as one that is outside the profile altogether. Both are a
+# refusal; which one is the subject of G4 and L5.
+REFUSING_STATUSES = ("invalid_program", "unsupported")
+rejected = lambda r: r["status"] in REFUSING_STATUSES
 def cats(r): return [d["category"] for d in r.get("diagnostics", [])]
 
 P = []  # (id, spec lines, requirement, passed, note)

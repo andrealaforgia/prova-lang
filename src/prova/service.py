@@ -15,8 +15,35 @@ from prova.values import render
 AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify")
 UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "build"})
 
+# What the tool answers when the source is not a program it can check.
+# `invalid_program` means the source is a core-0 program that breaks a
+# rule of core-0; `unsupported` means it is not a program of this profile
+# at all (SPEC.md lines 51-54, 191-196).
+UNSUPPORTED_STATUS = "unsupported"
+UNSUPPORTED_CONSTRUCT = "unsupported_construct"
+
+# Every status `handle` answers with, and what each one tells a caller.
+# Published by the manifest, so the vocabulary is read from the tool.
+STATUSES = {
+    "completed": "the operation answered the request",
+    "invalid_program": (
+        "the source is a program of the core-0 profile and breaks one of the "
+        "rules of core-0"
+    ),
+    UNSUPPORTED_STATUS: (
+        "the source uses a construct the core-0 profile does not have, so it is "
+        "outside this profile and no rule of core-0 was read over it"
+    ),
+    "invalid_input": (
+        "the source is a core-0 program, but a value or a function name the "
+        "request supplies is not one that program takes"
+    ),
+    "unavailable": "the operation is not one this tool answers yet",
+}
+
 DIAGNOSTIC_CATEGORIES = (
     "syntax",
+    UNSUPPORTED_CONSTRUCT,
     "unbound_type",
     "unbound_constructor",
     "unbound_name",
@@ -89,6 +116,7 @@ def _run_discover() -> dict:
         "result": {
             "profile": {"name": "core-0", "coverage": "partial"},
             "operations": availability,
+            "statuses": dict(STATUSES),
             "diagnostic_categories": list(DIAGNOSTIC_CATEGORIES),
             "documentation": {
                 "evaluate": (
@@ -139,6 +167,22 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> dict:
     return entry
 
 
+def _out_of_profile_diagnostic(refusal: syntax.UnsupportedConstruct) -> dict:
+    """The one diagnostic a source using a construct core-0 does not have
+    carries: the construct named, why core-0 cannot give it a meaning,
+    how to write the intent instead, and the place it stands at.
+
+    `construct` is carried beside the sentence so a caller can tell the
+    kinds apart without reading the prose.
+    """
+    return {
+        "category": UNSUPPORTED_CONSTRUCT,
+        "reason": refusal.message,
+        "construct": refusal.construct,
+        "location": {"line": refusal.line, "column": refusal.column},
+    }
+
+
 @dataclass(frozen=True)
 class Refusal:
     """The one answer every operation that reads source gives when the
@@ -171,6 +215,8 @@ def _checked_program(source: str):
     """
     try:
         program = syntax.parse_program(read_program(source))
+    except syntax.UnsupportedConstruct as outside:
+        return Refusal(UNSUPPORTED_STATUS, (_out_of_profile_diagnostic(outside),))
     except (ReaderError, syntax.SyntaxError_) as error:
         return Refusal("invalid_program", (_syntax_diagnostic(error),))
 
