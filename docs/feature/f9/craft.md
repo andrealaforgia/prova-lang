@@ -4,9 +4,12 @@
 
 | Commit | What it does | Why it is separate |
 |---|---|---|
-| `3bc187d` | one `Refusal` owner answers a source the tool cannot check | behaviour-preserving; it edits no test, and it is what makes the new status land in one place instead of four |
-| `af2920f` | the checks, and the fourteen preserved counterexamples wired in | recorded red before any source changed |
-| `6cb20c8` | the profile boundary and the `unsupported` status | the behaviour |
+| `6ee913b` | one `Refusal` owner answers a source the tool cannot check | behaviour-preserving; it edits no test, and it is what makes the new status land in one place instead of four |
+| `f17fe1d` | the checks, and the fourteen preserved counterexamples wired in | recorded red before any source changed |
+| `7e79d26` | the profile boundary and the `unsupported` status | the behaviour |
+| `5701c86` | the four findings of the independent review of `1ea859a` | a review fix is its own commit, so what it changed stays readable |
+
+Commit ids are those after the rebase onto `903f420`, where F7 is merged.
 
 The history was reordered once so the prefactor stands before the checks; the tree is
 byte-identical to what it was before the reorder, and the backup branch
@@ -34,7 +37,8 @@ What failed, why it cannot work here, how to write it instead — and a `locatio
 
 | What | Command | Result |
 |---|---|---|
-| full suite, after | `uv run pytest -q tests --durations=10` | **949 passed**, exit 0, 103.1 s |
+| full suite, after, rebased onto F7 | `uv run pytest -q tests --durations=5` | **981 passed**, exit 0, 93.6 s |
+| full suite, before the rebase | `uv run pytest -q tests --durations=10` | 949 passed, exit 0, 103.1 s |
 | full suite, after the prefactor only | `uv run pytest -q tests` | 935 passed, 14 failed — the 14 recorded red F9 cases and nothing else |
 | the pre-existing suite, after the prefactor | `uv run pytest -q tests -k "not f9"` | 932 passed, 17 deselected, 98.5 s |
 | the refactor check, exported trees | `uv run pytest -q tests/unit` | 53 passed before and 53 after |
@@ -43,7 +47,8 @@ What failed, why it cannot work here, how to write it instead — and a `locatio
 
 **Test cost receipt.** The new test files were run nine times in a row:
 `uv run pytest -q tests -k f9` — 17 passed every time, no flake. Median 1.07 s, slowest
-run 1.09 s (wall clock 1.20 s median, 1.22 s slowest). The slowest single new test is
+run 1.09 s (wall clock 1.20 s median, 1.22 s slowest). The review fixes took the new
+checks to 19, which run in 1.07 s. The slowest single new test is
 0.08 s; every one that drives the real command is under a tenth of a second, and the
 four generated laws are 0.02 s or less because they ask the service in process.
 
@@ -80,3 +85,19 @@ DEC1–DEC4, and accepted by the owner at the oracle pause.
 - The `tool_failure` status the command wrapper produces for a request that is not JSON
   is not published in the manifest; the manifest lists the five statuses the service
   itself answers with.
+
+## The independent review of `1ea859a`, and what it changed
+
+The reviewer rejected the candidate with four findings. All four are fixed in `5701c86`,
+and each fix was probed by putting the defect back and watching a check fail:
+
+| # | Finding | Fix | Probe: reverting it turns red |
+|---|---|---|---|
+| 1 (high) | a valid `defn` in one pair of parentheses too many, `((f) 1)` and `()` moved from `syntax` to `unsupported`, with a remedy no respelling can follow | a form whose head is not a symbol is not read as an expression, so it keeps the refusal that owns it; three controls pin it | `test_the_new_answer_is_given_to_out_of_profile_sources_and_to_nothing_else` and the new control, 2 failed |
+| 2 (medium) | the `construct` response field had no observation — deleting it kept every test green | one observation per construct family pins the word, and the five words are now stable tokens rather than prose | 2 failed |
+| 3 (medium) | the `if not construct:` guard was unreachable and unobserved | deleted; `UnsupportedConstruct` carries the `OutOfProfileConstruct` itself, so no empty name can exist | passing `""` instead of the value object: 13 failed |
+| 4 (low) | `tool_failure` is answered by the command, and the manifest did not say its list covers an answered request | the manifest says so, and a check pins the sentence | 1 failed |
+
+Finding 1 is the one that mattered: the first version answered a misplaced parenthesis
+with "core-0 does not have this and never will", which is both untrue and unactionable.
+The boundary now has to recognise an expression before it refuses one.
