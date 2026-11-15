@@ -185,6 +185,29 @@ def owed_direct_calls(plans: tuple[FunctionPlan, ...]) -> dict[str, int]:
     return counted
 
 
+def owed_precondition_clauses(plan: FunctionPlan, index: int) -> tuple[str, ...]:
+    """The clauses of the function's own precondition, as the plan writes
+    them. A call in the body is reached only when they hold: the body
+    answers the postcondition for every input that meets the precondition
+    (SPEC.md, "Meaning of a claim"). A call in the precondition itself is
+    not: a precondition must be defined for every typed input and cannot
+    assume itself true."""
+    if plan.requires == "plain":
+        return ("(> n 0)",)
+    if plan.requires == "call":
+        return (f"(> ({_name(index - 1)} n) 0)",)
+    return ()
+
+
+def joined(clauses: tuple[str, ...]) -> str:
+    """The clauses as the one condition the answer reports."""
+    if not clauses:
+        return "true"
+    if len(clauses) == 1:
+        return clauses[0]
+    return "(and " + " ".join(clauses) + ")"
+
+
 def owed_call_conditions(plans: tuple[FunctionPlan, ...]) -> dict[str, str]:
     """The condition the plan says reaches each call, by obligation identity."""
     conditions = {}
@@ -195,7 +218,10 @@ def owed_call_conditions(plans: tuple[FunctionPlan, ...]) -> dict[str, str]:
         placed = BODY_SHAPES[plan.body_shape]
         if placed is not None:
             site, condition = placed
-            conditions[f"call_precondition:{name}:{site}"] = condition
+            reached = owed_precondition_clauses(plan, index) + (
+                () if condition == "true" else (condition,)
+            )
+            conditions[f"call_precondition:{name}:{site}"] = joined(reached)
     return conditions
 
 
@@ -451,8 +477,9 @@ def test_putting_a_call_out_of_reach_keeps_what_it_owes(plans):
         called_before,
         called_after,
     )
-    assert called_before[0]["path_condition"] == "true", called_before
-    assert called_after[0]["path_condition"] == "false", (
+    seeded = owed_precondition_clauses(reachable[1], 1)
+    assert called_before[0]["path_condition"] == joined(seeded), called_before
+    assert called_after[0]["path_condition"] == joined(seeded + ("false",)), (
         f"WHAT: the call that can never run is reported as reached under "
         f"{called_after[0]['path_condition']!r}. "
         "WHY: the obligation is owed under the condition that reaches it, and here that "

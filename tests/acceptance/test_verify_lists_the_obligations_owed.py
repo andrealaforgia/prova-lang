@@ -51,6 +51,18 @@ CLOCK_CALLS = {
     ("step", "ensures[0]", "valid-state"),
 }
 
+# The condition reaching each of those calls. Nothing in the clock calls
+# from a branch, so the only condition in front of any of them is the
+# function's own precondition: a postcondition is answered only for an input
+# that meets it (SPEC.md, "Meaning of a claim"), while a precondition must
+# itself hold for every typed input and so is reached with nothing in front
+# of it. `step` is the only one of the three that declares one.
+CLOCK_CALL_CONDITIONS = {
+    ("initial", "ensures[0]"): "true",
+    ("step", "requires[0]"): "true",
+    ("step", "ensures[0]"): "(valid-state current)",
+}
+
 # The reservation example SPEC.md publishes, read by hand the same way.
 RESERVATION_FUNCTIONS = ("valid-state", "initial", "step")
 RESERVATION_EXAMPLE_COUNTS = {"valid-state": 2, "initial": 1, "step": 4}
@@ -199,8 +211,10 @@ def test_each_call_owes_its_precondition_under_the_condition_that_reaches_it():
     naming who is called, where from, and the condition that reaches it.
 
     still passes if: the tool reported every condition as `true` whatever
-    the branch -- every call in the hour clock is reached unconditionally.
-    The unreachable-branch case below closes that.
+    the branch -- no call in the hour clock sits in a branch, so only the
+    precondition of `step` tells the conditions apart here. The
+    unreachable-branch case below closes the branch, and the chain of
+    preconditions further down closes the rest.
     """
     entries = _of_kind(_obligations(_run("verify", _hour_clock_source())), "call_precondition")
 
@@ -213,14 +227,18 @@ def test_each_call_owes_its_precondition_under_the_condition_that_reaches_it():
         "HOW: compare the answer with examples/hour-clock.prova clause by clause."
     )
     assert len(entries) == len(CLOCK_CALLS), f"one call was listed twice: {entries}"
-    for entry in entries:
-        assert entry.get("path_condition") == "true", (
-            f"WHAT: the call at {entry.get('site')!r} in {entry.get('function')!r} is "
-            f"reported as reached under {entry.get('path_condition')!r}. "
-            "WHY: no call in the hour clock sits inside a branch, so each is reached "
-            "whenever its function runs. "
-            f"HOW: inspect that entry: {entry}"
-        )
+    reached = {
+        (entry.get("function"), entry.get("site")): entry.get("path_condition")
+        for entry in entries
+    }
+    assert reached == CLOCK_CALL_CONDITIONS, (
+        f"WHAT: the calls of the hour clock are reported as reached under {reached}, "
+        f"not {CLOCK_CALL_CONDITIONS}. "
+        "WHY: no call here sits inside a branch, so each is reached whenever its "
+        "function runs -- and a call in a postcondition runs only for an input that "
+        "meets the function's own precondition, which `step` declares. "
+        f"HOW: inspect the entries: {entries}"
+    )
 
 
 def test_the_owner_sees_what_each_function_owes_for_body_contract_examples_and_ending():
