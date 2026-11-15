@@ -33,7 +33,37 @@ from typing import ClassVar
 from prova import syntax
 from prova.values import ConstructorValue
 
-BUILTIN_TYPES = {"Unit", "Bool", "Int"}
+@dataclass(frozen=True)
+class BuiltinType:
+    """One type name core-0 has, beside what its values are.
+
+    The checker reads the names it knows from this one table and an
+    agent reads the same entries from the manifest, so a type the
+    checker knows cannot be missing from what an agent is told
+    (SPEC.md line 98 for the names, line 132 for the values).
+    """
+
+    name: str
+    values: str
+
+    def published(self) -> dict:
+        """This type as the manifest states it."""
+        return {"what": self.values}
+
+
+CORE_TYPES = (
+    BuiltinType("Unit", "the one value (), written as an empty pair of brackets"),
+    BuiltinType("Bool", "the two values true and false"),
+    BuiltinType(
+        "Int",
+        "the whole numbers, of arbitrary precision, written as 7, -3 or +002",
+    ),
+)
+
+# The names of those types, which is what every rule of core-0 asks
+# about. Read from the table above so the names a rule refuses to
+# redeclare and the names an agent reads are one list.
+BUILTIN_TYPES = {core.name for core in CORE_TYPES}
 
 NUMERIC = "numeric"
 COMPARISON = "comparison"
@@ -42,37 +72,138 @@ BOOLEAN = "boolean"
 
 
 @dataclass(frozen=True)
+class OperandsOfOneType:
+    """The rule of an operator whose operands all have one named type:
+    `+` reads whole numbers, `not` reads a flag.
+
+    It is the one place that rule is written: the refusal an operand of
+    another type draws and the argument types an agent reads from the
+    manifest both come from here.
+    """
+
+    type_name: str
+
+    def argument_types(self, arity: int) -> tuple[str, ...]:
+        return (self.type_name,) * arity
+
+    def standing_for(self) -> dict:
+        """The names in those argument types that are not type names of
+        core-0. There are none: every place carries a real type."""
+        return {}
+
+    def refusals(
+        self, operator: str, arg_types: list, place: tuple[int, int]
+    ) -> list:
+        return [
+            Diagnostic(
+                "type_mismatch",
+                f"operator {operator!r} expects {self.type_name} operands, "
+                f"got {arg_type}",
+                place,
+                about=AboutTwoTypes(operator, self.type_name, arg_type),
+            )
+            for arg_type in arg_types
+            if arg_type is not None and arg_type != self.type_name
+        ]
+
+
+@dataclass(frozen=True)
+class OperandsOfOneAndTheSameType:
+    """The rule of `=`: its operands may have any one type of core-0, as
+    long as both have the same one (SPEC.md line 182).
+
+    The type is not fixed, so the argument types carry a name standing
+    for it, and the manifest says what that name stands for rather than
+    leaving an agent to guess it.
+    """
+
+    standing_name: str = "T"
+
+    def argument_types(self, arity: int) -> tuple[str, ...]:
+        return (self.standing_name,) * arity
+
+    def standing_for(self) -> dict:
+        return {
+            self.standing_name: (
+                "any one type of core-0, and the same one in both places"
+            )
+        }
+
+    def refusals(
+        self, operator: str, arg_types: list, place: tuple[int, int]
+    ) -> list:
+        known = [arg_type for arg_type in arg_types if arg_type is not None]
+        if len(set(known)) <= 1:
+            return []
+        return [
+            Diagnostic(
+                "type_mismatch",
+                f"{operator!r} operands have different types: {known}",
+                place,
+                about=AboutTwoTypes(operator, known[0], known[1]),
+            )
+        ]
+
+
+NUMBERS = OperandsOfOneType("Int")
+FLAGS = OperandsOfOneType("Bool")
+TWO_VALUES_OF_ONE_TYPE = OperandsOfOneAndTheSameType()
+
+
+@dataclass(frozen=True)
 class BuiltinOperator:
     """One builtin operator as SPEC.md lines 178-189 give it: how many
-    arguments it takes, and which group of operands and answers it
-    belongs to.
+    arguments it takes, which group of operands and answers it belongs
+    to, the rule its operands are read by and the type it answers.
 
     Operators have no variable arity, so `arity` is the only number of
     arguments its operator accepts, and a call written with any other
     number is refused rather than read as a shorter or longer operator.
+
+    The rule that refuses a wrong operand is the same object that says
+    which types the operator takes, so the signature an agent reads from
+    the manifest and the signature the checker keeps are one thing.
     """
 
     arity: int
     family: str
+    operands: object
+    answers: str
+
+    def refusals(
+        self, operator: str, arg_types: list, place: tuple[int, int]
+    ) -> list:
+        return self.operands.refusals(operator, arg_types, place)
+
+    def published(self) -> dict:
+        """This operator as the manifest states it: the type of each
+        argument it takes, the type it answers, and what any name
+        standing for a type in them stands for."""
+        return {
+            "arguments": list(self.operands.argument_types(self.arity)),
+            "result": self.answers,
+            "where": self.operands.standing_for(),
+        }
 
 
 # The eleven operators of core-0, and nothing else. This is the one
 # place the checker learns which operators exist, how many arguments
-# each takes and how each reads its operands: the groups below and the
-# answer to `arity_of` are all read from here, so an operator added to
-# the language is added once.
+# each takes, how each reads its operands and what each answers: the
+# groups below, the answer to `arity_of`, the operand refusals and the
+# signatures the manifest publishes are all read from here, so an
+# operator added to the language is added once.
 BUILTIN_OPERATORS = {
-    "+": BuiltinOperator(2, NUMERIC),
-    "-": BuiltinOperator(2, NUMERIC),
-    "*": BuiltinOperator(2, NUMERIC),
-    "<": BuiltinOperator(2, COMPARISON),
-    "<=": BuiltinOperator(2, COMPARISON),
-    ">": BuiltinOperator(2, COMPARISON),
-    ">=": BuiltinOperator(2, COMPARISON),
-    "=": BuiltinOperator(2, EQUALITY),
-    "and": BuiltinOperator(2, BOOLEAN),
-    "or": BuiltinOperator(2, BOOLEAN),
-    "not": BuiltinOperator(1, BOOLEAN),
+    "+": BuiltinOperator(2, NUMERIC, NUMBERS, "Int"),
+    "-": BuiltinOperator(2, NUMERIC, NUMBERS, "Int"),
+    "*": BuiltinOperator(2, NUMERIC, NUMBERS, "Int"),
+    "<": BuiltinOperator(2, COMPARISON, NUMBERS, "Bool"),
+    "<=": BuiltinOperator(2, COMPARISON, NUMBERS, "Bool"),
+    ">": BuiltinOperator(2, COMPARISON, NUMBERS, "Bool"),
+    ">=": BuiltinOperator(2, COMPARISON, NUMBERS, "Bool"),
+    "=": BuiltinOperator(2, EQUALITY, TWO_VALUES_OF_ONE_TYPE, "Bool"),
+    "and": BuiltinOperator(2, BOOLEAN, FLAGS, "Bool"),
+    "or": BuiltinOperator(2, BOOLEAN, FLAGS, "Bool"),
+    "not": BuiltinOperator(1, BOOLEAN, FLAGS, "Bool"),
 }
 
 
@@ -1619,16 +1750,26 @@ def _infer(
     raise TypeError(f"unrecognised expression node: {expr!r}")
 
 
+def builtin_operator(operator: str) -> BuiltinOperator:
+    """The table entry of `operator`.
+
+    The one way into the table: a name that is not an operator of core-0
+    is a fault of the tool and not an answer about a program, so it is
+    raised here rather than read as a shorter or different operator.
+    """
+    try:
+        return BUILTIN_OPERATORS[operator]
+    except KeyError:
+        raise ValueError(f"unknown operator {operator!r}") from None
+
+
 def arity_of(operator: str) -> int:
     """How many arguments SPEC.md gives `operator`.
 
     The one place that answers that question: the operand checks below,
     and the refusal a wrongly written call draws, read the same number.
     """
-    try:
-        return BUILTIN_OPERATORS[operator].arity
-    except KeyError:
-        raise ValueError(f"unknown operator {operator!r}") from None
+    return builtin_operator(operator).arity
 
 
 def _check_operator(
@@ -1638,67 +1779,21 @@ def _check_operator(
     within: str,
 ) -> str:
     op = expr.operator
-    takes = arity_of(op)
-    if len(expr.args) != takes:
+    builtin = builtin_operator(op)
+    place = (expr.line, expr.column)
+    if len(expr.args) != builtin.arity:
         diagnostics.append(
             Diagnostic(
                 "arity_mismatch",
-                f"operator {op!r} takes exactly {takes} argument(s), "
+                f"operator {op!r} takes exactly {builtin.arity} argument(s), "
                 f"got {len(expr.args)}; operators have no variable arity, so write "
-                f"the call with exactly {takes}",
-                (expr.line, expr.column),
-                about=AboutTwoCounts(op, takes, len(expr.args)),
+                f"the call with exactly {builtin.arity}",
+                place,
+                about=AboutTwoCounts(op, builtin.arity, len(expr.args)),
             )
         )
-    if op in NUMERIC_OPERATORS:
-        for arg_type in arg_types:
-            if arg_type is not None and arg_type != "Int":
-                diagnostics.append(
-                    Diagnostic(
-                        "type_mismatch",
-                        f"operator {op!r} expects Int operands, got {arg_type}",
-                        (expr.line, expr.column),
-                        about=AboutTwoTypes(op, "Int", arg_type),
-                    )
-                )
-        return "Int"
-    if op in COMPARISON_OPERATORS:
-        for arg_type in arg_types:
-            if arg_type is not None and arg_type != "Int":
-                diagnostics.append(
-                    Diagnostic(
-                        "type_mismatch",
-                        f"operator {op!r} expects Int operands, got {arg_type}",
-                        (expr.line, expr.column),
-                        about=AboutTwoTypes(op, "Int", arg_type),
-                    )
-                )
-        return "Bool"
-    if op in EQUALITY_OPERATORS:
-        known = [t for t in arg_types if t is not None]
-        if len(set(known)) > 1:
-            diagnostics.append(
-                Diagnostic(
-                    "type_mismatch",
-                    f"'=' operands have different types: {known}",
-                    (expr.line, expr.column),
-                    about=AboutTwoTypes(op, known[0], known[1]),
-                )
-            )
-        return "Bool"
-    if op in BOOLEAN_OPERATORS:
-        for arg_type in arg_types:
-            if arg_type is not None and arg_type != "Bool":
-                diagnostics.append(
-                    Diagnostic(
-                        "type_mismatch",
-                        f"operator {op!r} expects Bool operands, got {arg_type}",
-                        (expr.line, expr.column),
-                        about=AboutTwoTypes(op, "Bool", arg_type),
-                    )
-                )
-        return "Bool"
-    raise ValueError(f"unknown operator {op!r}")
+    diagnostics.extend(builtin.refusals(op, arg_types, place))
+    return builtin.answers
 
 
 # --- what the contracts of a program promise -------------------------------
