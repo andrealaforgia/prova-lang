@@ -594,6 +594,48 @@ def resolve_constructor_fields(constructor: str, program: Program) -> tuple[tupl
     return None if resolved is None else resolved[1]
 
 
+@dataclass(frozen=True)
+class DeclaredConstructor:
+    """One constructor as a program declares it: the type that owns it
+    and the fields it carries.
+
+    The one answer to how many values a constructor takes. Every rule
+    that compares that number with the number a program writes asks here
+    instead of counting the fields itself, so a rule about a constructor
+    written in an expression and a rule about one written as a value can
+    never disagree about the same declaration.
+
+    It holds the three parts of one declaration rather than two, which
+    keeps the name beside what the name resolves to: a reader of a
+    refusal is shown the constructor it wrote and the type that owns it
+    in the same breath, and splitting them would add a collaborator no
+    rule asks for.
+    """
+
+    name: str
+    owner: str
+    fields: tuple[tuple[str, str], ...]
+
+    @classmethod
+    def of(cls, constructor: str, program: Program) -> "DeclaredConstructor | None":
+        """What `program` declares `constructor` to be, or `None` when it
+        declares no record type and no union variant of that name."""
+        resolved = resolve_constructor(constructor, program)
+        if resolved is None:
+            return None
+        owner, fields = resolved
+        return cls(constructor, owner, fields)
+
+    def takes(self) -> int:
+        """How many values this constructor is written with."""
+        return len(self.fields)
+
+    def disagrees_with(self, written: int) -> bool:
+        """Whether a program writing this constructor with `written`
+        values wrote the wrong number of them."""
+        return self.takes() != written
+
+
 # --- expressions --------------------------------------------------------
 
 @dataclass(frozen=True)

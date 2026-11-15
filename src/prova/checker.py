@@ -1497,8 +1497,8 @@ def _infer(
         return _check_operator(expr, arg_types, diagnostics, within)
 
     if isinstance(expr, syntax.ConstructorCall):
-        fields = syntax.resolve_constructor_fields(expr.name, program)
-        if fields is None:
+        declared = syntax.DeclaredConstructor.of(expr.name, program)
+        if declared is None:
             diagnostics.append(
                 Diagnostic(
                     "unbound_constructor",
@@ -1510,13 +1510,14 @@ def _infer(
             for arg in expr.args:
                 _infer(arg, env, program, diagnostics, within)
             return None
-        if len(fields) != len(expr.args):
+        fields = declared.fields
+        if declared.disagrees_with(len(expr.args)):
             diagnostics.append(
                 Diagnostic(
                     "arity_mismatch",
-                    f"constructor {expr.name!r} takes {len(fields)} field(s), got {len(expr.args)}",
+                    f"constructor {expr.name!r} takes {declared.takes()} field(s), got {len(expr.args)}",
                     (expr.line, expr.column),
-                    about=AboutTwoCounts(expr.name, len(fields), len(expr.args)),
+                    about=AboutTwoCounts(expr.name, declared.takes(), len(expr.args)),
                 )
             )
         for (field_name, field_type), arg in zip(fields, expr.args):
@@ -1533,9 +1534,9 @@ def _infer(
                         ),
                     )
                 )
-        for arg in expr.args[len(fields):]:
+        for arg in expr.args[declared.takes():]:
             _infer(arg, env, program, diagnostics, within)
-        return syntax.resolve_constructor(expr.name, program)[0]
+        return declared.owner
 
     if isinstance(expr, syntax.Call):
         callee = program.functions.get(expr.name)

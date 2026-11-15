@@ -46,19 +46,20 @@ def check_value_type(value: object, type_name: str, program: syntax.Program, whe
     if not isinstance(value, ConstructorValue):
         raise IllTypedValue(f"{where} expects {type_name!r}, got {value!r}")
 
-    resolved = syntax.resolve_constructor(value.constructor, program)
-    if resolved is None:
+    declared = syntax.DeclaredConstructor.of(value.constructor, program)
+    if declared is None:
         raise MalformedValue(f"{where}: no record type or union variant named {value.constructor!r}")
-    owner, fields = resolved
-    if len(fields) != len(value.fields):
+    if declared.disagrees_with(len(value.fields)):
         raise MalformedValue(
-            f"{where}: constructor {value.constructor!r} takes {len(fields)} field(s), "
+            f"{where}: constructor {value.constructor!r} takes {declared.takes()} field(s), "
             f"got {len(value.fields)}"
         )
-    if owner != type_name:
-        raise IllTypedValue(f"{where} expects {type_name!r}, got {owner!r} value {value.constructor!r}")
+    if declared.owner != type_name:
+        raise IllTypedValue(
+            f"{where} expects {type_name!r}, got {declared.owner!r} value {value.constructor!r}"
+        )
 
-    for (field_name, field_type), field_value in zip(fields, value.fields):
+    for (field_name, field_type), field_value in zip(declared.fields, value.fields):
         check_value_type(field_value, field_type, program, f"{where} field {field_name!r}")
 
 
