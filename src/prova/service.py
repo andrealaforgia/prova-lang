@@ -6,6 +6,7 @@ The only place that knows operation names.
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 
 from prova import checker, evaluator, obligations, syntax
 from prova.reader import ReaderError, read_program
@@ -138,24 +139,54 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> dict:
     return entry
 
 
-def _run_check(source: str) -> dict:
-    try:
-        forms = read_program(source)
-        program = syntax.parse_program(forms)
-    except (ReaderError, syntax.SyntaxError_) as error:
+@dataclass(frozen=True)
+class Refusal:
+    """The one answer every operation that reads source gives when the
+    source is not a core-0 program it can check: the status it carries,
+    and the diagnostics that say why.
+
+    It holds nothing else. There is no field for a claim, a result or a
+    source digest, so an answer about a program the tool did not read
+    through cannot appear to report one.
+    """
+
+    status: str
+    diagnostics: tuple
+
+    def response_for(self, operation: str) -> dict:
         return {
-            "operation": "check",
-            "status": "invalid_program",
-            "diagnostics": [_syntax_diagnostic(error)],
+            "operation": operation,
+            "status": self.status,
+            "diagnostics": [dict(diagnostic) for diagnostic in self.diagnostics],
         }
+
+
+def _checked_program(source: str):
+    """The program `source` declares, checked against every rule of
+    core-0 -- or the `Refusal` to answer with instead.
+
+    Every operation that reads source asks here, so a source refused for
+    one of them is refused the same way for all of them, and a caller
+    moving between operations never meets two answers for one source.
+    """
+    try:
+        program = syntax.parse_program(read_program(source))
+    except (ReaderError, syntax.SyntaxError_) as error:
+        return Refusal("invalid_program", (_syntax_diagnostic(error),))
 
     diagnostics = checker.check_program(program)
     if diagnostics:
-        return {
-            "operation": "check",
-            "status": "invalid_program",
-            "diagnostics": [_diagnostic_dict(d) for d in diagnostics],
-        }
+        return Refusal(
+            "invalid_program",
+            tuple(_diagnostic_dict(diagnostic) for diagnostic in diagnostics),
+        )
+    return program
+
+
+def _run_check(source: str) -> dict:
+    checked = _checked_program(source)
+    if isinstance(checked, Refusal):
+        return checked.response_for("check")
 
     return {
         "operation": "check",
@@ -172,23 +203,10 @@ def _run_verify(source: str) -> dict:
     Reads nothing but `source`, writes nothing and keeps nothing: asking
     twice changes neither the answer nor anything else.
     """
-    try:
-        forms = read_program(source)
-        program = syntax.parse_program(forms)
-    except (ReaderError, syntax.SyntaxError_) as error:
-        return {
-            "operation": "verify",
-            "status": "invalid_program",
-            "diagnostics": [_syntax_diagnostic(error)],
-        }
-
-    diagnostics = checker.check_program(program)
-    if diagnostics:
-        return {
-            "operation": "verify",
-            "status": "invalid_program",
-            "diagnostics": [_diagnostic_dict(d) for d in diagnostics],
-        }
+    checked = _checked_program(source)
+    if isinstance(checked, Refusal):
+        return checked.response_for("verify")
+    program = checked
 
     return {
         "operation": "verify",
@@ -201,25 +219,10 @@ def _run_verify(source: str) -> dict:
 
 
 def _run_examples(source: str) -> dict:
-    try:
-        forms = read_program(source)
-        program = syntax.parse_program(forms)
-    except (ReaderError, syntax.SyntaxError_) as error:
-        return {
-            "operation": "examples",
-            "status": "invalid_program",
-            "diagnostics": [_syntax_diagnostic(error)],
-        }
-
-    diagnostics = checker.check_program(program)
-    if diagnostics:
-        return {
-            "operation": "examples",
-            "status": "invalid_program",
-            "diagnostics": [
-                _diagnostic_dict(d) for d in diagnostics
-            ],
-        }
+    checked = _checked_program(source)
+    if isinstance(checked, Refusal):
+        return checked.response_for("examples")
+    program = checked
 
     results = []
     for function in program.functions.values():
@@ -259,25 +262,10 @@ def _parse_value_text(text: str) -> object:
 
 
 def _run_evaluate(source: str, function_name: object, argument_texts: list) -> dict:
-    try:
-        forms = read_program(source)
-        program = syntax.parse_program(forms)
-    except (ReaderError, syntax.SyntaxError_) as error:
-        return {
-            "operation": "evaluate",
-            "status": "invalid_program",
-            "diagnostics": [_syntax_diagnostic(error)],
-        }
-
-    diagnostics = checker.check_program(program)
-    if diagnostics:
-        return {
-            "operation": "evaluate",
-            "status": "invalid_program",
-            "diagnostics": [
-                _diagnostic_dict(d) for d in diagnostics
-            ],
-        }
+    checked = _checked_program(source)
+    if isinstance(checked, Refusal):
+        return checked.response_for("evaluate")
+    program = checked
 
     function = program.functions.get(function_name)
     if function is None:
