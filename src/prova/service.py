@@ -5,11 +5,19 @@ The only place that knows operation names.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 
-from prova import checker, evaluator, formatter, manifest, obligations, syntax, tree
+from prova import (
+    checker,
+    evaluator,
+    formatter,
+    manifest,
+    obligations,
+    provenance,
+    syntax,
+    tree,
+)
 from prova.budgets import BudgetExhausted, Budgets, Exhaustion, Run, UnreadableBudget
 from prova.reader import (
     LITERAL_DIGITS,
@@ -613,6 +621,11 @@ class SourceRevision:
     recomputes it from what it sent, so two versions of a file are never
     confused for each other and evidence about one cannot certify the
     other.
+
+    The hashing itself belongs to `provenance.Digest`, which this asks:
+    the revision of a source and the digest over this tool's own
+    description are one algorithm over two texts, and one place writes
+    it.
     """
 
     digest: str
@@ -626,7 +639,7 @@ class SourceRevision:
         because nothing but the reader builds one of these, and the
         reader refuses a text that has none.
         """
-        return cls(hashlib.sha256(source.characters.encode("utf-8")).hexdigest())
+        return cls(provenance.Digest.of(source.characters).rendered())
 
     def rendered(self) -> str:
         return self.digest
