@@ -58,23 +58,81 @@ class Site:
 
 
 @dataclass(frozen=True)
+class Holds:
+    """A condition reached because an expression of the program is true
+    there: the test of an `if` on the way into its branch, or a clause of
+    the function's own precondition."""
+
+    expression: object
+
+    def text(self) -> str:
+        return text_of(self.expression)
+
+
+@dataclass(frozen=True)
+class Fails:
+    """A condition reached because an expression of the program is false
+    there: the test of an `if` on the way into its other branch."""
+
+    expression: object
+
+    def text(self) -> str:
+        return f"(not {text_of(self.expression)})"
+
+
+@dataclass(frozen=True)
+class Matches:
+    """A condition reached because the scrutinee of a `match` has the
+    shape one of its patterns writes."""
+
+    scrutinee: object
+    pattern: object
+
+    def text(self) -> str:
+        return f"(matches {text_of(self.scrutinee)} {pattern_text(self.pattern)})"
+
+
+@dataclass(frozen=True)
+class DoesNotMatch:
+    """A condition reached because an earlier clause of a `match` did not
+    take the value: clauses are tried in source order, so a later one is
+    reached only where every earlier pattern failed."""
+
+    scrutinee: object
+    pattern: object
+
+    def text(self) -> str:
+        return (
+            f"(not (matches {text_of(self.scrutinee)} "
+            f"{pattern_text(self.pattern)}))"
+        )
+
+
+@dataclass(frozen=True)
 class PathCondition:
     """What must hold for a site to be reached: the function's own
     precondition where the site is answered under it, then the branch and
     match conditions on the way down. It reads `true` only when there is
-    none."""
+    none.
 
-    clauses: tuple[str, ...] = ()
+    Each clause is the condition it is -- an expression holding or
+    failing, a pattern matching or not -- and not the text of one. A
+    reader is shown the text; anything that has to decide what reaches a
+    site, rather than print it, is given the program's own expressions.
+    """
 
-    def extended_with(self, clauses: tuple[str, ...]) -> "PathCondition":
+    clauses: tuple[object, ...] = ()
+
+    def extended_with(self, clauses: tuple[object, ...]) -> "PathCondition":
         return PathCondition(self.clauses + clauses)
 
     def text(self) -> str:
         if not self.clauses:
             return "true"
-        if len(self.clauses) == 1:
-            return self.clauses[0]
-        return "(and " + " ".join(self.clauses) + ")"
+        written = [clause.text() for clause in self.clauses]
+        if len(written) == 1:
+            return written[0]
+        return "(and " + " ".join(written) + ")"
 
 
 # --- what must be shown ----------------------------------------------------
@@ -329,7 +387,7 @@ def _precondition_of(function: syntax.Function) -> PathCondition:
     well-defined for every typed input and cannot assume itself true to
     justify a partial call.
     """
-    return PathCondition(tuple(text_of(clause) for clause in function.requires))
+    return PathCondition(tuple(Holds(clause) for clause in function.requires))
 
 
 def _calls_in(
@@ -378,7 +436,7 @@ def _call_obligation(
     )
 
 
-def _parts_of(expression: object) -> list[tuple[object, str, tuple[str, ...]]]:
+def _parts_of(expression: object) -> list[tuple[object, str, tuple[object, ...]]]:
     """Each subexpression of `expression` with the path segment that names
     it and the conditions that must hold to reach it."""
     if isinstance(
@@ -394,28 +452,32 @@ def _parts_of(expression: object) -> list[tuple[object, str, tuple[str, ...]]]:
         ]
         return bound + [(expression.body, "in", ())]
     if isinstance(expression, syntax.If):
-        asked = text_of(expression.condition)
+        asked = expression.condition
         return [
             (expression.condition, "cond", ()),
-            (expression.then_branch, "then", (asked,)),
-            (expression.else_branch, "else", (f"(not {asked})",)),
+            (expression.then_branch, "then", (Holds(asked),)),
+            (expression.else_branch, "else", (Fails(asked),)),
         ]
     if isinstance(expression, syntax.Match):
         return _parts_of_match(expression)
     return []
 
 
-def _parts_of_match(expression: syntax.Match) -> list[tuple[object, str, tuple[str, ...]]]:
-    scrutinee = text_of(expression.scrutinee)
-    parts: list[tuple[object, str, tuple[str, ...]]] = [
+def _parts_of_match(
+    expression: syntax.Match,
+) -> list[tuple[object, str, tuple[object, ...]]]:
+    scrutinee = expression.scrutinee
+    parts: list[tuple[object, str, tuple[object, ...]]] = [
         (expression.scrutinee, "scrutinee", ())
     ]
-    earlier: tuple[str, ...] = ()
+    earlier: tuple[object, ...] = ()
     for index, clause in enumerate(expression.clauses):
-        matched = f"(matches {scrutinee} {pattern_text(clause.pattern)})"
-        reached = earlier + ((matched,) if _can_fail(clause.pattern) else ())
+        taken = _can_fail(clause.pattern)
+        reached = earlier + ((Matches(scrutinee, clause.pattern),) if taken else ())
         parts.append((clause.body, f"case[{index}]", reached))
-        earlier = earlier + ((f"(not {matched})",) if _can_fail(clause.pattern) else ())
+        earlier = earlier + (
+            (DoesNotMatch(scrutinee, clause.pattern),) if taken else ()
+        )
     return parts
 
 
