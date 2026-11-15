@@ -142,11 +142,11 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 ## Observed side effects (git, BASE to HEAD)
 
 - A docs/contract-report/DECISIONS.md (+11 -0 lines)
-- A docs/contract-report/SUMMARY.md (+385 -0 lines)
+- A docs/contract-report/SUMMARY.md (+393 -0 lines)
 - A docs/contract-report/TRACE.md (+5 -0 lines)
-- A docs/feature/contract-report/craft.md (+113 -0 lines)
+- A docs/feature/contract-report/craft.md (+116 -0 lines)
 - A docs/feature/contract-report/oracle.md (+61 -0 lines)
-- A docs/feature/contract-report/selfreview.md (+48 -0 lines)
+- A docs/feature/contract-report/selfreview.md (+50 -0 lines)
 - M src/prova/checker.py (+273 -0 lines)
 - M src/prova/service.py (+13 -0 lines)
 - A tests/acceptance/_f13_contract_fixtures.py (+205 -0 lines)
@@ -163,6 +163,8 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - 5b558e4 [F13] say which contracts are missing or trivial
 - 7eceb90 [F13] hand the contract report over with its record
 - fed906d [F13] read a contract block for its value, and publish every part of the report
+- 6c91fee [F13] regenerate the record against the final tree
+- cf6046c [F13] call the second review finding what it was: a test gap
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
@@ -391,3 +393,53 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ```
 - **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.057s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this environment, checked from a shell command and from a login shell; the client answered exit 3 before any question was sent, so the two open choices were decided locally and recorded as DEC1 and DEC2 of the oracle step
+
+## 4. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the report is carried by check alone and published in the manifest, as DEC1 decided; src/prova/service.py:58 holds that list beside the dispatcher that owns operation names
+  - D2: fixed:the three strength words were written twice, as a names tuple and three singletons; they are now one table CONTRACT_STRENGTH_MEANINGS that the names, the values and the published shape are all read from
+  - D3: pass - the rule lives in the checker and the dispatcher only asks for it; the checker learns no operation name, it is passed the list of operations that carry the report
+  - D4: pass - src/prova/checker.py:1727 refuses any word the manifest does not publish and src/prova/checker.py:1840 refuses a report naming one function twice, each with a test and a positive control
+  - D5: pass - src/prova/checker.py:1778 is three fields and four short methods, and each of the three values answers about itself instead of reading another one data
+  - D6: pass - a smart constructor over a closed vocabulary and nothing else; no pattern was added for its own sake and no framework was introduced
+  - D7: pass - omitted, trivial, stated, precondition and postcondition are the words of SPEC.md lines 204 to 206, not words of the implementation
+  - D8: pass - the rule reads a parsed program and returns a value: it opens no file, spawns no process and keeps nothing between two requests
+  - D9: pass - every acceptance and property test drives the real prova command over JSON, for example tests/acceptance/test_f13_b1_a_function_without_a_precondition_is_recorded_as_omitted.py:28
+  - D10: pass - each test name is a sentence about what the Owner sees and none of them holds a production symbol, a layer term or a process id
+  - D11: pass - one fixture module holds the programs and the one way the tests talk to the tool, and every program is written out so each expected strength is read by hand
+  - D12: pass - four laws, each case built from a closed set of block texts that now holds the literal false, at tests/properties/test_f13_contract_report_laws.py:112 and the three that follow it; the plan is the oracle and each case is built from a closed set of block texts
+  - D13: pass - nine runs of the new files in a row: 22 passed each time, real 3.00s to 3.07s, median 3.02s; a property case costs about 38ms because the law is read through the real command
+  - D14: pass - the finite examples state the four criteria and the shipped hour clock, the properties state the laws over generated programs, and no pair repeats one stimulus and one assertion
+  - D15: pass - every refusal says what failed, why it matters and how to repair it at src/prova/checker.py:1729, and every assertion message names the expected and the actual reading
+  - D16: n/a:the change adds no state, no protocol and no concurrency: one parsed program goes in and one field of one answer comes out, so a Quint model would model nothing
+  - D17: pass - the craft document states what the tests prove and what they do not, the measured test cost, and that the Jev service was unavailable in this environment
+- **independent_review**:
+  - REV1 | reviewer=independent-review-f13 | findings=4 (verdict REJECT at 7eceb90) | resolution=F1-F4 fixed in fed906d, record in 6c91fee
+  - REV2 | reviewer=independent-review-f13 | findings=1 (verdict APPROVE at 6c91fee) | resolution=record wording corrected so item 2 is a test gap, not a defect
+
+## 5. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - The report carries the counts of those blocks, a field that is false when nothing in the program promises anything, and one sentence saying how much the report is worth.
+  - The dispatcher gains the list of operations that carry the report, one field in the check answer and the published shape in the manifest, so a client reads the entry fields, the strengths, the totals and the note from the tool instead of from an example.
+  - The shipped hour clock reads the way a human reads it: valid-state omitted and omitted, initial omitted and stated, step stated and stated.
+  - Checked by the whole suite, by nine runs of the new files in a row, and by putting three wrong behaviours back into the code one at a time and watching the named tests fail.
+- **not_verified**:
+  - whether a block recorded as stated is true of its function: this tool attempts no obligation and the report says so in its own note
+  - a contract that promises nothing without being written as the literal true, such as (ensures (or p (not p))): it is recorded as stated, and deciding otherwise would need a solver
+  - an empty block written as (requires): it is recorded as omitted, because the parsed program keeps no mark that tells it from an absent block
+  - the two refusals of the report under concurrency or interruption: the rule keeps no state and writes nothing, so neither was exercised
+  - the Jev service: TYPESAFE_API_KEY is absent from this environment, the client answered exit 3 before any question was sent, and both open choices were decided locally and recorded as DEC1 and DEC2
+  - a rebase onto a moved main: main is unchanged at 988db32, so none was attempted
+  - mutation coverage beyond the three behaviours put back into the code: the probe step is not due at this size
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit cf6046c9b045656401e310d3aca2df50e826a8fe
+  - no checks declared
+
+## Not backed by the diff
+
+- A checked program now answers, beside its digest, a report of what each declared function promises: for every function, whether its requires block and its ensures block is omitted, written as the literal true, or stated.: a guarantee names no test function of the change
+- When every block of a program is omitted or trivial, no word of the whole answer describes the program as meaningfully correct; the scan that observes this is shown able to fire on a sentence that does.: a guarantee names no test function of the change
+- The rule lives in the checker, beside the other whole-program rules: a strength is one of three published words and refuses any other, and a report refuses to name one function twice.: a guarantee names no test function of the change
+- Only the literal true is recognised as trivial, and an empty block reads as omitted: both limits are written in the documents, with the reason.: a guarantee names no test function of the change
