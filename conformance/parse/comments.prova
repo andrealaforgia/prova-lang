@@ -1,0 +1,3 @@
+; the counter a program keeps
+(deftype Counter (record (held Int)))
+; nothing follows this comment

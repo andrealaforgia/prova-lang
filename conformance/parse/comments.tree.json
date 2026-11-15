@@ -1,0 +1,28 @@
+{
+  "kind": "program",
+  "position": {"line": 1, "column": 1},
+  "declarations": [
+    {
+      "kind": "record_type",
+      "position": {"line": 2, "column": 1},
+      "name": "Counter",
+      "comments": [
+        {
+          "kind": "comment",
+          "position": {"line": 1, "column": 1},
+          "text": "; the counter a program keeps"
+        }
+      ],
+      "fields": [
+        {"kind": "field", "position": {"line": 2, "column": 27}, "name": "held", "type": "Int"}
+      ]
+    }
+  ],
+  "trailing_comments": [
+    {
+      "kind": "comment",
+      "position": {"line": 3, "column": 1},
+      "text": "; nothing follows this comment"
+    }
+  ]
+}

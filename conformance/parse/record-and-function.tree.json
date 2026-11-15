@@ -1,0 +1,45 @@
+{
+  "kind": "program",
+  "position": {"line": 1, "column": 1},
+  "declarations": [
+    {
+      "kind": "record_type",
+      "position": {"line": 1, "column": 1},
+      "name": "Counter",
+      "fields": [
+        {"kind": "field", "position": {"line": 1, "column": 27}, "name": "held", "type": "Int"}
+      ]
+    },
+    {
+      "kind": "function",
+      "position": {"line": 2, "column": 1},
+      "name": "held-of",
+      "signature": {
+        "kind": "signature",
+        "position": {"line": 3, "column": 3},
+        "parameters": [
+          {"kind": "parameter", "position": {"line": 3, "column": 10}, "name": "counter", "type": "Counter"}
+        ],
+        "return_type": "Int",
+        "effect": "pure"
+      },
+      "requires": [],
+      "ensures": [],
+      "examples": [
+        {
+          "kind": "example",
+          "position": {"line": 4, "column": 13},
+          "function": "held-of",
+          "arguments": ["(Counter 1)"],
+          "expected": "1"
+        }
+      ],
+      "body": {
+        "kind": "field_access",
+        "position": {"line": 5, "column": 3},
+        "field": "held",
+        "target": {"kind": "name", "position": {"line": 5, "column": 10}, "name": "counter"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+(deftype Counter (record (held Int)))
+(defn held-of
+  (sig ((counter Counter)) -> Int ! pure)
+  (examples (example (held-of (Counter 1)) => 1))
+  (.held counter))
