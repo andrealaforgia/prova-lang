@@ -475,6 +475,9 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
     "unknown_operation": DiagnosticKind(
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=(), revision=NEVER
     ),
+    "tool_failure": DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=(), revision=NEVER
+    ),
 }
 
 

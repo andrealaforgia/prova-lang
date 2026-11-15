@@ -53,6 +53,16 @@ SOURCE_READING_OPERATIONS = (
 )
 UNAVAILABLE_OPERATIONS = frozenset({"build"})
 
+# The profile this tool answers for, written once: the manifest publishes
+# it, and the digest of what an answer stands on is taken over it.
+THE_PROFILE = {"name": "core-0", "coverage": "partial"}
+
+# What this tool reports when it failed inside itself. Deliberately not
+# one of the statuses below: those are the statuses of an answered
+# request, and a failure of this tool is not an answer to one (SPEC.md
+# lines 280-284).
+TOOL_FAILURE = "tool_failure"
+
 # What the tool answers when the source is not a program it can check.
 # `invalid_program` means the source is a core-0 program that breaks a
 # rule of core-0; `unsupported` means it is not a program of this profile
@@ -190,14 +200,56 @@ def answer_text(submitted: object, budgets: Budgets | None = None) -> str:
     never finished writing. The refusal that replaces it is this tool's
     smallest answer and is printed whatever the budget says, which the
     manifest states beside the budget.
+
+    It is also the outermost boundary of this tool: a failure of the tool
+    itself gets no further than here. It is answered as a failure, rather
+    than reaching a caller as a run that broke, or as a status of an
+    answered request, which would say something was decided about the
+    program.
     """
     within = budgets if budgets is not None else Budgets.declared()
-    answer = handle(submitted, within)
-    text = json.dumps(answer)
+    try:
+        answer = handle(submitted, within)
+        text = json.dumps(answer)
+    except Exception as failure:  # noqa: BLE001 - the tool, not the request
+        return json.dumps(tool_failure(failure))
     exhausted = within.answer_exhausted_by(text)
     if exhausted is None:
         return text
     return json.dumps(budget_response(answer.get("operation"), exhausted))
+
+
+def tool_failure(failure: Exception) -> dict:
+    """The one answer a run that failed inside this tool gives.
+
+    It carries the status no answered request carries, and one refusal
+    naming what broke. There is no claim, no result and no revision of a
+    source in it: the tool stopped on a failure of its own, read no rule
+    of the language over anything, and must not appear to report on a
+    program.
+
+    The operation is left unnamed. Reading the request is one of the
+    things that can fail here, so the name would be read from the very
+    thing that broke.
+    """
+    return {
+        "operation": None,
+        "status": TOOL_FAILURE,
+        "diagnostics": [
+            _diagnostic_dict(
+                checker.Diagnostic(
+                    TOOL_FAILURE,
+                    "the tool failed while it was answering: "
+                    f"{type(failure).__name__}: {failure}. This is a failure "
+                    "of this tool itself, not a statement about any program: "
+                    "nothing was read through and nothing here reports on the "
+                    "source the request carried. Send the request again, and "
+                    "report it with the failure named here if it fails a "
+                    "second time",
+                )
+            )
+        ],
+    }
 
 
 def budget_response(operation: object, exhaustion: Exhaustion) -> dict:
@@ -520,9 +572,10 @@ def _run_discover() -> dict:
         "operation": "discover",
         "status": "completed",
         "claim": {"kind": "manifest", "scope": "this tool"},
+        "stands_on": _stands_on(),
         "diagnostics": [],
         "result": {
-            "profile": {"name": "core-0", "coverage": "partial"},
+            "profile": THE_PROFILE,
             "operations": availability,
             "statuses": dict(STATUSES),
             "diagnostic_categories": list(DIAGNOSTIC_CATEGORIES),
@@ -578,6 +631,21 @@ def _run_discover() -> dict:
                     "a program may mean: an integer written inside it is read "
                     "and answered exactly, however far past 64 bits it is. "
                     f"{LITERAL_DIGITS.reason()}"
+                ),
+                "stands_on": (
+                    "What an answer stands on, and when it stops standing on "
+                    "it. A completed answer carries 'source_digest', the "
+                    "SHA-256 of the exact characters the request sent, and "
+                    "'stands_on.dependency_digest', the digest of this tool "
+                    "and of the language it reads. The answer is about that "
+                    "revision of that source, read by that tool, and about "
+                    "nothing else: before using an answer you kept, compute "
+                    "the SHA-256 of the source you hold now and read this "
+                    "manifest again, and ask once more when either of the two "
+                    "differs. One operation carries no such block: "
+                    "'evaluate', which SPEC.md names in none of its operation "
+                    "categories and which is this tool's own, answers with "
+                    "its claim and its source revision alone."
                 ),
                 "verify": (
                     "A completed verify response is an inventory only: it lists the "
@@ -647,6 +715,22 @@ class SourceRevision:
 
 def _source_digest(source: SubmittedText) -> str:
     return SourceRevision.of(source).rendered()
+
+
+def _stands_on() -> dict:
+    """What a completed answer stands on: the digest of this tool and of
+    the language it reads, and the versions behind both.
+
+    The one place an answer learns it, and the same place the manifest
+    publishes it from, so the digest a client keeps beside an answer and
+    the digest it reads from this tool later cannot drift apart.
+
+    An answer that read no program through carries none of it: there is
+    nothing it stands on, and a block there would say otherwise.
+    """
+    return provenance.Provenance.of(
+        THE_PROFILE, manifest.the_language_published()
+    ).published()
 
 
 def _diagnostic_dict(
@@ -834,6 +918,7 @@ def _run_check(source: SubmittedText, run: Run) -> dict:
         "status": "completed",
         "claim": {"kind": "static_check", "scope": "this input"},
         "source_digest": _source_digest(source),
+        "stands_on": _stands_on(),
         "diagnostics": [],
         "contract_report": checker.ContractReport.of(program).as_dict(),
     }
@@ -855,6 +940,7 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
         "status": "completed",
         "claim": {"kind": "obligation_inventory", "scope": "this input"},
         "source_digest": _source_digest(source),
+        "stands_on": _stands_on(),
         "diagnostics": [],
         "result": {"inventory": obligations.inventory_for(program).as_dict()},
     }
@@ -883,6 +969,7 @@ def _run_parse(source: SubmittedText, run: Run) -> dict:
         "status": "completed",
         "claim": {"kind": "syntax_tree", "scope": "this input"},
         "source_digest": _source_digest(source),
+        "stands_on": _stands_on(),
         "diagnostics": [],
         "result": {
             "tree": tree.tree_of(
@@ -917,6 +1004,7 @@ def _run_format(source: SubmittedText, run: Run) -> dict:
         "status": "completed",
         "claim": {"kind": "canonical_text", "scope": "this input"},
         "source_digest": _source_digest(source),
+        "stands_on": _stands_on(),
         "diagnostics": [],
         "result": {
             "text": formatter.canonical_text(
@@ -960,6 +1048,7 @@ def _run_examples(source: SubmittedText, run: Run) -> dict:
         "status": "completed",
         "claim": {"kind": "examples", "scope": "declared examples"},
         "source_digest": _source_digest(source),
+        "stands_on": _stands_on(),
         "diagnostics": [],
         "result": {"examples": results},
     }

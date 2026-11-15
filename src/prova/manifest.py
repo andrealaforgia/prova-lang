@@ -64,6 +64,16 @@ class Field:
     def when_completed(cls, name: str, kind: str, what: str) -> "Field":
         return cls(name, kind, WHEN_COMPLETED, what)
 
+    def always_there(self) -> "Field":
+        """The same field, carried under no condition.
+
+        An operation that either answers or does not answer at all, as
+        `discover` does, has nothing a condition could tell apart: a
+        field published there as 'when completed' would name a condition
+        a client can never see fail.
+        """
+        return Field(self.name, self.kind, ALWAYS, self.what)
+
     @classmethod
     def when(cls, name: str, kind: str, condition: str, what: str) -> "Field":
         """A field that is there under a condition of its own, written
@@ -138,6 +148,21 @@ SOURCE_DIGEST = Field.when_completed(
     "text",
     "the revision of the submitted source this answer is about, as its "
     "SHA-256; it says which text the answer is about and nothing more",
+)
+# The field is spelled as what it does rather than with the word
+# provenance: that word carries 'proven' inside it, and an answer of this
+# tool is read by callers that refuse any answer whose text claims
+# something was proven. A field name is not the place to make a reader
+# look twice.
+STANDS_ON = Field.when_completed(
+    "stands_on",
+    "object",
+    "what this answer stands on: under 'dependency_digest' the digest of "
+    "this tool and of the language it reads, and under 'versions' the "
+    "compiler, the encoding, the solver and the runtime behind it, each "
+    "either a version or a sentence beginning 'not applicable:' with the "
+    "reason there is none. An answer stands on that digest and on the "
+    "revision under 'source_digest', and on nothing else",
 )
 EVERY_ANSWER = (OPERATION_ANSWERED, STATUS, DIAGNOSTICS)
 
@@ -336,6 +361,12 @@ class Catalogue:
 SOURCE_READING_REQUEST = (SOURCE,)
 A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE = EVERY_ANSWER + (CLAIM, SOURCE_DIGEST)
 
+# The same, for the operations of the profile, which also say what they
+# stand on. The `evaluate` operation is not one of them: SPEC.md names it
+# in none of its operation categories, it is this tool's own, and its
+# answer carries the claim and the revision alone.
+AN_ANSWER_OF_THE_PROFILE = A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE + (STANDS_ON,)
+
 THE_OPERATIONS = Catalogue(
     (
         Operation(
@@ -351,6 +382,7 @@ THE_OPERATIONS = Catalogue(
                         "what kind of statement this answer makes and how far "
                         "it reaches",
                     ),
+                    STANDS_ON.always_there(),
                     Field.in_every_answer(
                         "result",
                         "object",
@@ -366,7 +398,7 @@ THE_OPERATIONS = Catalogue(
             InACategory("checking"),
             answering(
                 SOURCE_READING_REQUEST,
-                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(
                         "contract_report",
@@ -383,13 +415,19 @@ THE_OPERATIONS = Catalogue(
             InACategory("verification"),
             answering(
                 SOURCE_READING_REQUEST,
-                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(
                         "result",
                         "object",
-                        "the inventory of the obligations the program owes, "
-                        "every one of them not attempted",
+                        "the inventory of the obligations the program owes. "
+                        "Each entry says under 'result' where it stands as a "
+                        "statement, which is 'not_attempted' for every one of "
+                        "them, and under 'execution_status' what happened "
+                        "when something tried to settle it, which is "
+                        "'unsupported' because this tool has no solver. The "
+                        "two are read apart: an entry nothing ran is not an "
+                        "entry nothing is owed for",
                     ),
                 ),
             ),
@@ -399,7 +437,7 @@ THE_OPERATIONS = Catalogue(
             InACategory("examples"),
             answering(
                 SOURCE_READING_REQUEST,
-                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(
                         "result",
@@ -440,7 +478,7 @@ THE_OPERATIONS = Catalogue(
             InACategory("parsing"),
             answering(
                 SOURCE_READING_REQUEST,
-                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(
                         "result",
@@ -458,7 +496,7 @@ THE_OPERATIONS = Catalogue(
             InACategory("formatting"),
             answering(
                 SOURCE_READING_REQUEST,
-                A_REFUSAL_OR_AN_ANSWER_ABOUT_A_SOURCE
+                AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(
                         "result",

@@ -10,9 +10,10 @@ obligation vacuous but does not remove it.
 
 Nothing here attempts an obligation. This module has no solver, reads no
 file, spawns nothing and keeps no state: it turns a typed program into the
-list of what would have to be shown about it. Every obligation carries the
-result `not_attempted`, which is a constant of the type and not something a
-caller can set.
+list of what would have to be shown about it. Every obligation carries two
+words that are constants of the type and not something a caller can set:
+`not_attempted`, its standing as a statement, and `unsupported`, what
+happened when something tried to settle it.
 
 The inventory is built only for a program the checker accepted, so every
 call it meets is resolved; a call that is not resolved is a programming
@@ -25,7 +26,12 @@ from dataclasses import dataclass
 
 from prova import syntax
 
+# What an obligation stands as, and what happened to the attempt to
+# settle it: SPEC.md lines 270-284 keep the two apart and give each its
+# own words, which share none. This tool has no solver, so nothing here
+# supported an attempt and every entry carries both constants.
 NOT_ATTEMPTED = "not_attempted"
+UNSUPPORTED = "unsupported"
 
 NOTHING_WAS_ATTEMPTED = (
     "This tool has no solver and ran none of these obligations: every entry is "
@@ -77,9 +83,10 @@ class PathCondition:
 class Obligation:
     """One thing that would have to be shown about one function.
 
-    No constructor takes a result: `not_attempted` is the only result an
-    obligation can carry, so an inventory reporting attempted work cannot
-    be built.
+    No constructor takes either of its two words: `not_attempted` is the
+    only standing an obligation can carry and `unsupported` the only
+    thing that can have happened to it here, so an inventory reporting
+    attempted work cannot be built at all.
     """
 
     function: str
@@ -105,6 +112,7 @@ class Obligation:
             "site": self.site.text(),
             "to_show": self.to_show(),
             "result": NOT_ATTEMPTED,
+            "execution_status": UNSUPPORTED,
         }
         entry.update(self.detail())
         return entry
