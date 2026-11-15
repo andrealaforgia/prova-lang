@@ -106,3 +106,30 @@ shared state, no protocol with more than one step, no retry, no crash
 window and no actor that can change what another reads, so there is no
 state space a model would explore. The laws that do exist are over
 inputs, and the generated properties check them directly.
+
+## Two decisions recorded after the first review
+
+**A request that cannot be read is answered before the program is.**
+When a field of the request is unreadable and the source is also
+broken, the answer names the field, not the program. A request that
+cannot be read is not yet a request about a program, so there is
+nothing to report about one; and the field is the thing the client can
+repair. The visible change: a request with no `function` and a broken
+`source` used to be answered `invalid_program` with a `syntax` refusal
+and is now answered `invalid_input` with a `malformed_request`.
+
+**The evaluator counts steps, not calls.** The review asked for a limit
+on how deep a chain of calls may go. The limit counts every evaluation
+step standing inside another instead, calls among them. Counting calls
+alone would leave the stack unbounded: the expression written inside
+each call is still standing when the next call is made, so a short
+chain of deeply written functions would exhaust the stack while every
+count stayed under its own limit. One stack is bounded by one number.
+
+## What this design does not claim
+
+The two limits bound the stack. They say nothing about memory or time:
+a program inside both can still build a very large value, and nothing
+here measures how long a run takes. The frame counts behind both
+numbers were measured on the Python this repository pins; another build
+would need them measured again.
