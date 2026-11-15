@@ -21,6 +21,14 @@ Nine promises were drawn from the request, one per outcome sentence:
 | P8 | An answer larger than the answer budget is replaced whole by a refusal, never cut short. |
 | P9 | A run that has taken more memory than it was given is refused for the memory budget, by name. |
 
+Two more outcomes were promised after the first independent review found them
+missing:
+
+| | Promise, added after the first review |
+|---|---|
+| P10 | A request longer than this tool reads is answered against the input budget without being read, and names no operation, because none was read. |
+| P11 | A source is sized in the bytes it takes, not in the characters it has. |
+
 Twenty-four of the request's thirty-seven sentences are process or context (the
 worktree, the commit line, the criterion numbers); each is recorded with the
 reason it states no outcome a caller can observe.
@@ -63,8 +71,9 @@ reason it states no outcome a caller can observe.
 
 ## What the tests prove
 
-Twelve scenarios, written as ten acceptance test files and four generated laws,
-all driving the real command over its standard input and output:
+Twelve scenarios for the first nine promises, and four more for the two added
+after the first review, written as ten acceptance test files and four generated
+laws, all driving the real command over its standard input and output:
 
 * the manifest states four budgets for each of the six operations offered -- 24
   entries, `parse` being the sixth -- with the Owner's numbers, each marked
@@ -79,7 +88,11 @@ all driving the real command over its standard input and output:
 * the hour clock, 1474 bytes, still steps from 11 o'clock to 12 with no
   diagnostics, and the three programs this repository ships still check;
 * the nesting limit of 128 forms and the evaluation depth of 160 steps are
-  unchanged.
+  unchanged;
+* a 20 MiB request under a lowered budget is refused having cost what a small
+  one costs, and names no operation;
+* a source of 50 characters taking 148 bytes is refused against a budget of 100,
+  while one of 21 characters taking 61 bytes is not.
 
 Every one of those tests was run against the tree as it stands before this
 feature: 23 of them failed and none of them broke on an import or a fixture.
@@ -88,7 +101,8 @@ so that a tool which simply refused everything would not pass either.
 
 ## Added after the first review
 
-A tenth acceptance file was added when an independent review found two defects:
+A tenth acceptance file was added, carrying the four cases of P10 and P11, when
+an independent review found two defects:
 one for a request longer than this tool reads, which is now answered against the
 input budget without being read, and one for a source whose bytes outnumber its
 characters, which is now sized in bytes. The new cases are listed with the
