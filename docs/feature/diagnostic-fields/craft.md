@@ -95,6 +95,20 @@ Against `bcec4ec`, on `main` at `5498173`:
   3. The four open semantic questions were decided locally and are
   written down in the oracle note.
 
+## Reading the generated brief
+
+`docs/diagnostic-fields/` is generated from the run's journal. Two things
+in it come from the workspace's archived baseline, which predates the
+rebase of this branch onto `main`, and not from this change:
+
+- the craft section is marked `STALE`, because an earlier step was
+  recorded again after it. It still holds: the numbers it records were
+  measured again by hand against the branch as it stands and are written
+  above, and the tool refuses a new craft revision while the baseline
+  predates the rebase.
+- the list of changed files includes `main`'s own `[F16fix]` files. They
+  are not part of this change; `git log 5498173..HEAD` is the branch.
+
 ## What is still open
 
 Two findings of the first review are follow-ups rather than repairs, and
