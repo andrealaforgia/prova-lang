@@ -27,6 +27,13 @@ from _f17_provenance_fixtures import (
 THE_ONES_THIS_TOOL_USED = ("compiler", "runtime")
 THE_ONES_THIS_TOOL_HAS_NONE_OF = ("encoding", "solver")
 
+# The answers that ask no solver and write nothing for one. `verify` asks
+# a solver about the obligations it lists, so its answer names the solver
+# and the translation it really used; every other operation reads a
+# program and answers about it without turning an obligation into the
+# language of one, so for those two there is still none to name.
+THE_ANSWERS_THAT_ASK_NO_SOLVER = ("check", "examples", "parse", "format", "discover")
+
 
 def _every_completed_answer() -> dict:
     answers = {
@@ -90,11 +97,42 @@ def test_the_two_this_tool_really_used_name_a_version():
         )
 
 
-def test_the_two_this_tool_has_none_of_say_so_with_a_reason():
-    """Given the same 6 answers, then the encoding and the solver each
-    say they do not apply, and each says why in at least 20 characters of
-    its own."""
-    for operation, answer in _every_completed_answer().items():
+def test_the_answer_that_asked_a_solver_names_it_and_the_translation():
+    """Given the verify answer, then the solver and the encoding each
+    name what was used with a version in it, because that answer really
+    asked one."""
+    named = versions_of(answer_about("verify"), "of 'verify'")
+
+    for version in THE_ONES_THIS_TOOL_HAS_NONE_OF:
+        said = named[version]
+        assert not said.startswith(DOES_NOT_APPLY) and any(
+            character.isdigit() for character in said
+        ), (
+            f"WHAT: the verify answer says {said!r} about {version!r}. "
+            f"WHY: that answer put obligations to a solver through a "
+            "translation written for it, so a reader told there is none "
+            "cannot reproduce it or compare it with another. "
+            "HOW: name what was used, with its version."
+        )
+
+
+def test_the_two_an_answer_without_a_solver_has_none_of_say_so_with_a_reason():
+    """Given the 5 answers that ask no solver, then the encoding and the
+    solver each say they do not apply, and each says why in at least 20
+    characters of its own."""
+    asking_none = {
+        operation: answer
+        for operation, answer in _every_completed_answer().items()
+        if operation in THE_ANSWERS_THAT_ASK_NO_SOLVER
+    }
+    assert sorted(asking_none) == sorted(THE_ANSWERS_THAT_ASK_NO_SOLVER), (
+        f"WHAT: {sorted(asking_none)} of the answers read here ask no solver "
+        f"and {sorted(THE_ANSWERS_THAT_ASK_NO_SOLVER)} were expected to. "
+        "WHY: this test is about the answers with no solver to name; one "
+        "missing would leave it reading nothing. "
+        "HOW: fix THE_ANSWERS_THAT_ASK_NO_SOLVER in this test."
+    )
+    for operation, answer in asking_none.items():
         named = versions_of(answer, f"of {operation!r}")
         for version in THE_ONES_THIS_TOOL_HAS_NONE_OF:
             said = named[version]
