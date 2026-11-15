@@ -150,7 +150,12 @@ def written_programs(draw) -> WrittenProgram:
     kinds = draw(st.lists(st.sampled_from(KINDS), min_size=1, max_size=3))
     numbers = draw(
         st.lists(
-            st.tuples(st.integers(-40, 40), st.integers(0, 9)),
+            # The second number is written into the body of the
+            # function, where it decides what the function answers, so
+            # it reaches below zero: a program whose expressions held
+            # only numbers above zero could not tell a tool that writes
+            # a number's size and drops its sign from one that does not.
+            st.tuples(st.integers(-40, 40), st.integers(-9, 9)),
             min_size=len(kinds),
             max_size=len(kinds),
         )

@@ -21,13 +21,16 @@ from _f15_format_fixtures import (
 )
 
 # Every non-canonical spelling of a whole number core-0 accepts: a
-# leading plus, leading zeros, both at once, and the negative zero
-# SPEC.md line 78 says denotes zero.
+# leading plus, leading zeros, both at once, the negative zero SPEC.md
+# line 78 says denotes zero, and a negative number written with both.
+# The negative one is in the body, where it decides what the function
+# answers: a tool that wrote a number's size and dropped its sign would
+# be caught by the second test below and by nothing else.
 SPELLED_UNCANONICALLY = """(defn shift
   (sig ((n Int)) -> Int ! pure)
   (ensures (>= result -0))
-  (examples (example (shift +0007) => 0012))
-  (+ n (+ +005 -0)))
+  (examples (example (shift +0007) => 0009))
+  (+ n (+ +005 -0003)))
 """
 
 
@@ -35,18 +38,18 @@ def test_a_leading_plus_and_a_leading_zero_are_written_away():
     canonical = canonical_text(ask_to_format(SPELLED_UNCANONICALLY))
 
     assert isinstance(canonical, str), (
-        f"a program spelling its numbers '+0007' and '0012' was not answered "
+        f"a program spelling its numbers '+0007' and '-0003' was not answered "
         f"with text: {ask_to_format(SPELLED_UNCANONICALLY)}. SPEC.md line 82 "
         "says non-canonical spelling is accepted"
     )
-    for written in ("+0007", "0012", "+005", "-0", "+0", "007"):
+    for written in ("+0007", "0009", "+005", "-0003", "-0", "+0", "007"):
         assert written not in canonical, (
             f"the canonical text still writes {written!r}:\n{canonical}\n"
             "SPEC.md line 78 says a canonical integer carries no leading plus "
             "and no redundant zero, so two readers would still write one "
             "number two ways; write the number itself"
         )
-    for expected in ("7", "12", "5", "0"):
+    for expected in ("7", "9", "5", "-3", "0"):
         assert expected in canonical, (
             f"the canonical text writes no {expected!r}:\n{canonical}\nThe "
             "number the reader meant must still be there; write the "
