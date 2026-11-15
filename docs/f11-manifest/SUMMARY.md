@@ -192,10 +192,11 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
+- M docs/ROADMAP.md (+6 -0 lines)
 - A docs/f11-manifest/DECISIONS.md (+17 -0 lines)
-- A docs/f11-manifest/SUMMARY.md (+502 -0 lines)
+- A docs/f11-manifest/SUMMARY.md (+512 -0 lines)
 - A docs/f11-manifest/TRACE.md (+5 -0 lines)
-- A docs/feature/f11/craft.md (+115 -0 lines)
+- A docs/feature/f11/craft.md (+116 -0 lines)
 - A docs/feature/f11/design.md (+101 -0 lines)
 - A docs/feature/f11/oracle.md (+69 -0 lines)
 - M src/prova/checker.py (+171 -76 lines)
@@ -212,10 +213,12 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Commits (git log, BASE to HEAD)
 
-- 80d766b Let an operator say which types it takes and answers
-- 9b5754c Say what an agent may call, and what it may write
-- 22d34fb Write down what the manifest now says and what it cost
-- 73a25ad Draw the same cases twice, and refuse a category claimed twice
+- 28befa3 Roadmap: record the unencodable-source crash raised by the F11 review
+- 58ef921 Let an operator say which types it takes and answers
+- fb177e3 Say what an agent may call, and what it may write
+- 7070f08 Write down what the manifest now says and what it cost
+- 8b67d72 Draw the same cases twice, and refuse a category claimed twice
+- b4bbc45 Record the repaired work and the run that measured it
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
@@ -423,43 +426,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   15 failed in 1.95s
   ```
 
-## 2. design: Find the owners and design the change (revision 1)
-
-- **owners**:
-  - which operations this tool has and whether each one is available => src/prova/service.py, in AVAILABLE_OPERATIONS and UNAVAILABLE_OPERATIONS, left exactly where they are so the parallel delivery rebases cleanly
-  - which of the 7 categories of SPEC.md an operation covers, and which operations are this tool own => new: src/prova/manifest.py, because no module answers that question today
-  - the fields a request of an operation takes and the fields its answer carries => new: src/prova/manifest.py, beside the standing of the same operation, so one object answers both
-  - how many arguments an operator takes and how its operands are read => src/prova/checker.py, in BUILTIN_OPERATORS, extended so the entry also carries the types it takes and the type it answers
-  - which type names core-0 has => src/prova/checker.py, in BUILTIN_TYPES, restated as one table of entries that also say what the values of each type are
-  - what a diagnostic of each category carries => src/prova/checker.py, in DIAGNOSTIC_KINDS, reused unchanged: the manifest already publishes it
-  - the answer of the discover operation => src/prova/service.py, in _run_discover, which gains three keys read from the catalogue and changes nothing else
-  - the name of a field the request reader reads => new: src/prova/manifest.py, read by the reader in service.py so that the name published and the name a refusal carries are one value
-- **reuse_decision**: Reused: the request reader, the diagnostic kinds and their published shapes, the contract report publisher and the two operation tuples of the dispatcher, all unchanged. Extended: the operator table and the type names of checker.py, which already own what an operator takes and which types exist; the argument and result types belong there and nowhere else, so no second table decides them. Created new: src/prova/manifest.py, for the catalogue of operations with their categories and their request and answer shapes. No existing module owns that question: the dispatcher owns which names exist and the checker owns the language, and neither knows what a request for an operation looks like. The new module also keeps the diff of service.py to one import and three keys, which the parallel delivery on the dispatch needs.
-- **paradigm**: oo
-- **boundaries**:
-  - the JSON answer of the prova command: service.py builds it and owns its keys; manifest.py owns the shape of the three new parts and never writes the answer itself
-  - the operator and type tables of core-0: checker.py owns them; manifest.py asks each entry to publish itself and declares no signature of its own
-  - which operations are available: service.py owns the two tuples and passes them in; manifest.py refuses to build a catalogue that does not describe exactly those names
-  - the request reader: service.py owns the reading and the refusal messages; manifest.py owns the names of the fields that are read, so the published name and the refused name cannot drift
-- **domain_types**:
-  - Operation: one operation this tool has, carrying its standing in the profile and the two shapes of its traffic, and answering whether an agent may call it
-  - InACategory and BeyondTheProfile: the two standings an operation can have, written as one choice, so that an operation in both lists and an operation in neither cannot be built
-  - Catalogue: the collection of operations and nothing else; built only from the names the dispatcher advertises, and refusing any other set
-  - RequestField: one field of a request, with its name, the kind of value it carries, whether it must be sent and what it is for
-  - AnswerField: one field of an answer, with the same parts, where whether it is there is always, when completed, or a sentence of its own
-  - BuiltinType: one type name of core-0 beside what its values are, so the name the checker knows and the name an agent reads are one entry
-  - OperandsOfOneType and OperandsOfOneAndTheSameType: the two rules an operator reads its operands by; each one refuses the operands that break it and publishes the argument types of its operator
-- **invariants**:
-  - INV1 | the catalogue describes exactly the operations the dispatcher advertises: a catalogue built over a different set of names cannot be built at all, so the manifest can never leave out an operation the tool answers or advertise one it does not have | witness=src/prova/manifest.py:Catalogue | bypass=none
-  - INV2 | every operation an agent may call carries a request shape and an answer shape, and an operation that is refused carries neither, so an agent never reads a shape for a request it cannot send | witness=src/prova/manifest.py:Operation | bypass=none
-  - INV3 | an operation stands in exactly one of SPEC.md categories or is marked as this tool own, never in both and never in neither, because the standing is one value of a choice and not two lists | witness=src/prova/manifest.py:BeyondTheProfile | bypass=none
-  - INV4 | the argument and result types published for an operator are the ones the checker reads when it checks a call, because the operand rule that refuses a wrong operand is the same object that publishes the types | witness=src/prova/checker.py:BuiltinOperator | bypass=none
-  - INV5 | the type names the checker knows and the type names the manifest publishes are one table, so a type can never be known to the checker and absent from the manifest | witness=src/prova/checker.py:BuiltinType | bypass=none
-  - INV6 | the name a published request field carries is the name the reader looks the field up under and the name its refusal carries; the kind of value named there is bound to the refusal by the generated law LAW1 and not by construction, because the refusal messages are owned by the robustness work and are not rewritten here | witness=src/prova/manifest.py:RequestField | bypass=the message text of each refusal still writes the field name in its own sentence; a message edited without the published name would read oddly but could not change which field the refusal names
-- **prefactoring**: yes
-- **prefactoring_reason**: The operator table carries a number of arguments and the name of a group today, and the operand rules stand in a chain of four branches that reads that group name. Publishing the argument and result types from a second table would make two units decide one fact, so first the table learns its operand rule and its result type as an object, and the four branches are replaced by asking that object. The type names are restated the same way, as one table of entries that keeps BUILTIN_TYPES as the set of their names. Behaviour is unchanged: every refusal keeps its category, its sentence, the place it stands at and the two types it names, the group names and the four sets stay exactly as the existing table test reads them, and no test is edited.
-
-## 4. craft: Craft the change (revision 2)
+## 4. craft: Craft the change (revision 2, STALE: an earlier step was recorded again after it; record it again or say why it still holds)
 
 - **refactor_commits**:
   - 80d766b
@@ -510,3 +477,86 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ```
 - **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.052s
 - **typesafe**: unavailable: TYPESAFE_API_KEY is absent from this process environment and from the login shell, so the client exits 3 before any call; the design choices it would have been asked (where the catalogue lives, where the operator signatures come from, whether a formal model pays) were settled locally and written in docs/feature/f11/design.md
+
+## 5. design: Find the owners and design the change (revision 2)
+
+- **owners**:
+  - which operations this tool has and whether each one is available => src/prova/service.py, in AVAILABLE_OPERATIONS and UNAVAILABLE_OPERATIONS, left exactly where they are so the parallel delivery rebases cleanly
+  - which of the 7 categories of SPEC.md an operation covers, and which operations are this tool own => new: src/prova/manifest.py, because no module answers that question today
+  - the fields a request of an operation takes and the fields its answer carries => new: src/prova/manifest.py, beside the standing of the same operation, so one object answers both
+  - how many arguments an operator takes and how its operands are read => src/prova/checker.py, in BUILTIN_OPERATORS, extended so the entry also carries the types it takes and the type it answers
+  - which type names core-0 has => src/prova/checker.py, in BUILTIN_TYPES, restated as one table of entries that also say what the values of each type are
+  - what a diagnostic of each category carries => src/prova/checker.py, in DIAGNOSTIC_KINDS, reused unchanged: the manifest already publishes it
+  - the answer of the discover operation => src/prova/service.py, in _run_discover, which gains three keys read from the catalogue and changes nothing else
+  - the name of a field the request reader reads => new: src/prova/manifest.py, read by the reader in service.py so that the name published and the name a refusal carries are one value
+- **reuse_decision**: Reused: the request reader, the diagnostic kinds and their published shapes, the contract report publisher and the two operation tuples of the dispatcher, all unchanged. Extended: the operator table and the type names of checker.py, which already own what an operator takes and which types exist; the argument and result types belong there and nowhere else, so no second table decides them. Created new: src/prova/manifest.py, for the catalogue of operations with their categories and their request and answer shapes. No existing module owns that question: the dispatcher owns which names exist and the checker owns the language, and neither knows what a request for an operation looks like. The new module also keeps the diff of service.py to one import and three keys, which the parallel delivery on the dispatch needs.
+- **paradigm**: oo
+- **boundaries**:
+  - the JSON answer of the prova command: service.py builds it and owns its keys; manifest.py owns the shape of the three new parts and never writes the answer itself
+  - the operator and type tables of core-0: checker.py owns them; manifest.py asks each entry to publish itself and declares no signature of its own
+  - which operations are available: service.py owns the two tuples and passes them in; manifest.py refuses to build a catalogue that does not describe exactly those names
+  - the request reader: service.py owns the reading and the refusal messages; manifest.py owns the names of the fields that are read, so the published name and the refused name cannot drift
+- **domain_types**:
+  - Operation: one operation this tool has, carrying its standing in the profile and the two shapes of its traffic, and answering whether an agent may call it
+  - InACategory and BeyondTheProfile: the two standings an operation can have, written as one choice, so that an operation in both lists and an operation in neither cannot be built
+  - Catalogue: the collection of operations and nothing else; built only from the names the dispatcher advertises, and refusing any other set
+  - Field: one field of a request or of an answer, with its name, the kind of value it carries, when it is there and what it is for. One type with named constructors rather than two look-alike types: must_be_sent and may_be_sent for a request, in_every_answer, when_completed and when for an answer, so the word that says when a field is there is one a client can look up and never a spelling of its own
+  - BuiltinType: one type name of core-0 beside what its values are, so the name the checker knows and the name an agent reads are one entry
+  - OperandsOfOneType and OperandsOfOneAndTheSameType: the two rules an operator reads its operands by; each one refuses the operands that break it and publishes the argument types of its operator
+- **invariants**:
+  - INV1 | the catalogue describes exactly the operations the dispatcher advertises: a catalogue built over a different set of names cannot be built at all, so the manifest can never leave out an operation the tool answers or advertise one it does not have | witness=src/prova/manifest.py:Catalogue | bypass=none
+  - INV2 | every operation an agent may call carries a request shape and an answer shape, and an operation that is refused carries neither, so an agent never reads a shape for a request it cannot send | witness=src/prova/manifest.py:Operation | bypass=none
+  - INV3 | an operation stands in exactly one of SPEC.md categories or is marked as this tool own, never in both and never in neither, because the standing is one value of a choice and not two lists | witness=src/prova/manifest.py:BeyondTheProfile | bypass=none
+  - INV4 | the argument and result types published for an operator are the ones the checker reads when it checks a call, because the operand rule that refuses a wrong operand is the same object that publishes the types | witness=src/prova/checker.py:BuiltinOperator | bypass=none
+  - INV5 | the type names the checker knows and the type names the manifest publishes are one table, so a type can never be known to the checker and absent from the manifest | witness=src/prova/checker.py:BuiltinType | bypass=none
+  - INV6 | the name a published request field carries is the name the reader looks the field up under and the name its refusal carries; the kind of value named there is bound to the refusal by the generated law LAW1 and not by construction, because the refusal messages are owned by the robustness work and are not rewritten here | witness=src/prova/manifest.py:Field | bypass=the message text of each refusal still writes the field name in its own sentence; a message edited without the published name would read oddly but could not change which field the refusal names
+- **prefactoring**: yes
+- **prefactoring_reason**: The operator table carries a number of arguments and the name of a group today, and the operand rules stand in a chain of four branches that reads that group name. Publishing the argument and result types from a second table would make two units decide one fact, so first the table learns its operand rule and its result type as an object, and the four branches are replaced by asking that object. The type names are restated the same way, as one table of entries that keeps BUILTIN_TYPES as the set of their names. Behaviour is unchanged: every refusal keeps its category, its sentence, the place it stands at and the two types it names, the group names and the four sets stay exactly as the existing table test reads them, and no test is edited.
+
+## 6. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the change is the design: the catalogue in the new module, the two checker tables extended in the prefactor commit 58ef921 first in history, and service.py changed by one import, one spread of the new parts and the names of the three request fields. The two owner answers, language and optional source, are kept.
+  - D2: pass - no fact is decided twice: the signatures come from checker.BUILTIN_OPERATORS, the type names from checker.CORE_TYPES, the availability from the two tuples of service.py, and the diagnostic shapes from the kinds already published. src/prova/manifest.py:461 passes the names in rather than restating them.
+  - D3: pass - the new module depends on the checker only, never on service.py; the dispatcher calls it and prints what it gets back. Nothing of the JSON boundary reaches the checker, and no module reads a request field outside the reader.
+  - D4: fixed: the standing of an operation and its traffic were typed as object and now name their two alternatives, so a reader sees them in the signature. An operation carries one standing, so being in a category and beyond the profile at once, or in neither, cannot be built: src/prova/manifest.py:200. The word that says when a field is there is set by named constructors at src/prova/manifest.py:52, so a spelling of its own cannot be written, and a catalogue over another set of names is refused at src/prova/manifest.py:302, and a category claimed twice at src/prova/manifest.py:230.
+  - D5: fixed: a category claimed by a second operation was silently overwritten and is now refused at src/prova/manifest.py:230, with a unit test and its control. Each new class is one responsibility and holds one or two parts: Fields holds a collection and nothing else at src/prova/manifest.py:78, Standings holds the two lists it collects at src/prova/manifest.py:215, and the operand rules at src/prova/checker.py:75 and src/prova/checker.py:111 replaced a chain of four branches with one question. Field and Operation carry four and three parts as records at the JSON boundary, which the calisthenics exempt; the cost is that neither is a domain object and neither decides anything beyond publishing itself.
+  - D6: pass - the one pattern used is replacing a conditional with polymorphism, in the prefactor: the operand rule object both refuses a wrong operand and publishes the argument types. No framework, no plugin and no extension point was added for a single caller.
+  - D7: pass - the words are the ones the domain uses: an operation, its standing in the profile, the traffic it takes and answers, an operand rule, a type of core-0. No Manager, no Helper, no abbreviation, and no mechanics in a name.
+  - D8: pass - nothing of the filesystem, the network or a process enters the new module: it reads two tables and returns a dictionary. The only I/O stays in the command that reads standard input and writes standard output.
+  - D9: pass - every one of the fifteen tests drives the real prova command over its JSON standard input and standard output and imports nothing from src/prova: the one way in is tests/acceptance/_f11_manifest_fixtures.py:71, and the property tests use their own copy of it.
+  - D10: pass - each name reads as a sentence about what an agent gets: every operation category the profile names is there with its word; a published field sent as another kind of value is refused by name. None carries a process id, a layer term or a production symbol.
+  - D11: pass - the fixtures module holds the tables read by hand from SPEC.md and the one way of talking to the tool; no helper owns a whole scenario, and each test builds its own request from the published shape.
+  - D12: fixed: the three laws drew different cases on consecutive runs while their docstring said they were derandomised; derandomize=True is now on all three, and two consecutive runs send the same 52 requests while taking it out again makes 33 of those 52 differ. Three generated laws, each over a domain too broad for a table: tests/properties/test_f11_manifest_laws.py:141 draws an operation, one of its published fields and a value of a kind the shape does not name; tests/properties/test_f11_manifest_laws.py:215 draws an operator and builds two programs from the published signature. Each one was seen failing before the change for the promised observation.
+  - D13: pass - the seven files added run in 4.85 s for the six that drive the command, median of nine runs in a row, all nine green, the slowest single test 0.92 s and the slowest run 4.88 s. The whole suite is 1151 passed in 139.67 s. No test sleeps and none reads the clock to decide.
+  - D14: pass - each test adds an observation the others do not make: the categories, the two shapes, the language, the refusal by name and the standing beyond the profile. The property tests state the laws over generated input and repeat no finite example pair.
+  - D15: pass - every refusal says what failed, why it matters and what to do: the catalogue refusal at src/prova/manifest.py:302 names both sets and where to add the operation, and the assertion at tests/acceptance/_f11_manifest_fixtures.py:81 says which request the tool failed on and what a client is owed.
+  - D16: n/a: the manifest is computed from constant tables in one process; there is no shared state two actors change, no protocol of more than one step, no retry, no crash window and no progress claim, so no formal model was written and the reason is in docs/feature/f11/design.md.
+  - D17: pass - the documents say what the tests prove and what they do not: the two bindings kept by generated laws rather than by construction are named as such, the measured numbers appear in one place each, and the counts and seconds are the ones the recorded runs printed.
+- **independent_review**:
+  - REV1 | reviewer=rev-f11 | findings=5 (verdict REJECT at 22d34fb) | resolution=F1 derandomised, F3 and F4 fixed in 8b67d72, F2 logged in the roadmap, F5 informational
+  - REV2 | reviewer=owner-check | findings=0 (repairs checked by the owner at b4bbc45: 1153 passed, derandomize present, no existing test edited) | resolution=none needed, no finding recorded
+
+## 7. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - Three things cannot be built wrongly: a catalogue over a different set of names than the dispatcher advertises, an operation in a category and beyond the profile at once or in neither, and an available operation missing one of its two shapes.
+  - A behaviour preserving prefactor came first: the operator table entry learned the rule its operands are read by and the type it answers, replacing a chain of four branches, so the signature published and the signature enforced are one table.
+  - An independent review rejected the first candidate on five findings and the three that were this change to make are repaired: the three generated laws really draw the same cases twice now, two alternatives typed as object name their shapes, and a category claimed by a second operation is refused instead of quietly written over the first.
+- **not_verified**:
+  - The lone surrogate crash is pre existing and is not repaired here: a check request whose source carries the text "\udccc" ends in a UnicodeEncodeError while the revision of the source is computed, instead of being answered. It is older than this change, this change neither caused it nor touched that path, and the roadmap carries it.
+  - A fifth observation of the review was recorded as informational and asks for no change here; its text stays in the review record and is not restated from memory.
+  - That the published kind of value of each request field is the kind the reader refuses, and that an answer carries exactly the published fields, are held by two generated laws over 15 and 15 cases, not by construction. A field whose kind is published wrongly in a way those laws never draw would not be caught.
+  - The three refusals inside the new module (a catalogue over another set of names, a shape that disagrees with the availability, a category claimed twice) are programming errors of the catalogue, not answers to a request. The last one has a unit test; the first two are not reachable from the command and have no test.
+  - Nothing was run on any machine but this one, on any Python but 3.12, and the branch was not merged and not pushed. F12 is not merged, so the dispatch of parse was not met; the only edits to service.py are an import, one spread of the new parts into the answer, one sentence of documentation and the three field names.
+  - The manifest says what each operation answers; it does not say that every answer is correct, and no claim of this delivery reaches what a program means.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit b4bbc453306d62c85f65add27464454e3dcea3f7
+  - no checks declared
+
+## Not backed by the diff
+
+- An agent asking discover now reads everything it needs to use this tool: the seven operation categories of SPEC.md, each with the operation covering it and whether that operation can be called; the fields a request takes and the fields an answer carries, for every operation that can be called; every type of core-0 and every operator with the types it takes and answers, read from the tables the checker itself reads; and the one operation SPEC.md names in no category, marked as this tool own with the reason, so that answering it is never read as conformance to the profile.: a guarantee names no test function of the change
+- The parts that were there before are unchanged and the existing operation list keeps the exact shape an existing test compares it with.: a guarantee names no test function of the change
+- Two bindings are held by generated laws and not by construction, and are claimed no more strongly than that: that the kind of value a published field names is the kind the reader refuses, and that an answer carries exactly the fields published for it.: a guarantee names no test function of the change
+- The craft step is marked stale and its replay is refused: the branch was rebased after the craft run, so the history from the recorded pre feature commit to HEAD starts with the commit main moved to, and the prefactor is no longer the first commit from that base; the craft record keeps the run it measured, the suite was green again on the rebased tree, and the owner left that refusal standing deliberately.: a guarantee names no test function of the change
