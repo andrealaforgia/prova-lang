@@ -14,8 +14,9 @@ other property tests here do. No imports from src/prova. The manifest is
 read once per process: it is a constant of the shipped tool, and each
 case then sends its own request.
 
-Derandomised with a bounded example count so the verdict does not depend
-on which cases Hypothesis happens to draw.
+Derandomised, and the first and the last law run one case per cell of
+their closed grid, so the verdict does not depend on which cases
+Hypothesis happens to draw.
 """
 
 from __future__ import annotations
@@ -45,6 +46,16 @@ EVERY_KIND_OF_SOURCE = (
     "(defn",
     "(defn f (sig ((n Int)) -> Int ! pure) (examples (example (f 1) => 1)) (+ n true))",
     "(deftype T (record (f T)))",
+)
+
+# The closed grid the first and the last law run over: every operation
+# that can complete an answer, crossed with every kind of source. The
+# case count below is the size of that grid, so each of its 30 cells is
+# drawn rather than a part of it sampled.
+EVERY_COMBINATION = tuple(
+    (operation, source)
+    for operation in THE_OPERATIONS_THAT_READ_A_PROGRAM + ("discover",)
+    for source in EVERY_KIND_OF_SOURCE
 )
 
 _MANIFEST: list = []
@@ -91,14 +102,12 @@ def _program_answering(factor: int) -> str:
     )
 
 
-@given(
-    operation=st.sampled_from(THE_OPERATIONS_THAT_READ_A_PROGRAM + ("discover",)),
-    source=st.sampled_from(EVERY_KIND_OF_SOURCE),
-)
-@settings(max_examples=12, deadline=None, derandomize=True)
-def test_every_completed_answer_says_what_it_stands_on(operation, source):
+@given(combination=st.sampled_from(EVERY_COMBINATION))
+@settings(max_examples=len(EVERY_COMBINATION), deadline=None, derandomize=True)
+def test_every_completed_answer_says_what_it_stands_on(combination):
     """LAW1: a completed answer stands on the dependency digest this tool
     publishes; an answer that completed nothing stands on nothing."""
+    operation, source = combination
     answer = _ask({"operation": operation, "source": source})
     stands_on = answer.get("stands_on")
 
@@ -124,7 +133,7 @@ def test_every_completed_answer_says_what_it_stands_on(operation, source):
 
 
 @given(factor=st.integers(min_value=2, max_value=10**6))
-@settings(max_examples=12, deadline=None, derandomize=True)
+@settings(max_examples=30, deadline=None, derandomize=True)
 def test_two_sources_never_share_one_revision(factor):
     """LAW2: the revision an answer carries is the SHA-256 of the
     characters that were sent, so two texts that differ never share
@@ -151,14 +160,12 @@ def test_two_sources_never_share_one_revision(factor):
     )
 
 
-@given(
-    operation=st.sampled_from(THE_OPERATIONS_THAT_READ_A_PROGRAM + ("discover",)),
-    source=st.sampled_from(EVERY_KIND_OF_SOURCE),
-)
-@settings(max_examples=12, deadline=None, derandomize=True)
-def test_every_version_is_a_version_or_says_it_does_not_apply(operation, source):
+@given(combination=st.sampled_from(EVERY_COMBINATION))
+@settings(max_examples=len(EVERY_COMBINATION), deadline=None, derandomize=True)
+def test_every_version_is_a_version_or_says_it_does_not_apply(combination):
     """LAW3: each of the 4 versions a completed answer names is a version
     with a digit in it or a sentence saying it does not apply."""
+    operation, source = combination
     answer = _ask({"operation": operation, "source": source})
     if answer["status"] != "completed":
         return
