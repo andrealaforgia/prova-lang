@@ -59,6 +59,7 @@ DIAGNOSTIC_CATEGORIES = (
     checker.RECURSIVE_TYPE,
     checker.SHADOWED_BINDING,
     checker.RESERVED_NAME,
+    checker.UNRELATED_EXAMPLE,
     "unknown_function",
     "malformed_value",
     "ill_typed_value",

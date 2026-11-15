@@ -11,6 +11,12 @@ requires the combined dependency graph of function bodies and contracts
 to be acyclic, and excludes the calls an example makes to its own
 function from that graph.
 
+It refuses a function whose declared example is about another
+function: SPEC.md requires every function to have an example directly
+calling that same function, with one closed value for each parameter it
+takes, so an example that calls another name demonstrates that other
+name and leaves its own function with none.
+
 It refuses recursive data for the same reason: SPEC.md requires the
 type-dependency graph to be acyclic too, so a record field or a union
 payload that leads back to its own type belongs to a later profile. A
@@ -88,6 +94,7 @@ DUPLICATE_DECLARATION = "duplicate_declaration"
 RECURSIVE_TYPE = "recursive_type"
 SHADOWED_BINDING = "shadowed_binding"
 RESERVED_NAME = "reserved_name"
+UNRELATED_EXAMPLE = "unrelated_example"
 
 # The one name core-0 reserves: a postcondition reads it as the
 # function's return value, so no binder may take it.
@@ -533,6 +540,104 @@ def _declaration_diagnostics(program: syntax.Program) -> list[Diagnostic]:
     return diagnostics
 
 
+@dataclass(frozen=True)
+class DeclaredExample:
+    """One example a function declares, read as what it demonstrates:
+    which function declares it, where it stands among that function's
+    examples, which function the example calls and with how many
+    arguments.
+
+    SPEC.md lines 228-234 require an example to call directly the
+    function that declares it, and its arguments to be closed values of
+    the declared types, one for each parameter. An example that calls
+    another name demonstrates that other name, whether or not the
+    program declares it, and leaves its own function with no example;
+    an example that calls its own function with another number of
+    arguments cannot be run against it at all.
+
+    The two refusals are built here, beside the question they answer, so
+    a reader of the rule reads what a reader of the program is told.
+    """
+
+    owner: str
+    ordinal: int
+    called: str
+    arguments: int
+    parameters: int
+    calls_a_declared_function: bool
+
+    @classmethod
+    def of(
+        cls,
+        function: syntax.Function,
+        example: syntax.Example,
+        ordinal: int,
+        program: syntax.Program,
+    ) -> "DeclaredExample":
+        return cls(
+            function.name,
+            ordinal,
+            example.function,
+            len(example.args),
+            len(function.signature.params),
+            example.function in program.functions,
+        )
+
+    def is_about_its_own_function(self) -> bool:
+        return self.called == self.owner
+
+    def diagnostics(self) -> list[Diagnostic]:
+        """What the tool says about this example: nothing when it calls
+        its own function with the number of arguments that function
+        takes, and otherwise the one refusal its defect carries.
+
+        A wrong name is answered alone: an example about another
+        function is not also an example of this one with the wrong
+        number of arguments, and a reader has one repair to make.
+        """
+        if not self.is_about_its_own_function():
+            return [self._about_another_function()]
+        if self.arguments != self.parameters:
+            return [self._with_the_wrong_number_of_arguments()]
+        return []
+
+    def _described(self) -> str:
+        return f"example {self.ordinal} of function {self.owner!r}"
+
+    def _about_another_function(self) -> Diagnostic:
+        undeclared = (
+            "" if self.calls_a_declared_function else ", which this program does not declare"
+        )
+        demonstrates = (
+            f"this example demonstrates {self.called!r}"
+            if self.calls_a_declared_function
+            else "this example demonstrates nothing"
+        )
+        repair = (
+            f"; write the example as a call to {self.owner!r}, or declare it among "
+            f"the examples of {self.called!r}"
+            if self.calls_a_declared_function
+            else f"; write the example as a call to {self.owner!r}"
+        )
+        return Diagnostic(
+            UNRELATED_EXAMPLE,
+            f"{self._described()} calls {self.called!r}{undeclared}: core-0 requires "
+            "every function to have an example directly calling that same function, "
+            f"so {demonstrates} and leaves {self.owner!r} with no example of its "
+            f"own{repair}",
+        )
+
+    def _with_the_wrong_number_of_arguments(self) -> Diagnostic:
+        return Diagnostic(
+            "arity_mismatch",
+            f"{self._described()} passes {self.arguments} argument(s), expected "
+            f"{self.parameters}: an example supplies one closed value for each "
+            f"parameter the function declares, so this example cannot be run "
+            f"against {self.owner!r}; write exactly {self.parameters} argument(s) "
+            "in the example",
+        )
+
+
 def check_program(program: syntax.Program) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = _declaration_diagnostics(program)
     known_types = BUILTIN_TYPES | set(program.types)
@@ -592,6 +697,9 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
 
         for ordinal, example in enumerate(function.examples):
             where = f"function {function.name!r} example {ordinal}"
+            diagnostics += DeclaredExample.of(
+                function, example, ordinal, program
+            ).diagnostics()
             for arg in example.args:
                 _check_value(arg, program, where, diagnostics)
             _check_value(example.expected, program, where, diagnostics)
@@ -626,8 +734,8 @@ def _callees_of(function: syntax.Function, program: syntax.Program) -> list[str]
     its body and in its contract clauses.
 
     Its declared examples are never read. An example names its own
-    function by construction, and SPEC.md excludes those calls from the
-    graph. A call to a function the program does not declare is not an
+    function -- `DeclaredExample` refuses a program where it does not --
+    and SPEC.md excludes those calls from the graph. A call to a function the program does not declare is not an
     edge either; `_infer` already reports it as an unbound name.
     """
     expressions = [function.body, *function.requires, *function.ensures]
