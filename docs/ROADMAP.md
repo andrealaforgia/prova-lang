@@ -1233,3 +1233,10 @@ there.
   needed for a comment that precedes a part inside a form written on one line), then
   recompute the hand-written `conformance/format/` pairs. The Owner chose to ship the
   criterion first. (15 November 2026.)
+- **Integer literals longer than Python's digit limit.** A source holding an integer
+  literal of more than 4300 digits ends in `ValueError: Exceeds the limit (4300 digits)`
+  from `reader.py:106` (`int(self.text)`) on `check`, and on every operation that
+  reads source. Refuse the literal with a located diagnostic (`syntax` or a limit
+  category), never a traceback. Pre-existing; raised by the F15 review. Deliver it
+  together with the lone-surrogate source crash above as one small robustness
+  delivery (R2).
