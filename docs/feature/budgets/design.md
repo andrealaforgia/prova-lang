@@ -66,6 +66,27 @@ enforces cannot drift apart.
 | INV4 | Every printed answer is one complete answer or one refusal; never a cut-short answer | `service.answer_text` |
 | INV5 | The memory budget claims only what it read | `PeakMemory` says whether this platform can report it |
 | INV6 | The two older limits keep their numbers and their place | The budgets join the same block in `_run_discover` |
+| INV7 | This tool reads at most the input budget plus a stated allowance of any request before it answers, so a request too large to answer is never held in memory whole | `__main__._read_at_most` |
+
+## How much of a request is read at all
+
+The input budget sizes the source a request carries, and a request carries more
+than its source: the operation, an evaluate request's function and arguments, and
+the JSON around them. A tool that read all of that before sizing anything would
+spend the memory the budgets exist to hold down -- a 200 MiB request cost 654 MB
+to refuse, past the 512 MiB this tool declares for itself.
+
+So the command reads one character past `input_size` plus a stated allowance of
+**65536 bytes** for everything a request carries around its source, and answers a
+longer request against the input budget without reading it. Both numbers are
+stated in the manifest beside the budget, with the reason for the second. A
+request refused this way says plainly that the operation asked for was never
+read, because it was not: the answer names no operation.
+
+The allowance is 64 KiB because the largest request this tool answers today is an
+evaluate request of a few hundred bytes around its source, and because a page or
+two is cheap to read and refuse. Like the four budgets, it was chosen, not
+measured.
 
 ## Decisions and their cost
 

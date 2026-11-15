@@ -16,6 +16,8 @@ size.
 
 from __future__ import annotations
 
+import resource
+
 from _f14_budget_fixtures import (
     CATEGORY_OF,
     INPUT_SIZE,
@@ -133,4 +135,46 @@ def test_a_source_well_under_the_budget_is_not_refused_for_its_size():
         f"{response}. Sizing a text by its characters rather than its bytes "
         "refuses texts that fit, and a caller that sized its source against "
         "the stated number cannot tell why."
+    )
+
+
+# A request of 20 MiB: far past anything this tool answers, and large
+# enough that holding it in memory to refuse it shows up in what the
+# operating system reports the command took.
+A_HUGE_SOURCE = "x" * (20 * 1024 * 1024)
+
+
+def _greatest_memory_a_child_has_taken() -> int:
+    """The greatest memory any command this test has started has taken.
+
+    A high-water mark over every child of this test process, which is
+    why the case below starts a small run first and compares the two.
+    """
+    return resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+
+
+def test_a_request_far_too_long_is_not_held_in_memory_to_be_refused():
+    """Given an input budget of 100 bytes, when a caller sends a 20 MiB
+    request, then the tool refuses it for the input budget without ever
+    having taken more memory than it takes to answer a small one: a
+    request too large to answer is not copied into memory first.
+    """
+    check(";small", "a small request", {INPUT_SIZE: 100})
+    answering_a_small_request = _greatest_memory_a_child_has_taken()
+
+    response = check(A_HUGE_SOURCE, "a 20 MiB request", {INPUT_SIZE: 100})
+    answering_a_huge_request = _greatest_memory_a_child_has_taken()
+
+    assert response["status"] == RESOURCE_EXHAUSTED, (
+        f"a 20 MiB request under an input budget of 100 bytes was answered "
+        f"{response.get('status')!r}: {str(response)[:300]}."
+    )
+    assert answering_a_huge_request <= answering_a_small_request * 1.5, (
+        f"answering a 20 MiB request took {answering_a_huge_request} where "
+        f"answering a small one took {answering_a_small_request} (the "
+        "greatest either child has taken, as the operating system reports "
+        "it): the tool is reading a request it cannot answer into memory and "
+        "refusing it afterwards, which spends the very memory the budgets "
+        "exist to hold down. Read one character past what the budgets allow "
+        "and answer without reading the rest."
     )

@@ -63,11 +63,12 @@ reason it states no outcome a caller can observe.
 
 ## What the tests prove
 
-Twelve scenarios, written as nine acceptance test files and four generated laws,
+Twelve scenarios, written as ten acceptance test files and four generated laws,
 all driving the real command over its standard input and output:
 
-* the manifest states four budgets for each of the five operations offered, with
-  the Owner's numbers, each marked enforced and each saying how to lower it;
+* the manifest states four budgets for each of the six operations offered -- 24
+  entries, `parse` being the sixth -- with the Owner's numbers, each marked
+  enforced and each saying how to lower it;
 * a 200 byte source under a 64 byte budget, and a 1048577 byte source under the
   declared 1 MiB, are both refused by name with the two numbers;
 * a run with no time left, a run past a 1 byte memory budget, and an answer one
@@ -84,6 +85,14 @@ Every one of those tests was run against the tree as it stands before this
 feature: 23 of them failed and none of them broke on an import or a fixture.
 The seven that already pass are the twins that hold the old answers fixed, kept
 so that a tool which simply refused everything would not pass either.
+
+## Added after the first review
+
+A tenth acceptance file was added when an independent review found two defects:
+one for a request longer than this tool reads, which is now answered against the
+input budget without being read, and one for a source whose bytes outnumber its
+characters, which is now sized in bytes. The new cases are listed with the
+repairs in `craft.md`.
 
 ## What is still open
 
