@@ -906,7 +906,9 @@ def _run_format(source: SubmittedText, run: Run) -> dict:
         "source_digest": _source_digest(source),
         "diagnostics": [],
         "result": {
-            "text": formatter.canonical_text(program, read_source(source).comments)
+            "text": formatter.canonical_text(
+                program, read_source(source.characters).comments
+            )
         },
     }
 
