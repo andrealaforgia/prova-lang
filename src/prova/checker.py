@@ -32,6 +32,25 @@ NUMERIC_OPERATORS = {"+", "-", "*"}
 COMPARISON_OPERATORS = {"<", "<=", ">", ">="}
 BOOLEAN_OPERATORS = {"and", "or", "not"}
 
+# SPEC.md lines 178-189: how many arguments each builtin operator takes.
+# Operators have no variable arity, so each one of these numbers is the
+# only number of arguments its operator accepts, and a call written with
+# any other number is refused rather than read as a shorter or longer
+# operator.
+OPERATOR_ARITIES = {
+    "+": 2,
+    "-": 2,
+    "*": 2,
+    "<": 2,
+    "<=": 2,
+    ">": 2,
+    ">=": 2,
+    "=": 2,
+    "and": 2,
+    "or": 2,
+    "not": 1,
+}
+
 CYCLIC_DEPENDENCY = "cyclic_dependency"
 DUPLICATE_DECLARATION = "duplicate_declaration"
 RECURSIVE_TYPE = "recursive_type"
@@ -1053,10 +1072,33 @@ def _infer(
     raise TypeError(f"unrecognised expression node: {expr!r}")
 
 
+def arity_of(operator: str) -> int:
+    """How many arguments SPEC.md gives `operator`.
+
+    The one place that answers that question: the operand checks below,
+    and the refusal a wrongly written call draws, read the same number.
+    """
+    try:
+        return OPERATOR_ARITIES[operator]
+    except KeyError:
+        raise ValueError(f"unknown operator {operator!r}") from None
+
+
 def _check_operator(
     expr: syntax.OperatorCall, arg_types: list[str | None], diagnostics: list[Diagnostic]
 ) -> str:
     op = expr.operator
+    takes = arity_of(op)
+    if len(expr.args) != takes:
+        diagnostics.append(
+            Diagnostic(
+                "arity_mismatch",
+                f"operator {op!r} takes exactly {takes} argument(s), "
+                f"got {len(expr.args)}; operators have no variable arity, so write "
+                f"the call with exactly {takes}",
+                (expr.line, expr.column),
+            )
+        )
     if op in NUMERIC_OPERATORS:
         for arg_type in arg_types:
             if arg_type is not None and arg_type != "Int":
