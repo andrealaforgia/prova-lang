@@ -245,7 +245,6 @@ SCHEMA = TreeSchema(
         NodeKind("match", {"scrutinee": "the expression examined", "clauses": "the clauses, in source order"}),
         NodeKind("match_clause", {"pattern": "the pattern it answers for", "body": "the expression it answers with"}),
         NodeKind("pattern_wildcard", {}),
-
         NodeKind("pattern_name", {"name": "the name the pattern binds"}),
         NodeKind("pattern_integer", {"value": "the whole number matched"}),
         NodeKind("pattern_boolean", {"value": "true or false"}),
