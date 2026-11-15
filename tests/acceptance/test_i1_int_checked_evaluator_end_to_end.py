@@ -19,7 +19,16 @@ import subprocess
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-FORBIDDEN_WORDS = ("verified", "proved", "built", "holds")
+# Words no answer of this tool may use, because each of them would claim
+# work it does not do: it verifies no program as a whole, builds nothing
+# and asserts that nothing holds.
+FORBIDDEN_WORDS = ("verified", "built", "holds")
+
+# `proved` is not among them any more: an obligation settled by the
+# solver stands as 'proved', so the word has to be sayable. What a
+# reader must never meet is that word with nothing beside it saying what
+# it rests on, so wherever it appears these three must appear too.
+WHAT_PROVED_RESTS_ON = ("trust", "discharged_by", "rechecked_by_this_tool")
 
 RESERVE_OLD = "(Outcome (Reservation (+ (.reserved current) 1)) true)"
 RESERVE_TYPE_ERROR = (
@@ -132,21 +141,35 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
     # The three rejections are distinguishable by category.
     assert len({"precondition_violation", "postcondition_violation", "type_mismatch"}) == 3
 
-    # 7. What must still be shown about the program is listed, attempted by
-    #    nothing; a build is still refused as unavailable, never attempted.
+    # 7. What must be shown about the program is listed, and each entry says
+    #    what became of it with nothing left for nobody to have attempted;
+    #    a build is still refused as unavailable, never attempted.
     owed = call({"operation": "verify", "source": source})
     assert owed.get("operation") == "verify", owed
     assert owed.get("status") == "completed", owed
     obligations = ((owed.get("result") or {}).get("inventory") or {}).get("obligations") or []
     assert obligations, f"the answer lists nothing the program owes: {owed}"
-    assert {entry.get("result") for entry in obligations} == {"not_attempted"}, owed
+    assert "not_attempted" not in {
+        entry.get("result") for entry in obligations
+    }, owed
 
     refused = call({"operation": "build", "source": source})
     assert refused.get("operation") == "build", refused
     assert refused.get("status") == "unavailable", refused
 
-    # 8. Nothing in the whole session claims verification, proof or a build.
+    # 8. Nothing in the whole session claims verification or a build, and
+    #    nothing says an obligation is proved without saying what that
+    #    rests on.
     for raw in raw_outputs:
         lowered = raw.lower()
         for word in FORBIDDEN_WORDS:
             assert word not in lowered, f"response claims {word!r}: {raw}"
+        if "proved" not in lowered:
+            continue
+        for owed in WHAT_PROVED_RESTS_ON:
+            assert owed in lowered, (
+                f"a response says an obligation is proved and does not say "
+                f"{owed!r}: a reader told something is proved and not told "
+                f"what that rests on takes a solver's word for this tool's "
+                f"own: {raw}"
+            )
