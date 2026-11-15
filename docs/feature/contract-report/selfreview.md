@@ -32,17 +32,19 @@ executor, so this record is not closed here.
 
 ## What a later independent review found, and what was done
 
-Four defects, all fixed in the same branch and each one now watched by a
-test that fails when the defect returns:
+Four findings, all closed in the same branch: two defects of the answer
+and two gaps in what the tests would have caught.
 
-1. the note was answered but never published;
-2. a literal block was read for being a literal, not for its value, so
-   `(ensures false)` read as trivial;
-3. two of the three notes were never observed;
-4. the published meaning of `stated` over-claimed what a stated block
-   says.
+1. **Defect:** the note was answered but never published.
+2. **Test gap:** a block written `false` already read as stated -- the
+   rule read the value of the literal -- but no test would have noticed
+   that rule going wrong, which the mutation showed by staying green.
+3. **Test gap:** two of the three notes were never observed, so one
+   sentence for every program would have passed.
+4. **Defect:** the published meaning of `stated` over-claimed what a
+   stated block says.
 
-Each of the first three was checked by putting the wrong behaviour back
-into the code and watching the named tests fail: the manifest test for
-the first, the `false` acceptance test and two property laws for the
-second, and two tests of the vacuous program for the third.
+Each of the first three is now watched: the wrong behaviour was put into
+the code and the named tests failed -- the manifest test for the first,
+the `false` acceptance test and two property laws for the second, and two
+tests of the vacuous program for the third.

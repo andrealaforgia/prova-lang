@@ -35,21 +35,24 @@ The shipped hour clock reads that way: `valid-state` omitted/omitted,
 
 ## What a review of the first revision changed
 
-Four defects were found in the first revision and are fixed here.
+Four findings: two defects of the answer, and two gaps in what the tests
+would have caught. All four are closed here.
 
-- The note was answered but never published; the manifest now describes
-  it, and the test that compares the published parts with the answered
-  ones fails if either grows without the other.
-- A block written `(requires false)` or `(ensures false)` was read for
-  being a literal rather than for its value. Reading only "is a literal"
-  made `false` trivial, which would tell the Owner that a function
-  demanding the impossible promises as little as one demanding nothing.
-  The fixtures and the generated block texts now carry both, expected to
-  read stated.
-- Two of the three notes were never observed, so one sentence for every
-  program would have passed. The three readings -- promises nothing,
-  promises something, declares no function -- are now asserted to differ.
-- The published meaning of `stated` claimed the block says something
+- **Defect.** The note was answered but never published; the manifest now
+  describes it, and the test that compares the published parts with the
+  answered ones fails if either grows without the other.
+- **Test gap.** `(requires false)` and `(ensures false)` already read as
+  stated: the rule read the value of a literal, not only that the clause
+  was one. Nothing, however, would have noticed that rule going wrong --
+  reading only "is a literal" would have made `false` trivial, and every
+  test stayed green when it was tried. The fixtures and the generated
+  block texts now carry both literals, expected to read stated, so that
+  mutation turns three tests red.
+- **Test gap.** Two of the three notes were never observed, so one
+  sentence for every program would have passed. The three readings --
+  promises nothing, promises something, declares no function -- are now
+  asserted to differ.
+- **Defect.** The published meaning of `stated` claimed the block says something
   about the function. That is false for `(ensures (and true true))`, so
   it now reads: the block has a clause that is not the literal `true`,
   and this tool does not decide whether that clause promises anything.
