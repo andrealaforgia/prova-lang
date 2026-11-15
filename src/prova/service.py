@@ -168,7 +168,7 @@ def answer_text(submitted: object, budgets: Budgets | None = None) -> str:
     within = budgets if budgets is not None else Budgets.declared()
     answer = handle(submitted, within)
     text = json.dumps(answer)
-    exhausted = within.answer_exhausted_by(len(text.encode("utf-8", "surrogatepass")))
+    exhausted = within.answer_exhausted_by(text)
     if exhausted is None:
         return text
     return json.dumps(budget_response(answer.get("operation"), exhausted))

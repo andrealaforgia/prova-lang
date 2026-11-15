@@ -55,6 +55,19 @@ MISTAKES = {
     "a budget name this tool does not publish": (
         "PROVA_BUDGET_DISK_SIZE", "5", "PROVA_BUDGET_DISK_SIZE",
     ),
+    "a digit written above the line": (
+        variable_for(INPUT_SIZE), "\u00b2", "'\u00b2'",
+    ),
+    "a circled digit": (variable_for(INPUT_SIZE), "\u2460", "'\u2460'"),
+    "digits of the Arabic-Indic alphabet": (
+        variable_for(OPERATION_TIME), "\u0665\u0665\u0665", "'\u0665\u0665\u0665'",
+    ),
+    "digits of the Devanagari alphabet": (
+        variable_for(OPERATION_TIME), "\u0967\u0968\u0969", "'\u0967\u0968\u0969'",
+    ),
+    "a number with a space around it": (
+        variable_for(OPERATION_TIME), " 5 ", "' 5 '",
+    ),
 }
 
 

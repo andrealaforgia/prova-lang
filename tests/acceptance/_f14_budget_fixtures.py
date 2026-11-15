@@ -279,6 +279,13 @@ def assert_names_the_budget(
         f"{refusal.get('reason')!r}. A person reading the message is told the "
         "number to stay under without opening the manifest."
     )
+    assert str(refusal.get(ACTUAL)) in str(refusal.get("reason", "")), (
+        f"the refusal for {why} reports {refusal.get(ACTUAL)!r} reached and "
+        f"does not say it in its sentence: {refusal.get('reason')!r}. The "
+        "sentence a person reads and the number a program reads are the same "
+        "number; two that disagree leave a reader unable to say how far past "
+        "the budget the run went."
+    )
 
 
 def source_of_exactly(size: int) -> str:

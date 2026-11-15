@@ -20,7 +20,7 @@ from _f14_budget_fixtures import (
     check,
     within_every_budget,
 )
-from _f14_budget_fixtures import the_refusal
+from _f14_budget_fixtures import budget_entry, discover, the_refusal
 
 
 def test_a_run_whose_memory_is_already_past_the_budget_is_refused():
@@ -58,4 +58,33 @@ def test_the_same_program_under_the_declared_memory_budget_is_checked():
         "megabytes to answer and declares 512 MiB, so a refusal here means "
         "the budget is read from the wrong number or counted in the wrong "
         "unit."
+    )
+
+
+def test_the_figure_the_memory_budget_watches_never_falls_and_the_remedy_says_so():
+    """Given a caller whose run was stopped for its memory, when it
+    reads the refusal and the budget beside it, then both say the figure
+    is the greatest this process has taken and never falls, so the
+    caller is told to start the work again rather than to wait for the
+    memory to come back.
+    """
+    stated = budget_entry(discover(), "check", PEAK_MEMORY)
+    response = check(
+        within_every_budget(), "a run under a 1 byte memory budget", {PEAK_MEMORY: 1}
+    )
+    refusal = the_refusal(
+        response, CATEGORY_OF[PEAK_MEMORY], "a run under a 1 byte memory budget"
+    )
+
+    assert "greatest" in stated["observed"] and "never falls" in stated["observed"], (
+        f"the memory budget says it is watched like this: "
+        f"{stated['observed']!r}. The figure it watches is a high-water mark: "
+        "a caller told otherwise would expect a run to come back under the "
+        "budget after a large step ends, and it never does."
+    )
+    assert "new process" in refusal["reason"], (
+        f"the refusal tells the caller: {refusal['reason']!r}. The figure "
+        "never falls, so waiting or freeing memory inside this run cannot "
+        "bring it back under the budget; the remedy a message names has to be "
+        "one that works."
     )

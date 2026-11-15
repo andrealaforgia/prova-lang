@@ -158,19 +158,22 @@ class Budget:
         answers for, and a caller that could raise it would be given a
         promise the tool never made.
         """
-        if not written.strip().isdigit():
+        if not (written.isascii() and written.isdecimal()):
             return UnreadableBudget(
                 self.lowered_with(),
                 f"the budget written in {self.lowered_with()} is "
                 f"{written!r}, which is not a whole number of "
-                f"{self.unit}: this tool reads one whole number from that "
-                "variable and would otherwise run under a budget the caller "
-                f"did not choose; write it as a whole number no larger than "
+                f"{self.unit} written in the digits 0 to 9: this tool reads "
+                "one such number from that variable and nothing else -- a "
+                "digit of another alphabet, a digit written above the line, a "
+                "sign, a space around the number or nothing at all would "
+                "otherwise leave the run under a budget the caller did not "
+                f"choose; write it as a whole number no larger than "
                 f"{self.maximum}, as {max(1, self.maximum // 2)}, or leave "
                 "the variable unset to run under the number this tool "
                 "declares",
             )
-        asked = int(written.strip())
+        asked = int(written)
         if asked > self.maximum:
             return UnreadableBudget(
                 self.lowered_with(),
@@ -195,7 +198,12 @@ class Budget:
             "observed": self.observed,
             "lower_with": self.lowered_with(),
             "reason": self.reason(),
+            **self.also_published(),
         }
+
+    def also_published(self) -> dict:
+        """What this budget states beside what every budget states."""
+        return {}
 
     def reason(self) -> str:  # pragma: no cover - every budget writes its own
         raise NotImplementedError
@@ -213,9 +221,57 @@ class InputBudget(Budget):
     unit: ClassVar[str] = "bytes of the source a request carries"
     category: ClassVar[str] = INPUT_BUDGET_EXCEEDED
     observed: ClassVar[str] = (
-        "the size of the source a request carries, before any rule of the "
-        "language is read over it"
+        "twice: this tool reads at most this budget plus 'request_allowance' "
+        "bytes from its input at all, and answers a longer request against "
+        "this budget without reading it; the source a shorter request carries "
+        "is then sized against this budget before any rule of the language is "
+        "read over it"
     )
+
+    # What this tool reads of a request around the source itself: the
+    # operation, the function and arguments of an evaluate request, the
+    # JSON that holds them, and whatever a client adds. 64 KiB is far
+    # above every request this tool is sent -- the largest it answers
+    # today is an evaluate request of a few hundred bytes around its
+    # source -- and small enough that a request this tool cannot use is
+    # refused after reading a page or two rather than after copying all
+    # of it into memory.
+    REQUEST_ALLOWANCE: ClassVar[int] = 64 * 1024
+
+    def also_published(self) -> dict:
+        return {
+            "request_allowance": self.REQUEST_ALLOWANCE,
+            "request_allowance_reason": (
+                f"this tool reads at most {self.maximum} + "
+                f"{self.REQUEST_ALLOWANCE} bytes of a request before it "
+                "answers: the first number is the source it would read, the "
+                "second is everything a request carries around that source. "
+                "A longer request is answered against this budget without "
+                "being read, so a caller that sends one is told which budget "
+                "stopped it and not which operation it asked for, because "
+                "that was never read. The second number was chosen, not "
+                "measured on a run of this tool."
+            ),
+        }
+
+    def request_ceiling(self) -> int:
+        """How many bytes of a request this tool reads at all."""
+        return self.maximum + self.REQUEST_ALLOWANCE
+
+    def request_too_large(self, at_least: int) -> "Exhaustion":
+        return Exhaustion(
+            self.name,
+            self.maximum,
+            at_least,
+            self.category,
+            f"the request sent to this tool is at least {at_least} bytes, "
+            f"more than the {self.maximum} bytes of source this tool reads "
+            f"and the {self.REQUEST_ALLOWANCE} bytes it allows a request to "
+            "carry around one: it stopped reading there, so it never read "
+            "which operation was asked for and says nothing about any "
+            "program; send a shorter request, and read the two numbers from "
+            f"the {self.name!r} budget the 'discover' operation states",
+        )
 
     def reason(self) -> str:
         return (
@@ -295,8 +351,12 @@ class MemoryBudget(Budget):
     category: ClassVar[str] = MEMORY_BUDGET_EXCEEDED
     observed: ClassVar[str] = (
         "at each boundary between the stages of an operation and before each "
-        "declared example is run, by asking the operating system what this "
-        "process has already taken"
+        "declared example is run, by asking the operating system for the "
+        "greatest memory this process has taken. That figure is a high-water "
+        "mark: it never falls, so once a run has passed this budget every "
+        "later measurement in the same process is past it too. The command "
+        "answers one request per process, so a run of it is measured against "
+        "its own work alone"
     )
 
     def enforced(self) -> bool:
@@ -319,11 +379,14 @@ class MemoryBudget(Budget):
 
     def refusal(self, amount: int) -> str:
         return (
-            f"this run has taken {amount} of the {self.maximum} bytes of "
-            "memory this operation is given: the tool stops first rather "
-            "than being stopped by the machine with nothing to say; raise "
-            f"the memory this run may take, up to {self.maximum}, by leaving "
-            f"{self.lowered_with()} unset, or send a smaller program"
+            f"this process has taken {amount} of the {self.maximum} bytes "
+            "of memory this operation is given: the tool stops first rather "
+            "than being stopped by the machine with nothing to say. The "
+            "figure is the greatest this process has taken and never falls, "
+            "so this run cannot come back under the budget: start the work "
+            "again in a new process, with a smaller program, or with the "
+            f"memory this run may take raised up to {self.maximum} by "
+            f"leaving {self.lowered_with()} unset"
         )
 
 
@@ -454,7 +517,42 @@ class Budgets:
         }
 
     def source_exhausted_by(self, source: str) -> "Exhaustion | None":
-        return self._of(InputBudget).exhausted_by(_size_of(source))
+        """Whether `source` is larger than the input budget of this run.
+
+        Sized without a second copy of the text: a character is one to
+        four bytes, so a text of more characters than the budget allows
+        is already past it and a text of a quarter as many characters
+        cannot be. Only a text between the two is measured, and then a
+        page at a time.
+        """
+        budget = self._of(InputBudget)
+        if len(source) * 4 <= budget.maximum:
+            return None
+        return budget.exhausted_by(_size_of(source))
+
+    def request_ceiling(self) -> int:
+        """How many bytes of a request this tool reads at all."""
+        return self._of(InputBudget).request_ceiling()
+
+    def request_exhausted_by(self, sent: str) -> "Exhaustion | None":
+        """Whether what was read of a request is already longer than
+        this tool reads.
+
+        Read and sized the way a source is: a request of more characters
+        than the ceiling allows is past it whatever its characters are,
+        and one of a quarter as many cannot be, so only a request between
+        the two is measured.
+        """
+        budget = self._of(InputBudget)
+        ceiling = budget.request_ceiling()
+        if len(sent) > ceiling:
+            return budget.request_too_large(len(sent))
+        if len(sent) * 4 <= ceiling:
+            return None
+        size = _size_of(sent)
+        if size > ceiling:
+            return budget.request_too_large(size)
+        return None
 
     def time_exhausted_by(self, elapsed: int) -> "Exhaustion | None":
         return self._of(TimeBudget).exhausted_by(elapsed)
@@ -462,8 +560,13 @@ class Budgets:
     def memory_exhausted_by(self, taken: int) -> "Exhaustion | None":
         return self._of(MemoryBudget).exhausted_by(taken)
 
-    def answer_exhausted_by(self, size: int) -> "Exhaustion | None":
-        return self._of(AnswerBudget).exhausted_by(size)
+    def answer_exhausted_by(self, answer: str) -> "Exhaustion | None":
+        """Whether the text of `answer` is larger than the answer budget
+        of this run. Sized the way a source is, and for the same reason."""
+        budget = self._of(AnswerBudget)
+        if len(answer) * 4 <= budget.maximum:
+            return None
+        return budget.exhausted_by(_size_of(answer))
 
     def _of(self, kind: type) -> Budget:
         for budget in self.budgets:
@@ -506,11 +609,23 @@ class Run:
         return (time.monotonic_ns() - self.began_at) // 1_000_000
 
 
+# How much of a text is turned into bytes at once while it is sized.
+# One page at a time rather than all of it, so that measuring a text
+# this tool is about to refuse costs a page of memory and not a second
+# copy of the text itself.
+_A_PAGE = 64 * 1024
+
+
 def _size_of(text: str) -> int:
-    """How many bytes `text` is.
+    """How many bytes `text` is, measured a page at a time.
 
     Written with the surrogate escapes passed through, so that a source
     carrying one is sized here exactly as it is sized everywhere else in
     this tool and this budget introduces no new refusal of its own.
     """
-    return len(text.encode("utf-8", "surrogatepass"))
+    if len(text) <= _A_PAGE:
+        return len(text.encode("utf-8", "surrogatepass"))
+    size = 0
+    for start in range(0, len(text), _A_PAGE):
+        size += len(text[start : start + _A_PAGE].encode("utf-8", "surrogatepass"))
+    return size
