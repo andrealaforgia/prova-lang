@@ -161,7 +161,7 @@ class Atom:
         """How many digits this atom writes, counted the way the
         interpreter counts them: every character of the run, leading
         zeros and all, with only the sign left out."""
-        return len(self.text) - (1 if self.text[:1] in "+-" else 0)
+        return len(self.text) - (1 if self.text[:1] in ("+", "-") else 0)
 
     @property
     def int_value(self) -> int:
