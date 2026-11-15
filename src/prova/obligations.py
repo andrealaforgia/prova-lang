@@ -53,8 +53,10 @@ class Site:
 
 @dataclass(frozen=True)
 class PathCondition:
-    """The branch and match conditions on the way to a site. It reads
-    `true` only when there is none."""
+    """What must hold for a site to be reached: the function's own
+    precondition where the site is answered under it, then the branch and
+    match conditions on the way down. It reads `true` only when there is
+    none."""
 
     clauses: tuple[str, ...] = ()
 
@@ -285,10 +287,41 @@ def _calls_owed_by(
     owed: list[Obligation] = []
     for index, clause in enumerate(function.requires):
         owed.extend(_calls_in(clause, Site((f"requires[{index}]",)), function, program))
+    under_its_own_precondition = _precondition_of(function)
     for index, clause in enumerate(function.ensures):
-        owed.extend(_calls_in(clause, Site((f"ensures[{index}]",)), function, program))
-    owed.extend(_calls_in(function.body, Site(("body",)), function, program))
+        owed.extend(
+            _calls_in(
+                clause,
+                Site((f"ensures[{index}]",)),
+                function,
+                program,
+                under_its_own_precondition,
+            )
+        )
+    owed.extend(
+        _calls_in(
+            function.body,
+            Site(("body",)),
+            function,
+            program,
+            under_its_own_precondition,
+        )
+    )
     return owed
+
+
+def _precondition_of(function: syntax.Function) -> PathCondition:
+    """What a call in the postcondition or the body of `function` is reached
+    under.
+
+    SPEC.md, "Meaning of a claim": the claim is `Pre_f(x) implies ...`, so
+    the postcondition is checked under the precondition and the body answers
+    it for every input that meets the precondition. A call in the
+    precondition itself is reached under nothing: a precondition must be
+    well-defined for every typed input and cannot assume itself true to
+    justify a partial call.
+    """
+    return PathCondition(tuple(text_of(clause) for clause in function.requires))
 
 
 def _calls_in(

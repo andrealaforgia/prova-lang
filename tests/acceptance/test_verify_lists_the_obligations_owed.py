@@ -129,6 +129,47 @@ NESTED_CONDITIONS = {
 # The calls each function of that program makes, counted by hand.
 NESTED_DIRECT_CALLS = {"tiny": 0, "pick": 4}
 
+# A chain of preconditions: `a4` may only run where its own precondition
+# holds, and it calls `a1`, which has one of its own, from its postcondition
+# and from its body. `a5` declares two precondition clauses and calls from a
+# branch, so the condition reaching that call joins all three.
+PRECONDITION_CHAIN_SOURCE = """(defn a1
+  (sig ((n Int)) -> Int ! pure)
+  (requires (> n 0))
+  (examples (example (a1 1) => 1))
+  n)
+
+(defn a3
+  (sig ((n Int)) -> Int ! pure)
+  (examples (example (a3 1) => 1))
+  n)
+
+(defn a4
+  (sig ((n Int)) -> Int ! pure)
+  (requires (> (a3 n) 0))
+  (ensures (>= result (a1 n)))
+  (examples (example (a4 1) => 1))
+  (a1 n))
+
+(defn a5
+  (sig ((n Int)) -> Int ! pure)
+  (requires (> n 0) (< n 9))
+  (examples (example (a5 1) => 1))
+  (if (> n 5) (a1 n) n))
+"""
+
+# The condition reaching each call of that program, read by hand. The call
+# inside `a4`'s own `requires` is reached under nothing: a precondition has
+# to be defined for every typed input and may not assume itself true. The
+# calls in the postcondition and in the body are reached only where that
+# precondition holds, and a branch adds its own test after it.
+PRECONDITION_CHAIN_CONDITIONS = {
+    "call_precondition:a4:requires[0]/arg[0]": "true",
+    "call_precondition:a4:ensures[0]/arg[1]": "(> (a3 n) 0)",
+    "call_precondition:a4:body": "(> (a3 n) 0)",
+    "call_precondition:a5:body/then": "(and (> n 0) (< n 9) (> n 5))",
+}
+
 
 def _hour_clock_source() -> str:
     path = REPO_ROOT / "examples" / "hour-clock.prova"
@@ -345,6 +386,34 @@ def test_a_call_behind_several_conditions_is_owed_under_all_of_them():
         "matches anything, misstates what has to be shown. "
         f"HOW: read the program and compare clause by clause:\n"
         f"{NESTED_CONDITIONS_SOURCE}"
+    )
+
+
+def test_a_call_in_a_contract_or_a_body_is_owed_under_the_functions_own_precondition():
+    """Given a function that declares a precondition and calls another from
+    its postcondition and from its body, when the Owner asks what must be
+    shown, then those two calls are owed only where that precondition
+    holds, while the call inside the precondition itself is owed under
+    nothing -- and a branch adds its own test after it.
+
+    still passes if: the tool put the precondition in front of every call it
+    found -- the call inside `a4`'s own `requires` is read here too, and it
+    must stay at `true`.
+    """
+    entries = _of_kind(
+        _obligations(_run("verify", PRECONDITION_CHAIN_SOURCE)), "call_precondition"
+    )
+    reached = {entry.get("id"): entry.get("path_condition") for entry in entries}
+
+    assert reached == PRECONDITION_CHAIN_CONDITIONS, (
+        f"WHAT: the conditions reaching the calls are {reached}, not the "
+        f"{PRECONDITION_CHAIN_CONDITIONS} the program states. "
+        "WHY: SPEC.md claims `Pre_f(x) implies ...`, so a postcondition is checked "
+        "under the precondition and a body answers it for every input that meets the "
+        "precondition; reporting `true` there drops the one assumption the work may "
+        "use. A precondition itself may not assume itself true, so a call inside it "
+        "keeps an empty condition. "
+        f"HOW: read the program clause by clause:\n{PRECONDITION_CHAIN_SOURCE}"
     )
 
 
