@@ -576,6 +576,27 @@ class Declarations:
     def of_kind(self, kind: str) -> tuple[DeclaredName, ...]:
         return tuple(entry for entry in self.entries if entry.kind == kind)
 
+    def place_of(self, kind: str, name: str, within: str = "") -> tuple[int, int]:
+        """Where the source declares `name`, of that kind, in that place
+        of the program.
+
+        The one answer to where a declared name stands, asked by anyone
+        who must show a reader the line to open. A name this program
+        does not declare has no place to give, which is a question about
+        a program that was never read, so it is refused rather than
+        answered with a place no source has.
+        """
+        for entry in self.entries:
+            if entry.scope() == (kind, within, name):
+                return (entry.line, entry.column)
+        raise KeyError(
+            f"this program declares no {kind} {name!r}"
+            + (f" in {within}" if within else "")
+            + ": the place of a declared name is read from the names the "
+            "source declared, so asking for one it did not declare asks about "
+            "a program that was never read"
+        )
+
     def repeated(self) -> tuple[tuple[DeclaredName, ...], ...]:
         """Each group of two or more declarations of one name in one
         scope, in source order.
@@ -863,6 +884,22 @@ def parse_program(forms: list[object]) -> Program:
     )
 
 
+def within_record(type_name: str) -> str:
+    """Where the fields of a record are unique, written as a reader of a
+    refusal reads it.
+
+    One spelling, used both by the rule about repeated names and by
+    anyone asking where a field of that record stands, so the two can
+    never name the same place differently.
+    """
+    return f"record {type_name!r}"
+
+
+def within_variant(variant_name: str, union_name: str) -> str:
+    """Where the fields of one variant of a union are unique."""
+    return f"variant {variant_name!r} of union {union_name!r}"
+
+
 def _declared_names_of_type(form: SList, type_decl: RecordType | UnionType) -> list[DeclaredName]:
     """Every name one `deftype` form declares: the type, the
     constructors it introduces -- a record introduces one of its own
@@ -872,7 +909,7 @@ def _declared_names_of_type(form: SList, type_decl: RecordType | UnionType) -> l
     body = form.items[2]
     if isinstance(type_decl, RecordType):
         names.append(DeclaredName("constructor", type_decl.name, line, column))
-        names += _declared_field_names(body.items[1:], f"record {type_decl.name!r}")
+        names += _declared_field_names(body.items[1:], within_record(type_decl.name))
         return names
     for variant_node in body.items[1:]:
         variant_name = variant_node.items[0].text
@@ -881,7 +918,7 @@ def _declared_names_of_type(form: SList, type_decl: RecordType | UnionType) -> l
         )
         names += _declared_field_names(
             variant_node.items[1:],
-            f"variant {variant_name!r} of union {type_decl.name!r}",
+            within_variant(variant_name, type_decl.name),
         )
     return names
 

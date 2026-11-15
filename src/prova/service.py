@@ -8,17 +8,24 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from prova import checker, evaluator, manifest, obligations, syntax
-from prova.reader import READING_LIMIT, ReaderError, TooDeeplyNested, end_of, read_program
+from prova import checker, evaluator, manifest, obligations, syntax, tree
+from prova.reader import (
+    READING_LIMIT,
+    ReaderError,
+    TooDeeplyNested,
+    end_of,
+    read_program,
+    read_source,
+)
 from prova.values import render
 
-AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify")
+AVAILABLE_OPERATIONS = ("check", "examples", "evaluate", "discover", "verify", "parse")
 
 # The operations that read a program from the `source` field of the
 # request. Each of them is answered about a text, so each of them refuses
 # a request whose `source` is not one.
-SOURCE_READING_OPERATIONS = ("check", "examples", "evaluate", "verify")
-UNAVAILABLE_OPERATIONS = frozenset({"parse", "format", "build"})
+SOURCE_READING_OPERATIONS = ("check", "examples", "evaluate", "verify", "parse")
+UNAVAILABLE_OPERATIONS = frozenset({"format", "build"})
 
 # What the tool answers when the source is not a program it can check.
 # `invalid_program` means the source is a core-0 program that breaks a
@@ -99,6 +106,8 @@ def handle(submitted: object) -> dict:
             return _run_examples(source)
         if operation == "verify":
             return _run_verify(source)
+        if operation == "parse":
+            return _run_parse(source)
         asked = request.evaluation_asked()
         if isinstance(asked, MalformedRequest):
             return asked.response_for(operation)
@@ -366,6 +375,7 @@ def _run_discover() -> dict:
             "contract_report": checker.contract_report_published(
                 CONTRACT_REPORT_OPERATIONS
             ),
+            "tree_schema": tree.SCHEMA.published(),
             "diagnostic_schemas": {
                 category: checker.DIAGNOSTIC_KINDS[category].published()
                 for category in DIAGNOSTIC_CATEGORIES
@@ -666,6 +676,34 @@ def _run_verify(source: str) -> dict:
         "source_digest": _source_digest(source),
         "diagnostics": [],
         "result": {"inventory": obligations.inventory_for(program).as_dict()},
+    }
+
+
+def _run_parse(source: str) -> dict:
+    """The tree the tool built for `source`.
+
+    Reads the source through the rule every operation that reads one
+    shares, so a source refused here is refused exactly as a check
+    refuses it, and an answer that refuses carries no tree at all: a
+    tree beside a refusal would read as a program this tool understood.
+
+    The comments are asked of the reader again rather than carried
+    through that shared rule: every other operation answers about the
+    program alone, and widening what they all share for the one
+    operation that reads prose would make every one of them carry it.
+    """
+    checked = _checked_program(source)
+    if isinstance(checked, Refusal):
+        return checked.response_for("parse")
+    program = checked
+
+    return {
+        "operation": "parse",
+        "status": "completed",
+        "claim": {"kind": "syntax_tree", "scope": "this input"},
+        "source_digest": _source_digest(source),
+        "diagnostics": [],
+        "result": {"tree": tree.tree_of(program, read_source(source).comments)},
     }
 
 

@@ -114,6 +114,31 @@ class SList:
 
 
 @dataclass(frozen=True)
+class Comment:
+    """One comment as a reader wrote it: the characters from its ';' to
+    the end of its line, and the place that ';' stands at.
+
+    Kept rather than dropped, and kept exactly: a tool that writes the
+    source back out must write the reader's own words, not a tidied
+    version of them, and a client that reads the program's tree is owed
+    the prose written about each part of it.
+    """
+
+    text: str
+    line: int
+    column: int
+
+
+@dataclass(frozen=True)
+class SourceText:
+    """One text as this reader reads it: the forms it writes, and the
+    comments met between them."""
+
+    forms: tuple[object, ...]
+    comments: tuple[Comment, ...]
+
+
+@dataclass(frozen=True)
 class _Token:
     kind: str  # "(" | ")" | "atom"
     text: str
@@ -121,8 +146,9 @@ class _Token:
     column: int
 
 
-def _tokenize(text: str) -> list[_Token]:
+def _tokenize(text: str) -> tuple[list[_Token], list[Comment]]:
     tokens: list[_Token] = []
+    comments: list[Comment] = []
     line = 1
     column = 1
     i = 0
@@ -139,9 +165,12 @@ def _tokenize(text: str) -> list[_Token]:
             column += 1
             continue
         if ch == ";":
+            start_line, start_column = line, column
+            start = i
             while i < n and text[i] != "\n":
                 i += 1
                 column += 1
+            comments.append(Comment(text[start:i], start_line, start_column))
             continue
         if ch in "()":
             tokens.append(_Token(ch, ch, line, column))
@@ -155,7 +184,7 @@ def _tokenize(text: str) -> list[_Token]:
             column += 1
         tokens.append(_Token("atom", text[i:j], start_line, start_column))
         i = j
-    return tokens
+    return tokens, comments
 
 
 def end_of(text: str) -> tuple[int, int]:
@@ -169,15 +198,26 @@ def end_of(text: str) -> tuple[int, int]:
     return len(lines), len(lines[-1]) + 1
 
 
-def read_program(text: str) -> list[object]:
-    """Read every top-level form in `text` into a list of Atom/SList nodes."""
-    tokens = _tokenize(text)
+def read_source(text: str) -> SourceText:
+    """Every top-level form `text` writes, and every comment met between
+    them.
+
+    The one reader of characters: a caller that wants the forms alone
+    asks `read_program` below, and nothing else in this tool reads a
+    character of a source.
+    """
+    tokens, comments = _tokenize(text)
     forms: list[object] = []
     pos = 0
     while pos < len(tokens):
         node, pos = _read_form(tokens, pos, text)
         forms.append(node)
-    return forms
+    return SourceText(tuple(forms), tuple(comments))
+
+
+def read_program(text: str) -> list[object]:
+    """Read every top-level form in `text` into a list of Atom/SList nodes."""
+    return list(read_source(text).forms)
 
 
 def _read_form(
