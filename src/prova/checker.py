@@ -1464,7 +1464,11 @@ def _covers(rows: list[tuple], types: list[str], program: syntax.Program) -> boo
         for row in rows:
             head = row[0]
             if _is_wild(head):
-                specialised.append((syntax.PatWildcard(),) * len(field_types) + row[1:])
+                # Stands where the pattern it specialises stands: a
+                # pattern is read from a source and says where, and one
+                # written for a field of it is written at the same place.
+                stands = syntax.PatWildcard(head.line, head.column)
+                specialised.append((stands,) * len(field_types) + row[1:])
             elif _pattern_key(head) == key:
                 sub = head.subpatterns if isinstance(head, syntax.PatConstructor) else ()
                 specialised.append(tuple(sub) + row[1:])

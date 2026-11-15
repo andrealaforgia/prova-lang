@@ -448,24 +448,24 @@ def _symbol_text(role: str, node: object) -> str:
 class RecordType:
     name: str
     fields: tuple[tuple[str, str], ...]
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class Variant:
     name: str
     fields: tuple[tuple[str, str], ...]
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class UnionType:
     name: str
     variants: tuple[Variant, ...]
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
@@ -480,14 +480,19 @@ class Parameter:
 
     name: str
     type_name: str
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class Signature:
     params: tuple[Parameter, ...]
     return_type: str
+    # A signature, an example and a function below keep a place of their
+    # own only when they were read from a source: a caller that builds a
+    # program in memory, as the obligation inventory's own tests do, has
+    # no text to point into. Every part that is published carries a place
+    # it cannot be built without.
     line: int = 0
     column: int = 0
 
@@ -737,8 +742,8 @@ class Binding:
 
     name: str
     value: "Expr"
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
@@ -762,8 +767,8 @@ class If:
 class MatchClause:
     pattern: "Pattern"
     body: "Expr"
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
@@ -782,43 +787,43 @@ Expr = object  # IntLit | BoolLit | UnitLit | NameRef | Call | ConstructorCall
 
 @dataclass(frozen=True)
 class PatWildcard:
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class PatVar:
     name: str
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class PatInt:
     value: int
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class PatBool:
     value: bool
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class PatUnit:
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 @dataclass(frozen=True)
 class PatConstructor:
     name: str
     subpatterns: tuple["Pattern", ...]
-    line: int = 0
-    column: int = 0
+    line: int
+    column: int
 
 
 Pattern = object
