@@ -27,6 +27,7 @@ from __future__ import annotations
 from hypothesis import given, strategies as st
 
 from prova import service
+from prova.syntax import RESERVED_WORDS
 
 SHADOWED_BINDING_CATEGORY = "shadowed_binding"
 RESERVED_NAME_CATEGORY = "reserved_name"
@@ -93,8 +94,10 @@ TAKEN_NAMES = (
 
 # A free name is one the program does not already use and the language
 # does not already mean: the two boolean literals are values, not names,
-# and `probe` is the function these programs declare. The generator
-# found both edges, so they are named here rather than hidden.
+# `probe` is the function these programs declare, and every word the
+# language reserves (the word-shaped operators `and`, `or`, `not` among
+# them) is refused for its spelling, not for hiding. The generator found
+# each of these edges, so they are named here rather than hidden.
 NOT_FREE = frozenset(
     {
         THE_LET_PARAMETER,
@@ -106,6 +109,7 @@ NOT_FREE = frozenset(
         "true",
         "false",
     }
+    | RESERVED_WORDS
 )
 
 _free_names = st.text(
