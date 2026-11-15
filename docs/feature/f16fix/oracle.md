@@ -4,13 +4,10 @@
 
 A late review of the obligation inventory made 22 small deletions in the code
 that walks a program and lists what it owes. Nine of them left the whole test
-suite green while real obligations disappeared from the answer. A deletion that
-nobody notices is a gap in the tests, not in the product: the walk itself was
-right, the tests were simply not looking at most of it.
+suite green while real obligations disappeared from the answer. The review also
+found one real defect in what the answer says.
 
-This delivery closes that gap. It changes no production code.
-
-## What the tests now say
+## The tests that were not looking (findings 1 to 3)
 
 **Every position a body can put a call in.** The plan the property tests write
 placed a generated call in three positions only: the body itself, the then arm
@@ -30,32 +27,45 @@ reports a count of calls that nothing read. It is now read against a count
 taken from the program by hand: four for the function that calls, none for the
 one that calls nothing.
 
-## The conflict I could not decide
+None of these three needed the product to move. The walk was already right; the
+tests were simply not looking at most of it.
 
-The request also asks for a change of behaviour: an obligation arising in a
-function's `ensures` block or in its body should be reported under that
-function's own `requires`, not under `true`. SPEC.md lines 210 to 220 support
-it: a postcondition is checked under the precondition.
+## The defect (finding 4)
 
-I applied that rule to a throwaway copy and ran the whole suite. **Three
-existing tests state the old text as their expected result and fail:**
+A call in a function's postcondition, or in its body, was listed as reached
+under `true`. SPEC.md states the claim as `Pre_f(x) implies ...`: a
+postcondition is checked under the precondition, and the body answers it for
+every input that meets the precondition. So `a4`, which may only run where
+`(> (a3 n) 0)` holds, appeared to owe `a1`'s precondition everywhere, with its
+own assumption dropped.
 
-| Test | What it pins |
+A call inside a `requires` is different and was already right. A precondition
+must be well-defined for every typed input and cannot assume itself true to
+justify a partial call, so nothing is put in front of it.
+
+## The conflict, and how it was settled
+
+Three existing tests stated the old condition as their expected result. I
+applied the rule to a throwaway copy, ran the whole suite, and measured exactly
+which ones fail:
+
+| Test | What it pinned |
 |---|---|
-| `tests/acceptance/.../test_each_call_owes_its_precondition_under_the_condition_that_reaches_it` | every call of the shipped hour clock is reached under `true`; `step` declares `requires (valid-state current)` and calls from its `ensures` |
-| `tests/properties/.../test_every_function_example_and_call_owes_its_entry` | a body call of a generated function with a `requires` is reached under `true` |
-| `tests/properties/.../test_putting_a_call_out_of_reach_keeps_what_it_owes` | the same call reads `true` when reachable and `false` when not |
+| `test_each_call_owes_its_precondition_under_the_condition_that_reaches_it` | every call of the shipped hour clock is reached under `true`; `step` declares `requires (valid-state current)` and calls from its `ensures` |
+| `test_every_function_example_and_call_owes_its_entry` | a body call of a generated function with a `requires` is reached under `true` |
+| `test_putting_a_call_out_of_reach_keeps_what_it_owes` | the same call reads `true` when reachable and `false` when not |
 
-The request forbids changing an existing test's expected result and tells me to
-stop and report when one pins the old text. So the rule is **not applied**, no
-test was edited, and the question goes back to the Owner. Findings 1 to 3,
-which close all nine surviving deletions, are delivered.
+The request forbids changing an existing test's expected result, so I stopped
+and reported the three, with the measurement and one question. **The Owner
+decided that those three may be rewritten to the new text, and nothing else in
+them.** They were changed on their own, in a commit that is red by itself and
+says so, before the commit that makes them green again.
 
-Nothing else in the repository pins these conditions: no other test, fixture or
-document states them.
+Nothing else in the repository pinned these conditions: no other test, fixture
+or document stated them.
 
 ## Still open
 
-- The Owner's answer about the rule above.
 - Path conditions name let-bound values whose definition is in no entry. The
   request assigns that to another delivery; nothing was done about it here.
+- An independent reviewer has not yet read this change.
