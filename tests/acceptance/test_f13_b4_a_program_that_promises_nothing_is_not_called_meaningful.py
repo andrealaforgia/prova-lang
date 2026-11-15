@@ -51,6 +51,13 @@ def test_a_program_whose_every_contract_is_empty_is_not_called_meaningfully_corr
         "that a clean answer about this program is not a meaningful one."
     )
 
+    assert "say nothing" in (report.get("note") or ""), (
+        f"the report ends with {report.get('note')!r} for a program whose "
+        "every block is omitted or trivial. The sentence beside the entries "
+        "is where a reader who counts no totals learns that these contracts "
+        "say nothing about what the functions answer."
+    )
+
     found = claim_words_in(answer)
     assert found == [], (
         f"the answer uses {sorted(set(found))} about a program whose every "
@@ -82,6 +89,21 @@ def test_a_program_that_states_a_contract_is_told_apart_from_one_that_does_not()
     assert entries_by_function(empty) == {}, (
         f"the report lists {entries_by_function(empty)} for a program that "
         "declares no function at all."
+    )
+    assert "declares no function" in (empty.get("note") or ""), (
+        f"the report ends with {empty.get('note')!r} for a program that "
+        "declares no function: a reader of an empty list of entries learns "
+        "from that sentence that there was nothing to record, not that the "
+        "recording failed."
+    )
+
+    vacuous = report_of(check(PROMISES_NOTHING))
+    notes = [vacuous.get("note"), stating.get("note"), empty.get("note")]
+    assert len(set(notes)) == 3, (
+        f"the three programs end with {notes}: a program promising nothing, "
+        "a program promising something and a program with no function at all "
+        "are three different readings, and one sentence for all three tells "
+        "the Owner nothing."
     )
 
 

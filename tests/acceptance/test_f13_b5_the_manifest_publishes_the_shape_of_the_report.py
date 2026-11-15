@@ -31,6 +31,9 @@ EVERY_SOURCE = (
     PROMISES_NOTHING,
     NO_FUNCTION_AT_ALL,
 )
+# Every part of the report the manifest describes. One key here per key
+# an answer carries beside the entries, so a part that is answered
+# without being published (or published without being answered) fails.
 SHAPE_KEYS = {
     "carried_by",
     "what",
@@ -38,6 +41,7 @@ SHAPE_KEYS = {
     "strengths",
     "totals_fields",
     "states_a_contract",
+    "note",
 }
 SOURCE_READING_OPERATIONS = ("check", "verify", "examples", "evaluate")
 

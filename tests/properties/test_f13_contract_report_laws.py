@@ -38,6 +38,7 @@ REQUIRES_TEXTS = (
     ("trivial", "(requires true true)"),
     ("stated", "(requires (> n 0))"),
     ("stated", "(requires true (> n 0))"),
+    ("stated", "(requires false)"),
 )
 ENSURES_TEXTS = (
     ("omitted", ""),
@@ -45,6 +46,7 @@ ENSURES_TEXTS = (
     ("trivial", "(ensures true true)"),
     ("stated", "(ensures (= result (* n 2)))"),
     ("stated", "(ensures true (= result (* n 2)))"),
+    ("stated", "(ensures false)"),
 )
 FUNCTION_NAMES = ("twice-a", "twice-b", "twice-c")
 BLOCKS = ("precondition", "postcondition")

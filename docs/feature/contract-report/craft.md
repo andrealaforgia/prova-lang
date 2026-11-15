@@ -33,6 +33,29 @@ A checked program now answers, beside its digest:
 The shipped hour clock reads that way: `valid-state` omitted/omitted,
 `initial` omitted/stated, `step` stated/stated.
 
+## What a review of the first revision changed
+
+Four defects were found in the first revision and are fixed here.
+
+- The note was answered but never published; the manifest now describes
+  it, and the test that compares the published parts with the answered
+  ones fails if either grows without the other.
+- A block written `(requires false)` or `(ensures false)` was read for
+  being a literal rather than for its value. Reading only "is a literal"
+  made `false` trivial, which would tell the Owner that a function
+  demanding the impossible promises as little as one demanding nothing.
+  The fixtures and the generated block texts now carry both, expected to
+  read stated.
+- Two of the three notes were never observed, so one sentence for every
+  program would have passed. The three readings -- promises nothing,
+  promises something, declares no function -- are now asserted to differ.
+- The published meaning of `stated` claimed the block says something
+  about the function. That is false for `(ensures (and true true))`, so
+  it now reads: the block has a clause that is not the literal `true`,
+  and this tool does not decide whether that clause promises anything.
+  That is DEC4: only the literal `true` is recognised as trivial,
+  because deciding more would need a solver.
+
 ## What the design makes impossible
 
 A strength is one of three published words: any other refuses at
@@ -78,11 +101,11 @@ Measured, not guessed.
 
 | | |
 |---|---|
-| the 7 new files, 9 runs in a row | 21 passed each time; real 3.04 s to 3.20 s, median 3.06 s |
-| slowest new test | 0.50 s, each of the 4 property tests (12 generated cases, each case one real `prova` process) |
+| the 7 new files, 9 runs in a row | 22 passed each time; real 3.00 s to 3.07 s, median 3.02 s |
+| slowest new test | 0.46 s, each of the 4 property tests (12 generated cases, each case one real `prova` process) |
 | slowest new acceptance test | 0.28 s |
 | new unit tests | under 5 ms each |
-| whole suite | 1066 passed in 121 s |
+| whole suite | 1067 passed |
 
 The property cases cost about 40 ms each rather than the 10 ms a unit
 case is budgeted: the law is observed through the real command, as every

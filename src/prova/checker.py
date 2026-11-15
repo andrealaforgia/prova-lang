@@ -1693,8 +1693,8 @@ CONTRACT_STRENGTH_MEANINGS = {
         "it promises nothing"
     ),
     CONTRACT_STATED: (
-        "the block has a clause that is not the literal true, so it says "
-        "something about the function"
+        "the block has a clause that is not the literal true; this tool does "
+        "not decide whether that clause promises anything"
     ),
 }
 CONTRACT_STRENGTH_NAMES = tuple(CONTRACT_STRENGTH_MEANINGS)
@@ -1928,5 +1928,11 @@ def contract_report_published(carried_by: tuple[str, ...]) -> dict:
         "states_a_contract": (
             "false when every block of every declared function is omitted or "
             "trivial, and true when at least one of them is stated"
+        ),
+        "note": (
+            "one sentence saying how much this report is worth: whether the "
+            "program writes any contract at all, and that a completed check "
+            "reports only that the rules of core-0 were kept over one text. "
+            "It states no outcome over the program itself"
         ),
     }

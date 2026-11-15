@@ -65,6 +65,19 @@ REAL_CONTRACT = """
   (* n 2))
 """
 
+# A function whose two blocks are written as the literal `false`. They
+# are not trivial: a block nothing can meet is the opposite of a block
+# everything meets, and reading either of them as the same word would
+# hide a contract no input can ever reach.
+FALSE_CONTRACT = """
+(defn twice
+  (sig ((n Int)) -> Int ! pure)
+  (requires false)
+  (ensures false)
+  (examples (example (twice 2) => 4))
+  (* n 2))
+"""
+
 # Two functions and four blocks, every one of them omitted or literally
 # `true`: nothing in this program promises anything.
 PROMISES_NOTHING = """

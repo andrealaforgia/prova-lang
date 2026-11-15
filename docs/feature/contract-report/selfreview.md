@@ -17,8 +17,8 @@ executor, so this record is not closed here.
 | D9 | tests through the public interface | pass. Every acceptance and property test drives the real `prova` command over JSON, for example `tests/acceptance/test_f13_b1_a_function_without_a_precondition_is_recorded_as_omitted.py:28`. The two refusals can only be reached by building a report by hand, so they have unit tests of the module's own contract. |
 | D10 | test naming | pass. Each name is a sentence about what the Owner sees; none holds a production symbol. |
 | D11 | test helpers | pass. One fixture module holds the programs and the one way the tests talk to the tool; each program is written out so every expected strength is read from the source by hand. |
-| D12 | property tests | pass. Four laws, `tests/properties/test_f13_contract_report_laws.py:110` and the three that follow it; the plan is the oracle, and each case is built from a closed set of block texts rather than searched for. |
-| D13 | test speed | pass with a stated cost. Nine runs of the new files: 21 passed each time, median 3.06 s. A property case costs about 40 ms because the law is observed through the real command, as every property test here does. |
+| D12 | property tests | pass. Four laws, `tests/properties/test_f13_contract_report_laws.py:112` and the three that follow it; the plan is the oracle, and each case is built from a closed set of block texts, which holds the literal `false` as well as the literal `true`. |
+| D13 | test speed | pass with a stated cost. Nine runs of the new files: 22 passed each time, median 3.02 s. A property case costs about 38 ms because the law is observed through the real command, as every property test here does. |
 | D14 | test duplication | pass. The finite examples state the four criteria and the shipped clock; the properties state the laws over generated programs; no pair repeats a stimulus and an assertion. |
 | D15 | readability and failure messages | pass. Every refusal says what failed, why it matters and how to repair it (`src/prova/checker.py:1729`), and every assertion message names the expected and the actual reading. |
 | D16 | formal model | n/a. The change adds no state, no protocol and no concurrency: one parsed program in, one field of one answer out. |
@@ -29,3 +29,20 @@ executor, so this record is not closed here.
 - The vocabulary was declared twice; it is now one table (D2).
 - A published sentence used the word "holds", which an existing manifest
   test refuses. The sentence was reworded; the test was not touched.
+
+## What a later independent review found, and what was done
+
+Four defects, all fixed in the same branch and each one now watched by a
+test that fails when the defect returns:
+
+1. the note was answered but never published;
+2. a literal block was read for being a literal, not for its value, so
+   `(ensures false)` read as trivial;
+3. two of the three notes were never observed;
+4. the published meaning of `stated` over-claimed what a stated block
+   says.
+
+Each of the first three was checked by putting the wrong behaviour back
+into the code and watching the named tests fail: the manifest test for
+the first, the `false` acceptance test and two property laws for the
+second, and two tests of the vacuous program for the third.

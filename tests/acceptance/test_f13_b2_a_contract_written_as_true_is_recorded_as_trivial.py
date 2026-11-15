@@ -15,6 +15,7 @@ told apart.
 from __future__ import annotations
 
 from _f13_contract_fixtures import (
+    FALSE_CONTRACT,
     NO_PRECONDITION,
     REAL_CONTRACT,
     TRIVIAL_POSTCONDITION,
@@ -54,6 +55,24 @@ def test_a_postcondition_that_states_a_relation_is_not_recorded_as_trivial():
         "a real promise reads like one that says nothing. Record a block "
         "with a clause that is not the literal true as stated."
     )
+
+
+def test_a_block_written_as_false_is_not_recorded_as_trivial():
+    """Given a function `twice` whose `requires` and `ensures` are both
+    the literal `false`, when the program is checked, then neither block
+    is recorded as trivial."""
+    entry = entries_by_function(report_of(check(FALSE_CONTRACT)))["twice"]
+
+    for block in ("precondition", "postcondition"):
+        assert entry.get(block) == "stated", (
+            f"the report records the {block} of 'twice' as "
+            f"{entry.get(block)!r}, and that function writes the literal "
+            "false there. A block no input can ever meet is the opposite of "
+            "one every input meets; reading it as trivial would tell the "
+            "Owner that a function demanding the impossible promises as "
+            "little as one demanding nothing. Read the value of the literal, "
+            "not only that the clause is a literal."
+        )
 
 
 def test_a_block_written_as_true_reads_differently_from_a_block_never_written():
