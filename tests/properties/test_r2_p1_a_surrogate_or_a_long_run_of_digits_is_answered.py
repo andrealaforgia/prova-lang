@@ -307,19 +307,34 @@ def test_a_lone_surrogate_anywhere_in_a_request_is_answered(
     response = _answered(request, why)
 
     if field == "source":
-        assert response["status"] == "invalid_input", f"{why}: {str(response)[:300]}"
-        named = [
-            entry for entry in response["diagnostics"]
-            if entry.get("category") == "malformed_request"
-            and entry.get("symbol") == "source"
-        ]
-        assert len(named) == 1, f"{why}: {str(response)[:400]}"
-        place = position % (len(clock) + 1)
-        assert f"position {place}" in named[0]["reason"], (
-            f"{why}: the refusal says {named[0]['reason'][:200]!r}, which does "
-            f"not say that the character at position {place} is the one that "
-            "cannot be written."
+        _assert_named_with_its_position(response, "source", clock, position, why)
+    elif field == "arguments" and operation == "evaluate":
+        _assert_named_with_its_position(
+            response, "arguments[0]", "(Clock 1)", position, why
         )
+
+
+def _assert_named_with_its_position(
+    response: dict, field: str, text: str, position: int, why: str
+) -> None:
+    """The answer refuses exactly the named text of the request, and
+    says which character of it cannot be written."""
+    assert response["status"] == "invalid_input", f"{why}: {str(response)[:300]}"
+    named = [
+        entry for entry in response["diagnostics"]
+        if entry.get("category") == "malformed_request"
+        and entry.get("symbol") == field
+    ]
+    assert len(named) == 1, (
+        f"{why}: {str(response)[:400]} carries {len(named)} refusals naming "
+        f"{field!r}, expected 1. A client repairs the text the refusal names."
+    )
+    place = position % (len(text) + 1)
+    assert f"position {place}" in named[0]["reason"], (
+        f"{why}: the refusal says {named[0]['reason'][:200]!r}, which does "
+        f"not say that the character at position {place} of {field} is the "
+        "one that cannot be written."
+    )
 
 
 @DERANDOMIZED

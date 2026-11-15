@@ -132,7 +132,15 @@ def test_every_operation_that_reads_source_refuses_the_same_literal():
             "never read the literal, so it has nothing to report about the "
             "program."
         )
-        assert_located(the_refusal(response, SYNTAX, why), why)
+        refusal = the_refusal(response, SYNTAX, why)
+        assert_located(refusal, why)
+        reason = refusal["reason"]
+        assert str(PAST_EVERY_LIMIT) in reason and str(DIGIT_LIMIT) in reason, (
+            f"the refusal for {why} says {reason[:200]!r}, which does not "
+            f"carry both the {PAST_EVERY_LIMIT} digits that were written and "
+            f"the {DIGIT_LIMIT} this tool reads. Every operation answers the "
+            "same source the same way, with the same two numbers."
+        )
 
 
 def test_a_literal_too_long_in_an_argument_is_refused_where_it_stands():
