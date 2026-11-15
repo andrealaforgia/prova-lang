@@ -22,7 +22,7 @@ import pytest
 from _f5_binding_fixtures import (
     EMPTY_SOURCE,
     ODD_BUT_PARSEABLE_BINDERS,
-    assert_accepted,
+    categories,
     check,
 )
 
@@ -60,7 +60,23 @@ def test_an_odd_binder_is_answered_and_not_crashed_on(source: str, description: 
     )
 
 
-def test_the_empty_program_is_still_accepted():
-    """Control: a source with 0 declarations is accepted, so an answer
-    above is not simply a refusal of everything unusual."""
-    assert_accepted(check(EMPTY_SOURCE), "a program with no declaration at all")
+def test_the_empty_program_is_refused_for_declaring_nothing():
+    """Control: a source with 0 declarations is refused, and for its own
+    reason -- it declares nothing, which the reader answers as a syntax
+    refusal -- never for a binding rule, so an answer above is not simply
+    a refusal of everything unusual."""
+    response = check(EMPTY_SOURCE).response()
+
+    assert response.get("status") == "invalid_program", (
+        f"a source with no declaration at all was not refused: {response}. A "
+        "program is one or more declarations, so a source that declares nothing "
+        "is invalid."
+    )
+    assert categories(response) == ["syntax"], (
+        f"the empty source was refused as {categories(response)}: {response}. It "
+        "breaks no binding rule: it declares nothing, which the reader answers."
+    )
+    assert "declaration" in response["diagnostics"][0].get("reason", ""), (
+        f"the refusal does not say what is missing: {response}. A reader repairs "
+        "it by adding a declaration, so the sentence must name one."
+    )
