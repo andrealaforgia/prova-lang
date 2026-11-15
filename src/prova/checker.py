@@ -102,11 +102,100 @@ RESERVED_FOR_POSTCONDITIONS = "result"
 
 
 @dataclass(frozen=True)
+class AboutNothingNamed:
+    """What a refusal that names nothing is about.
+
+    A refusal of the reader stands at a place in a text and has no
+    symbol to name, so the absence is a value of its own instead of
+    `None`: every refusal answers the question of what it is about, and
+    a reader of one never has to ask whether it may.
+    """
+
+    def fields(self) -> dict:
+        return {}
+
+    @classmethod
+    def kinds(cls) -> dict:
+        return {}
+
+
+NOTHING_NAMED = AboutNothingNamed()
+
+
+@dataclass(frozen=True)
+class AboutASymbol:
+    """What a refusal about one named thing is about: the name a reader
+    goes to the source to repair."""
+
+    symbol: str
+
+    def fields(self) -> dict:
+        return {"symbol": self.symbol}
+
+    @classmethod
+    def kinds(cls) -> dict:
+        return {"symbol": "name"}
+
+
+@dataclass(frozen=True)
+class AboutTwoTypes:
+    """What a refusal about a disagreement of types is about: the symbol
+    it stands at, the type core-0 requires there and the type the
+    program writes there."""
+
+    symbol: str
+    expected: str
+    actual: str
+
+    def fields(self) -> dict:
+        return {"symbol": self.symbol, "expected": self.expected, "actual": self.actual}
+
+    @classmethod
+    def kinds(cls) -> dict:
+        return {"symbol": "name", "expected": "type_name", "actual": "type_name"}
+
+
+@dataclass(frozen=True)
+class AboutTwoCounts:
+    """What a refusal about a wrong number of things is about: the
+    symbol it stands at, how many that symbol takes and how many the
+    program gives it."""
+
+    symbol: str
+    expected: int
+    actual: int
+
+    def fields(self) -> dict:
+        return {"symbol": self.symbol, "expected": self.expected, "actual": self.actual}
+
+    @classmethod
+    def kinds(cls) -> dict:
+        return {"symbol": "name", "expected": "count", "actual": "count"}
+
+
+@dataclass(frozen=True)
+class AboutAConstruct:
+    """What a refusal at the boundary of the profile is about: the
+    stable word the profile gives that kind of construct, so a caller
+    tells the kinds apart without reading the prose."""
+
+    construct: str
+
+    def fields(self) -> dict:
+        return {"construct": self.construct}
+
+    @classmethod
+    def kinds(cls) -> dict:
+        return {"construct": "construct"}
+
+
+@dataclass(frozen=True)
 class Diagnostic:
     category: str
     reason: str
     location: tuple[int, int] | None = None
     cycle: "DeclarationCycle | None" = None
+    about: object = NOTHING_NAMED
 
 
 def listed(parts: tuple[str, ...]) -> str:

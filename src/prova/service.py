@@ -70,6 +70,14 @@ DIAGNOSTIC_CATEGORIES = (
 )
 
 
+# The two refusals in `handle` below are the only ones written as a
+# dictionary here rather than built as a `checker.Diagnostic`: they
+# answer about the request, not about a program, so they name no symbol,
+# stand at no place in any text and carry no source revision. Deciding
+# them must also enter nothing of the checker: an operation the tool
+# does not answer attempts none of the work, which
+# tests/properties/test_i1_s1_p4_p5.py observes from outside by tracing
+# every module the process enters.
 def handle(request: dict) -> dict:
     operation = request.get("operation")
     if operation == "check":
@@ -149,12 +157,40 @@ def _run_discover() -> dict:
     }
 
 
+@dataclass(frozen=True)
+class SourceRevision:
+    """The revision of one submitted source text: the SHA-256 of the
+    exact bytes the request carried.
+
+    The one thing that says which text an answer is about. A client
+    recomputes it from what it sent, so two versions of a file are never
+    confused for each other and evidence about one cannot certify the
+    other.
+    """
+
+    digest: str
+
+    @classmethod
+    def of(cls, source: str) -> "SourceRevision":
+        return cls(hashlib.sha256(source.encode("utf-8")).hexdigest())
+
+    def rendered(self) -> str:
+        return self.digest
+
+
 def _source_digest(source: str) -> str:
-    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return SourceRevision.of(source).rendered()
 
 
 def _diagnostic_dict(diagnostic: checker.Diagnostic) -> dict:
+    """The one builder of the dictionary a client reads a refusal from.
+
+    Every refusal of every operation comes through here, so a refusal of
+    the reader and a refusal of a rule of core-0 reach a caller in the
+    same shape, and nothing else in the tool writes a diagnostic.
+    """
     entry = {"category": diagnostic.category, "reason": diagnostic.reason}
+    entry.update(diagnostic.about.fields())
     if diagnostic.location is not None:
         line, column = diagnostic.location
         entry["location"] = {"line": line, "column": column}
@@ -163,7 +199,7 @@ def _diagnostic_dict(diagnostic: checker.Diagnostic) -> dict:
     return entry
 
 
-def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> dict:
+def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> checker.Diagnostic:
     """The one diagnostic a source the tool cannot read as a core-0
     program carries.
 
@@ -172,27 +208,23 @@ def _syntax_diagnostic(error: ReaderError | syntax.SyntaxError_) -> dict:
     operation met it, carrying the place the refusal stands at so a
     reader is sent to the line to repair.
     """
-    entry = {"category": "syntax", "reason": error.message}
-    if error.line:
-        entry["location"] = {"line": error.line, "column": error.column}
-    return entry
+    place = (error.line, error.column) if error.line else None
+    return checker.Diagnostic("syntax", error.message, place)
 
 
-def _out_of_profile_diagnostic(refusal: syntax.UnsupportedConstruct) -> dict:
+def _out_of_profile_diagnostic(
+    refusal: syntax.UnsupportedConstruct,
+) -> checker.Diagnostic:
     """The one diagnostic a source using a construct core-0 does not have
     carries: the construct named, why core-0 cannot give it a meaning,
     how to write the intent instead, and the place it stands at.
-
-    `construct` is the stable word the profile gives that kind of
-    construct, carried beside the sentence so a caller can tell the
-    kinds apart without reading the prose.
     """
-    return {
-        "category": UNSUPPORTED_CONSTRUCT,
-        "reason": refusal.message,
-        "construct": refusal.construct.name,
-        "location": {"line": refusal.line, "column": refusal.column},
-    }
+    return checker.Diagnostic(
+        UNSUPPORTED_CONSTRUCT,
+        refusal.message,
+        (refusal.line, refusal.column),
+        about=checker.AboutAConstruct(refusal.construct.name),
+    )
 
 
 @dataclass(frozen=True)
@@ -213,7 +245,7 @@ class Refusal:
         return {
             "operation": operation,
             "status": self.status,
-            "diagnostics": [dict(diagnostic) for diagnostic in self.diagnostics],
+            "diagnostics": [_diagnostic_dict(d) for d in self.diagnostics],
         }
 
 
@@ -234,10 +266,7 @@ def _checked_program(source: str):
 
     diagnostics = checker.check_program(program)
     if diagnostics:
-        return Refusal(
-            "invalid_program",
-            tuple(_diagnostic_dict(diagnostic) for diagnostic in diagnostics),
-        )
+        return Refusal("invalid_program", tuple(diagnostics))
     return program
 
 
@@ -331,10 +360,12 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "operation": "evaluate",
             "status": "invalid_input",
             "diagnostics": [
-                {
-                    "category": "unknown_function",
-                    "reason": f"no function named {function_name!r}",
-                }
+                _diagnostic_dict(
+                    checker.Diagnostic(
+                        "unknown_function",
+                        f"no function named {function_name!r}",
+                    )
+                )
             ],
         }
 
@@ -344,7 +375,9 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
         return {
             "operation": "evaluate",
             "status": "invalid_input",
-            "diagnostics": [{"category": "malformed_value", "reason": error.message}],
+            "diagnostics": [
+                _diagnostic_dict(checker.Diagnostic("malformed_value", error.message))
+            ],
         }
 
     params = function.signature.params
@@ -353,13 +386,13 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "operation": "evaluate",
             "status": "invalid_input",
             "diagnostics": [
-                {
-                    "category": "arity_mismatch",
-                    "reason": (
+                _diagnostic_dict(
+                    checker.Diagnostic(
+                        "arity_mismatch",
                         f"function {function_name!r} expects {len(params)} argument(s), "
-                        f"got {len(args)}"
-                    ),
-                }
+                        f"got {len(args)}",
+                    )
+                )
             ],
         }
 
@@ -370,13 +403,17 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
         return {
             "operation": "evaluate",
             "status": "invalid_input",
-            "diagnostics": [{"category": "malformed_value", "reason": error.reason}],
+            "diagnostics": [
+                _diagnostic_dict(checker.Diagnostic("malformed_value", error.reason))
+            ],
         }
     except evaluator.IllTypedValue as error:
         return {
             "operation": "evaluate",
             "status": "invalid_input",
-            "diagnostics": [{"category": "ill_typed_value", "reason": error.reason}],
+            "diagnostics": [
+                _diagnostic_dict(checker.Diagnostic("ill_typed_value", error.reason))
+            ],
         }
 
     try:
@@ -388,7 +425,9 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "claim": {"kind": "evaluation", "scope": "this input"},
             "source_digest": _source_digest(source),
             "diagnostics": [
-                {"category": "precondition_violation", "reason": str(violation)}
+                _diagnostic_dict(
+                    checker.Diagnostic("precondition_violation", str(violation))
+                )
             ],
         }
     except evaluator.PostconditionViolation as violation:
@@ -398,7 +437,9 @@ def _run_evaluate(source: str, function_name: object, argument_texts: list) -> d
             "claim": {"kind": "evaluation", "scope": "this input"},
             "source_digest": _source_digest(source),
             "diagnostics": [
-                {"category": "postcondition_violation", "reason": str(violation)}
+                _diagnostic_dict(
+                    checker.Diagnostic("postcondition_violation", str(violation))
+                )
             ],
         }
 
