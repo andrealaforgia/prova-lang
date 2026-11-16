@@ -18,7 +18,14 @@ from prova import (
     syntax,
     tree,
 )
-from prova.budgets import BudgetExhausted, Budgets, Exhaustion, Run, UnreadableBudget
+from prova.budgets import (
+    LOWERED_WITH,
+    BudgetExhausted,
+    Budgets,
+    Exhaustion,
+    Run,
+    UnreadableBudget,
+)
 from prova.reader import (
     LITERAL_DIGITS,
     READING_LIMIT,
@@ -28,7 +35,7 @@ from prova.reader import (
     read_program,
     read_source,
 )
-from prova.values import render
+from prova.values import WRITTEN_DIGITS, TooLargeToWrite, render
 
 AVAILABLE_OPERATIONS = (
     "check",
@@ -131,6 +138,10 @@ def handle(submitted: object, budgets: Budgets | None = None) -> dict:
     if isinstance(request, MalformedRequest):
         return request.response_for(None)
 
+    unwritable = request.unwritable_operation()
+    if unwritable is not None:
+        return unwritable.response_for(None)
+
     run = (budgets if budgets is not None else Budgets.declared()).start()
     try:
         return _answer(request, run)
@@ -210,13 +221,72 @@ def answer_text(submitted: object, budgets: Budgets | None = None) -> str:
     within = budgets if budgets is not None else Budgets.declared()
     try:
         answer = handle(submitted, within)
-        text = json.dumps(answer)
+        text = printable_answer(answer)
     except Exception as failure:  # noqa: BLE001 - the tool, not the request
-        return json.dumps(tool_failure(failure))
+        return printable_answer(tool_failure(failure))
     exhausted = within.answer_exhausted_by(text)
     if exhausted is None:
         return text
-    return json.dumps(budget_response(answer.get("operation"), exhausted))
+    return printable_answer(budget_response(answer.get("operation"), exhausted))
+
+
+def printable_answer(answer: dict) -> str:
+    """The characters of one answer, or of the refusal that replaces an
+    answer carrying a text this tool cannot write.
+
+    The one place an answer becomes the text a caller reads. Every text
+    a request carries is already read by a rule that refuses half a
+    character by name; this stands behind all of them, so that a text no
+    reader named can never leave this tool and fail in the client that
+    reads it instead.
+    """
+    found = _half_a_character_anywhere_in(answer)
+    if found is None:
+        return json.dumps(answer)
+    _, half_a_character = found
+    return json.dumps(
+        MalformedRequest.about(
+            "request",
+            "this tool was about to answer with a text whose character at "
+            f"position {half_a_character.start} cannot be written as UTF-8 "
+            f"({half_a_character.reason}): every text a request carries is "
+            "read by a rule that refuses such a character and names the field "
+            "it stands in, so an answer still holding one would be read by a "
+            "client that could not write it out again. The text is not "
+            "repeated here. Send the request again with every text written as "
+            "characters that can be written as UTF-8, and report this answer "
+            "if the request you send carries none",
+        ).response_for(None)
+    )
+
+
+def _half_a_character_anywhere_in(
+    value: object,
+) -> "tuple[str, UnicodeEncodeError] | None":
+    """The first text anywhere inside a value that cannot be written as
+    UTF-8, with the character that cannot be written, or `None`.
+
+    The one walk over a value a request or an answer carries: keys,
+    texts and the texts inside a list or an object alike. The answer
+    about to be printed asks it for the position, and the reader of a
+    field asks it for the text to name.
+    """
+    if isinstance(value, str):
+        half_a_character = SubmittedText.half_a_character_in(value)
+        return None if half_a_character is None else (value, half_a_character)
+    if isinstance(value, dict):
+        for key, held in value.items():
+            for part in (key, held):
+                found = _half_a_character_anywhere_in(part)
+                if found is not None:
+                    return found
+        return None
+    if isinstance(value, list):
+        for held in value:
+            found = _half_a_character_anywhere_in(held)
+            if found is not None:
+                return found
+    return None
 
 
 def tool_failure(failure: Exception) -> dict:
@@ -367,11 +437,27 @@ class SubmittedText:
 
     characters: str
 
-    @classmethod
-    def read(cls, field: str, written: str) -> "SubmittedText | MalformedRequest":
+    @staticmethod
+    def half_a_character_in(written: str) -> "UnicodeEncodeError | None":
+        """The first character of `written` that cannot be written as
+        UTF-8, or `None`.
+
+        The one place this tool decides whether a text can be written.
+        The fields of a request ask it through `read` below; the
+        variables of the environment and the answer about to be printed
+        ask it directly, because neither is a field of a request and
+        neither is owed that sentence.
+        """
         try:
             written.encode("utf-8")
         except UnicodeEncodeError as half_a_character:
+            return half_a_character
+        return None
+
+    @classmethod
+    def read(cls, field: str, written: str) -> "SubmittedText | MalformedRequest":
+        half_a_character = cls.half_a_character_in(written)
+        if half_a_character is not None:
             return MalformedRequest.about(
                 field,
                 f"the {field!r} field of the request holds a character at "
@@ -514,6 +600,17 @@ class Request:
         kind of value that is, so a refusal quotes back what was sent."""
         return self.submitted.get("operation")
 
+    def unwritable_operation(self) -> "MalformedRequest | None":
+        """The refusal to answer a request whose operation field carries
+        a text this tool cannot write, or `None`.
+
+        Read before anything else about the request: the operation a
+        request asks for is the one text of it that an answer carries
+        back whatever happens, so a text that cannot be written must
+        never get that far.
+        """
+        return _unwritable_text_in("operation", self.names_as_written())
+
     def asks_for(self) -> str | None:
         """The operation this request asks for, or `None` when its
         operation field holds no name at all.
@@ -632,6 +729,27 @@ def _run_discover() -> dict:
                     "and answered exactly, however far past 64 bits it is. "
                     f"{LITERAL_DIGITS.reason()}"
                 ),
+                "request_nesting": (
+                    f"This tool reads a request whose own JSON nests at most "
+                    f"{REQUEST_NESTING.maximum} arrays and objects inside one "
+                    "another, counting the request object itself. A deeper "
+                    "request is answered 'invalid_input' with a "
+                    "'malformed_request' refusal naming the request, before "
+                    "any reader turns the text into fields, and no rule of "
+                    f"core-0 is read over it. {REQUEST_NESTING.reason()}"
+                ),
+                "computed_integers": (
+                    f"An integer a run of this tool computes is written into "
+                    f"an answer up to {WRITTEN_DIGITS.maximum} digits long. A "
+                    "longer result is answered 'resource_exhausted' with a "
+                    f"'{checker.WRITTEN_DIGITS_EXCEEDED}' refusal standing at "
+                    "the function that computed it, carrying the limit beside "
+                    "the digits the result reached and no result at all. The "
+                    "limit is on the digits an answer writes and not on what a "
+                    "program may mean: an integer under it is kept and "
+                    "answered exactly, however far past 64 bits it stands. "
+                    f"{WRITTEN_DIGITS.reason()}"
+                ),
                 "stands_on": (
                     "What an answer stands on, and when it stops standing on "
                     "it. A completed answer carries 'source_digest', the "
@@ -682,6 +800,156 @@ def _run_discover() -> dict:
             **manifest.published_parts(AVAILABLE_OPERATIONS, UNAVAILABLE_OPERATIONS),
         },
     }
+
+
+def _unwritable_text_in(field: str, value: object) -> "MalformedRequest | None":
+    """The refusal naming the first text inside `value` that cannot be
+    written as UTF-8, or `None`.
+
+    A field of a request carries a text, or a list or an object holding
+    texts; all of them are copied into the answer that quotes the field
+    back, so all of them are read by the one walk and refused by the one
+    reader.
+    """
+    found = _half_a_character_anywhere_in(value)
+    if found is None:
+        return None
+    written, _ = found
+    read = SubmittedText.read(field, written)
+    return read if isinstance(read, MalformedRequest) else None
+
+
+@dataclass(frozen=True)
+class RequestNesting:
+    """How many arrays and objects a request may nest inside one
+    another, and the name a caller reads that number under.
+
+    One object holds the number, as the nesting limit of the reader
+    does: the command asks it whether a request has passed it before
+    any reader turns the text into fields, and the manifest documents
+    the same object's number, so what a caller is promised and what the
+    tool does cannot drift apart.
+    """
+
+    maximum: int
+    name: str = "request_nesting"
+
+    def reason(self) -> str:
+        """Why the number is the number it is, for a caller whose
+        generator writes the requests it sends."""
+        return (
+            f"the reader that turns the text of a request into fields calls "
+            f"itself once per array and once per object, so {self.maximum} of "
+            "them cost a small part of the 1000 frames Python allows by "
+            "default: the refusal is reached with room to spare, and the "
+            "interpreter's own limit is left where it stands. It is also far "
+            "above every request this tool answers, the deepest of which -- an "
+            "evaluate request carrying its arguments -- nests 2."
+        )
+
+    def deepest_of(self, text: str) -> int:
+        """How many arrays and objects `text` nests inside one another,
+        counted without reading it as JSON.
+
+        Counting stops as soon as the limit is passed: a text written to
+        exhaust a reader is refused by its first characters and not by
+        all of them. Characters inside a quoted text are not brackets of
+        the request, so they are stepped over here exactly as the JSON
+        reader steps over them.
+        """
+        depth = 0
+        deepest = 0
+        inside_a_text = False
+        escaped = False
+        for character in text:
+            if inside_a_text:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    inside_a_text = False
+                continue
+            if character == '"':
+                inside_a_text = True
+            elif character in "[{":
+                depth += 1
+                if depth > deepest:
+                    deepest = depth
+                    if deepest > self.maximum:
+                        return deepest
+            elif character in "]}":
+                depth -= 1
+        return deepest
+
+    def refusal_for(self, text: str) -> "MalformedRequest | None":
+        """The refusal to read a request nesting deeper than this tool
+        reads, or `None`."""
+        deepest = self.deepest_of(text)
+        if deepest <= self.maximum:
+            return None
+        return MalformedRequest.about(
+            "request",
+            f"the text sent to this tool nests at least {deepest} arrays and "
+            f"objects inside one another, and this tool reads a request that "
+            f"nests {self.maximum}: {self.reason()}; the tool stopped counting "
+            "there, so it never read which operation was asked for and says "
+            f"nothing about any program. Send a request that nests at most "
+            f"{self.maximum} arrays and objects, and read that number from "
+            "what the 'discover' operation documents about the nesting of a "
+            "request",
+        )
+
+
+# How deeply a request this tool answers may nest its own arrays and
+# objects, counting the request object itself.
+REQUEST_NESTING = RequestNesting(64)
+
+
+def unwritable_budget_variable(environment) -> "MalformedRequest | None":
+    """The refusal to read a budget variable whose name or whose value
+    cannot be written as UTF-8, or `None`.
+
+    Asked before the budgets are read, because the answer to a variable
+    this tool cannot read names that variable and quotes what was
+    written in it: a name or a value half of whose character has no
+    bytes would reach a caller that could not write it out again. The
+    text is never repeated; the caller is given the place to look.
+    """
+    for name in sorted(environment, key=lambda written: written.encode(
+        "utf-8", "surrogatepass"
+    )):
+        if not name.startswith(LOWERED_WITH):
+            continue
+        half_a_character = SubmittedText.half_a_character_in(name)
+        if half_a_character is not None:
+            return MalformedRequest.about(
+                LOWERED_WITH,
+                "a variable of this process's environment whose name begins "
+                f"{LOWERED_WITH} holds a character at position "
+                f"{half_a_character.start} that cannot be written as UTF-8 "
+                f"({half_a_character.reason}): this tool reads a budget from "
+                "such a variable and names the one to repair in its answer, "
+                "and a name half of whose character has no bytes cannot be "
+                "named back -- so it is not repeated here. Unset the variable "
+                "whose name is not UTF-8 text, and read the four names this "
+                "tool reads from the 'lower_with' entry of each budget the "
+                "'discover' operation states",
+            )
+        half_a_character = SubmittedText.half_a_character_in(environment[name])
+        if half_a_character is not None:
+            return MalformedRequest.about(
+                name,
+                f"the budget written in {name} holds a character at position "
+                f"{half_a_character.start} that cannot be written as UTF-8 "
+                f"({half_a_character.reason}): this tool reads one whole "
+                "number written in the digits 0 to 9 from that variable, and "
+                "half of a character is not one of them -- it is not repeated "
+                "here, because a caller reading this answer could not write it "
+                "out again. Write the budget as a whole number, or leave the "
+                "variable unset to run under the number this tool declares",
+            )
+    return None
 
 
 @dataclass(frozen=True)
@@ -838,6 +1106,38 @@ def _too_deeply_nested_diagnostic(
         ),
         points_into=text,
     )
+
+
+def _too_large_to_write(
+    operation: str,
+    source: SubmittedText,
+    refusal: TooLargeToWrite,
+    place: tuple[int, int],
+) -> dict:
+    """The one answer an operation gives when the integer it computed
+    has more digits than this tool writes.
+
+    It stands at the function that computed the number, carries the
+    limit beside the digits reached, and carries no result: the one
+    thing this answer could not do is write the value.
+    """
+    return {
+        "operation": operation,
+        "status": RESOURCE_EXHAUSTED,
+        "diagnostics": [
+            _diagnostic_dict(
+                checker.Diagnostic(
+                    checker.WRITTEN_DIGITS_EXCEEDED,
+                    refusal.message,
+                    place,
+                    about=checker.AboutTwoCounts(
+                        WRITTEN_DIGITS.name, refusal.limit, refusal.reached
+                    ),
+                ),
+                SourceRevision.of(source),
+            )
+        ],
+    }
 
 
 def _out_of_profile_diagnostic(
@@ -1026,26 +1326,30 @@ def _run_examples(source: SubmittedText, run: Run) -> dict:
 
     results = []
     for function in program.functions.values():
-        for ordinal, example in enumerate(function.examples):
-            entry = {
-                "function": function.name,
-                "ordinal": ordinal,
-                "arguments": [render(a) for a in example.args],
-                "expected": render(example.expected),
-            }
-            run.stop_if_exhausted()
-            try:
-                actual = evaluator.call_function(function, example.args, program)
-            except evaluator.EvaluationTooDeep as too_deep:
-                return _too_deep_to_run("examples", source, too_deep)
-            except (evaluator.PreconditionViolation, evaluator.PostconditionViolation) as violation:
-                entry["actual"] = None
-                entry["passed"] = False
-                entry["reason"] = str(violation)
-            else:
-                entry["actual"] = render(actual)
-                entry["passed"] = evaluator.values_equal(actual, example.expected)
-            results.append(entry)
+        place = _declared_place(program, function.name)
+        try:
+            for ordinal, example in enumerate(function.examples):
+                entry = {
+                    "function": function.name,
+                    "ordinal": ordinal,
+                    "arguments": [render(a) for a in example.args],
+                    "expected": render(example.expected),
+                }
+                run.stop_if_exhausted()
+                try:
+                    actual = evaluator.call_function(function, example.args, program)
+                except evaluator.EvaluationTooDeep as too_deep:
+                    return _too_deep_to_run("examples", source, too_deep)
+                except (evaluator.PreconditionViolation, evaluator.PostconditionViolation) as violation:
+                    entry["actual"] = None
+                    entry["passed"] = False
+                    entry["reason"] = str(violation)
+                else:
+                    entry["actual"] = render(actual)
+                    entry["passed"] = evaluator.values_equal(actual, example.expected)
+                results.append(entry)
+        except TooLargeToWrite as too_large:
+            return _too_large_to_write("examples", source, too_large, place)
 
     return {
         "operation": "examples",
@@ -1251,11 +1555,16 @@ def _run_evaluate(source: SubmittedText, asked: EvaluationAsked, run: Run) -> di
             ],
         }
 
+    try:
+        written = render(result)
+    except TooLargeToWrite as too_large:
+        return _too_large_to_write("evaluate", source, too_large, place)
+
     return {
         "operation": "evaluate",
         "status": "completed",
         "claim": {"kind": "evaluation", "scope": "this input"},
         "source_digest": _source_digest(source),
         "diagnostics": [],
-        "result": {"value": render(result)},
+        "result": {"value": written},
     }

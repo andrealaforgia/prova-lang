@@ -15,29 +15,43 @@ from prova.reader import LITERAL_DIGITS
 
 def main() -> None:
     args = sys.argv[1:]
+    unwritable = service.unwritable_budget_variable(os.environ)
+    if unwritable is not None:
+        print(service.printable_answer(unwritable.response_for(None)))
+        sys.exit(0)
+
     budgets = Budgets.from_environment(os.environ)
     if isinstance(budgets, UnreadableBudget):
-        print(json.dumps(service.budgets_refused(budgets)))
+        print(service.printable_answer(service.budgets_refused(budgets)))
         sys.exit(0)
 
     try:
         request_text = _read_at_most(args, budgets.request_ceiling() + 1)
     except UnicodeDecodeError as error:
-        print(json.dumps(_unreadable_bytes(error).response_for(None)))
+        print(service.printable_answer(_unreadable_bytes(error).response_for(None)))
         sys.exit(0)
 
     too_long = budgets.request_exhausted_by(request_text)
     if too_long is not None:
-        print(json.dumps(service.budget_response(None, too_long)))
+        print(service.printable_answer(service.budget_response(None, too_long)))
+        sys.exit(0)
+
+    # Counted before the text is read as JSON, because the reader that
+    # reads it calls itself once per array and once per object: a
+    # request written to nest thousands deep would exhaust the
+    # interpreter in there, with nothing printed and nothing said.
+    too_deep = service.REQUEST_NESTING.refusal_for(request_text)
+    if too_deep is not None:
+        print(service.printable_answer(too_deep.response_for(None)))
         sys.exit(0)
 
     try:
         request = json.loads(request_text)
     except json.JSONDecodeError as error:
-        print(json.dumps(_unreadable_text(error).response_for(None)))
+        print(service.printable_answer(_unreadable_text(error).response_for(None)))
         sys.exit(0)
     except ValueError as error:
-        print(json.dumps(_unreadable_number(error).response_for(None)))
+        print(service.printable_answer(_unreadable_number(error).response_for(None)))
         sys.exit(0)
 
     print(service.answer_text(request, budgets))

@@ -237,6 +237,12 @@ NESTING_LIMIT_EXCEEDED = "nesting_limit_exceeded"
 # each calling the next breaks no rule of core-0, and the one thing
 # that would make such a chain endless, a cycle, is already refused.
 EVALUATION_DEPTH_EXCEEDED = "evaluation_depth_exceeded"
+# An integer a run computed with more digits than this tool writes into
+# an answer. A limit of the tool as the two above are, and kept apart
+# from every rule of core-0 for the same reason: a program that
+# multiplies large numbers breaks no rule, and an integer under the
+# limit is still kept and written exactly however large it is.
+WRITTEN_DIGITS_EXCEEDED = "written_integer_digits_exceeded"
 # A budget of the whole run passed: the source was larger than this tool
 # reads, the run had no time left, it had taken more memory than it is
 # given, or its answer was larger than it may print. Budgets too, and
@@ -416,6 +422,9 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         granularity=("token",),
     ),
     EVALUATION_DEPTH_EXCEEDED: DiagnosticKind(AboutTwoCounts),
+    WRITTEN_DIGITS_EXCEEDED: DiagnosticKind(
+        AboutTwoCounts, granularity=("declaration",)
+    ),
     **{
         category: DiagnosticKind(
             AboutTwoCounts,

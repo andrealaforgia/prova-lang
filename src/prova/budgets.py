@@ -173,7 +173,22 @@ class Budget:
                 "the variable unset to run under the number this tool "
                 "declares",
             )
-        asked = int(written)
+        significant = written.lstrip("0")
+        if len(significant) > len(str(self.maximum)):
+            return UnreadableBudget(
+                self.lowered_with(),
+                f"the budget written in {self.lowered_with()} is "
+                f"{len(written)} characters long, writing a number of "
+                f"{len(significant)} digits where this tool declares "
+                f"{self.maximum} {self.unit}, a number of "
+                f"{len(str(self.maximum))} digits: a caller may lower a budget "
+                "for its own run and may not raise the one this tool answers "
+                "for, and a run of digits that long is not read as one number "
+                "at all -- it is refused here by its length, before anything "
+                f"reads it; write a whole number no larger than {self.maximum}, "
+                f"as {max(1, self.maximum // 2)}, or leave the variable unset",
+            )
+        asked = int(significant or "0")
         if asked > self.maximum:
             return UnreadableBudget(
                 self.lowered_with(),
