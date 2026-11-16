@@ -21,6 +21,7 @@ from prova import (
     solving,
     syntax,
     tree,
+    verdict,
 )
 from prova.budgets import (
     LOWERED_WITH,
@@ -817,8 +818,19 @@ def _run_discover() -> dict:
                     "Where it is carried, 'trust' says that a proved obligation "
                     "rests on the solver's word and that this tool does not check it "
                     "again; the solver and the translation it names are the ones under "
-                    "'stands_on'. The shape published under operation_schemas for "
-                    "'verify' says the same."
+                    "'stands_on'. Beside the inventory the answer carries 'aggregate', "
+                    "where the program as a whole stands. It says 'verified' when, and "
+                    "only when, every obligation of the inventory is 'proved', every "
+                    "example the program declares was run here and passed, and the "
+                    "static checks passed; anything else says 'not_verified' and names "
+                    "what stopped it. The examples are run rather than read off the "
+                    "obligations about them: no kind of evidence upgrades another. An "
+                    "answer whose solver could not be loaded is 'not_verified' beside "
+                    "an execution status of 'tool_failure', while the answer itself "
+                    "stays 'completed': the inventory is still there to read, and a "
+                    "failure of this tool is never a statement about the program. The "
+                    "shape published under operation_schemas for 'verify' says the "
+                    "same."
                 ),
             },
             "resource_limits": {
@@ -1305,6 +1317,15 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
     reader told an obligation is proved and not told what that rests on
     would take a trusted result for one this tool established itself
     (SPEC.md lines 302-305).
+
+    Beside the inventory it says where the program as a whole stands.
+    That word rests on three things and is computed from them in one
+    place: what became of every obligation, what the examples the
+    program declares did when they were run here, and the checker's own
+    answer about the program. The examples are run rather than read off
+    the obligations that are about them: no kind of evidence silently
+    upgrades another, and a solver's word about an example is not the
+    example having been run.
     """
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
@@ -1313,6 +1334,7 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
 
     owed = obligations.inventory_for(program)
     settled = discharge.Discharge(program, solving.PinnedZ3(), run).settle(owed)
+    ran = examples.run_declared(program, run)
 
     answer = {
         "operation": "verify",
@@ -1326,7 +1348,33 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
     disclosed = settled.disclosure()
     if disclosed is not None:
         answer["trust"] = disclosed
+    answer["aggregate"] = verdict.Verdict.over(
+        settled.findings,
+        _how_the_examples_ran(ran),
+        verdict.StaticChecksPassed.of(checked.diagnostics),
+    ).published()
     return answer
+
+
+def _how_the_examples_ran(ran: examples.DeclaredExamples) -> verdict.ExamplesRun:
+    """The run of the declared examples, as the word over the whole
+    program reads it.
+
+    A run a limit of this tool stopped is not a run in which the
+    examples it never reached passed. It is handed over as the run it
+    was, with the status that stopped it and the reason, so that the
+    answer says the program was not shown and says why -- rather than
+    refusing the whole request, which would take away the inventory the
+    Owner asked for and which this answer still has.
+    """
+    if ran.stopped_by is None:
+        return verdict.ExamplesRun.of(ran.published(), ran.declared)
+    return verdict.ExamplesRun.stopped_at(
+        ran.published(),
+        ran.declared,
+        RESOURCE_EXHAUSTED,
+        ran.stopped_by.message,
+    )
 
 
 def _run_parse(source: SubmittedText, run: Run) -> dict:

@@ -66,10 +66,26 @@ class ValidatedWitness:
     refused_with: str
 
     def published(self) -> dict:
+        """The input, and the budget the run that confirmed it stood
+        inside.
+
+        SPEC.md: a function witness must replay against the reference
+        semantics "within a declared replay budget". The run that
+        confirms a candidate is bounded by the one limit this tool
+        declares on how far a run may nest, and a reader looking at a
+        counterexample is told which that was and what it allowed --
+        otherwise they cannot tell a confirmation that finished from one
+        that was cut short. The number is read from the limit itself, so
+        the answer and the manifest cannot say two different things.
+        """
         return {
             "function": self.function,
             "arguments": list(self.arguments),
             "refused_when_run": self.refused_with,
+            "replayed_within": {
+                "limit": evaluator.EVALUATION_LIMIT.name,
+                "maximum": evaluator.EVALUATION_LIMIT.maximum,
+            },
         }
 
 

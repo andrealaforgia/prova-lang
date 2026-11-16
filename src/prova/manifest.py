@@ -420,6 +420,31 @@ THE_OPERATIONS = Catalogue(
                         "of the declared types that breaks it and that this "
                         "tool refuses when it runs the program over it",
                     ),
+                    Field.when_completed(
+                        "aggregate",
+                        "object",
+                        "where the program as a whole stands. Under 'result' "
+                        "the word 'verified' or the word 'not_verified', and "
+                        "under 'execution_status' what happened to the "
+                        "attempt. 'verified' is said when, and only when, "
+                        "every obligation of the inventory is 'proved', every "
+                        "example the program declares was run and passed, and "
+                        "the static checks passed; anything else is "
+                        "'not_verified' with a 'reason' naming the "
+                        "obligations that are not discharged and the examples "
+                        "that did not pass or were never run. All three are "
+                        "published beside the word: under 'obligations' how "
+                        "many of them were discharged, which were not, and "
+                        "how many a solver answered against how many a rule "
+                        "of core-0 settled; under 'examples' how many passed, "
+                        "which failed and how many were never run; under "
+                        "'static_checks' that the checker accepted this "
+                        "program. An answer whose solver could not be loaded "
+                        "is 'not_verified' beside 'tool_failure': the answer "
+                        "itself is still 'completed', because the inventory "
+                        "is still there to read, and a failure of this tool "
+                        "is never a statement about the program",
+                    ),
                     Field.when(
                         "trust",
                         "object",
