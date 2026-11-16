@@ -42,6 +42,30 @@ becomes a finding -- and the honest statement is this one: no defect
 from either list survives, and a defect neither list thought of is one
 this probe says nothing about.
 
+## After two independent reviews: thirteen defects, none surviving
+
+The reviews found no wrong `proved` in 4600 generated programs covering
+44,007 obligations — and four defects that survived this whole suite
+anyway, two of them giving a `proved` the evaluator contradicts. Each
+now has its own expectation, and every defect from either list was put
+back one at a time and turned a test red:
+
+| Defect | Turned red by |
+|---|---|
+| a match read in source order, not innermost first | the promise true only of a later clause |
+| a negation read as the thing it negates | the call reached because a test failed |
+| a timed-out query read as settled | the verdict-to-finding seam |
+| a solver's "cannot tell" read as "nothing refutes it" | the three answers read on their own |
+| the witness replay gate removed | the candidate that does not replay |
+| a rule of the profile labelled as the solver | what settled each entry |
+| the disclosure carried where no solver was asked | the program outside the fragment |
+| the five from the first probe list | as before |
+
+The last of those needed the code to change, not only the oracle: the
+third answer a solver can give was read inside the question that asked
+it, where no program of this fragment can reach it. It is read in one
+place now, which a test can hand an answer to directly.
+
 ## Every edge of the two public surfaces
 
 Thirteen cases, one per cell of the edge matrix that was not marked not

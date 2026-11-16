@@ -95,11 +95,10 @@ class PinnedZ3:
         """The version of the library that would answer, read from the
         library itself rather than from the pin, so an answer names what
         really ran."""
-        try:
-            import z3
-        except Exception as missing:  # noqa: BLE001 - any import failure
-            return SolverUnavailable(self._unavailable(missing))
-        return z3.get_version_string()
+        loaded = self._loaded()
+        if isinstance(loaded, SolverUnavailable):
+            return loaded
+        return loaded.get_version_string()
 
     def asked(self, claim: encoding.Claim, milliseconds_left: int):
         """Whether the denial of `claim` has a solution, within the time
@@ -110,11 +109,23 @@ class PinnedZ3:
                 "was not put to it at all, and nothing about it was decided",
                 "timed_out",
             )
+        loaded = self._loaded()
+        if isinstance(loaded, SolverUnavailable):
+            return loaded
+        return _Question(loaded, claim).answered(milliseconds_left)
+
+    def _loaded(self):
+        """The solver library, or the reason it could not be loaded.
+
+        The one place this tool loads it: inside the call that needs it,
+        never at module level, so no other operation pays for it and a
+        machine without it still answers.
+        """
         try:
             import z3
         except Exception as missing:  # noqa: BLE001 - any import failure
             return SolverUnavailable(self._unavailable(missing))
-        return _Question(z3, claim).answered(milliseconds_left)
+        return z3
 
     def _unavailable(self, failure: Exception) -> str:
         return (
