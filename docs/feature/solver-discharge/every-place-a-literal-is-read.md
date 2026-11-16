@@ -9,18 +9,18 @@ literal value, a sign or a boolean, with the test cell that observes it.
 The grid in `tests/properties/test_f18_a_literal_keeps_its_value_everywhere.py`
 crosses 16 values — nothing, one and two either way, the edges of a
 32-bit and a 64-bit word from both sides, past an unsigned 64-bit word,
-and 30 digits either way — with 27 positions, and every cell is a
+and 30 digits either way — with 28 positions, and every cell is a
 program whose promise sits exactly at the boundary the literal sets.
-432 cells, under a second, no sampling.
+448 cells, under a second, no sampling.
 
 | Place in the code | What it reads | Cell that observes it |
 |---|---|---|
-| `encoding.Translation._integer` → `Term.integer` | every integer literal of an expression | all 432 cells; a value read wrongly breaks the boundary |
+| `encoding.Translation._integer` → `Term.integer` | every integer literal of an expression | all 448 cells; a value read wrongly breaks the boundary |
 | `encoding.Translation._boolean` → `truth`/`falsity` | `true` and `false` written in an expression | two positions write them in both polarities, each promised against the test they stand for rather than against themselves, so swapping the two cannot cancel; the boolean-clause position and the promise about a boolean observe them too |
 | `encoding.Term.all_of` with no parts → `truth()` | a contract clause list that is empty | 96 cells, whose functions declare no precondition, so the empty conjunction is what is assumed |
-| `encoding.Translation._unit` → `unit` | `()` written in an expression | the unit-pattern position builds a `Unit`-typed function and its declared example sends `()`, so the value is read; the profile's `Unit` has one value, so a wrong reading of it can only be a failure to build the term, which that cell would show |
+| `encoding.Translation._unit` → `unit` | `()` written in an expression | the unit-value-in-an-expression position: a record with a `Unit` field built from `()`, beside a number the promise pins exactly. A wrong reading cannot make the promise true -- `Unit` has one value -- but it makes the term ill-sorted, and the obligation then cannot be settled, which that cell sees. The unit-pattern position does **not** observe this site: it reaches `PatUnit`, and its `()` reaches `term_of_value`, not this method |
 | `encoding.Translation._operator` rows `<` `<=` `>` `>=` | a literal on either side of each of the four orders | eight positions: each order with the literal left and right |
-| `encoding.Translation._operator` row `=` | a literal on either side of an equality | the equality position, and the negative literal in an equality |
+| `encoding.Translation._operator` row `=` | a literal on either side of an equality | the negative-literal-in-an-equality **acceptance case**, not the grid's equality position. That position asks `(or (= x V) (> x V+1))` against a lower-bound promise, so dropping the sign of the literal only shrinks the accepted set upward and the promise still holds -- it cannot observe the site. The acceptance case admits the negative value and promises something it breaks, so losing the sign turns a disproof into a `proved` and the case red |
 | `encoding.Translation._operator` rows `and` `or` `not` | a literal inside a connective of a promise | the and-or-inside-a-promise position; `not` by the negated-condition tests |
 | `encoding.Translation._operator` rows `+` `-` | a literal as either operand | the sum position and both difference positions |
 | `encoding.Translation._product` | a literal factor, and the refusal when neither operand is one | both factor positions; the out-of-fragment law for the refusal |
@@ -31,7 +31,7 @@ program whose promise sits exactly at the boundary the literal sets.
 | `encoding.Translation._construction` → `shape` | a literal as the value of a record field or a union payload | the record-field position, which pins the field against the same number written another way. It is one site for both shapes: a union payload is constructible here and is settled the same way, through the same line |
 | `encoding.Translation._expanded_call` → `_arguments_of` | a literal inside the argument of a call, and a literal as the whole argument | the two call-argument positions; the second pins what comes back against the same number written another way, because the first could not notice a sign dropped there |
 | `encoding.Translation.term_of_value` | the literal arguments and expected value of a declared example | the expected-value position, and every cell's own example |
-| `solving` row `INTEGER` → `IntVal` | the value handed to the solver | all 432 cells |
+| `solving` row `INTEGER` → `IntVal` | the value handed to the solver | all 448 cells |
 | `solving` row `TRUTH`/`FALSITY` → `BoolVal` | the boolean handed to the solver | the boolean-clause position |
 | `solving` rows `SUM` `DIFFERENCE` `PRODUCT` | the arithmetic the solver is given | the sum, difference and factor positions |
 | `solving` rows `LESS` `AT_MOST` `GREATER` `AT_LEAST` `EQUALS` | the comparison the solver is given | the eight order positions and the equality position |
@@ -53,6 +53,24 @@ Every site now has a cell. The earlier claim that three had none was
 wrong twice over: it named a site that does have one, and it missed the
 site that really had none -- the three patterns that always match, which
 nothing put in a non-final clause.
+
+## The sweeps were repeated under a clean cache
+
+The first sweeps of this table ran with a hazard: a mutation that keeps
+the file the same length, restored within the same second, leaves the
+source's modification time and size unchanged, so CPython keeps the
+mutated bytecode and every run after it reads the mutant. One such
+mutant -- swapping the operands of a difference -- poisoned the runs
+that followed it, and one row's result (a boolean pattern read as its
+opposite) was reported green because of it, not because the cell was
+weak.
+
+Every row in this table has since been re-run with bytecode writing off,
+the cache cleared and the restored files touched after each mutant, and
+the harness is checked by a control: a same-length mutant must be red
+and the unmutated run after it must be green. Of 37 rows, 35 were red at
+the named cell on that clean run; the two that were not are the two
+corrected above.
 
 ## Two cells this table made stronger
 

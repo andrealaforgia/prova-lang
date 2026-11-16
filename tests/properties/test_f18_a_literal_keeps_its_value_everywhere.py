@@ -358,7 +358,29 @@ def _false_written_in_an_expression(v):
     ), v + 1
 
 
+def _the_unit_value_in_an_expression(v):
+    """`()` written as an expression, as the value of a field whose type
+    is `Unit`, beside a number the promise pins exactly.
+
+    A wrong reading of `()` cannot make this promise true -- `Unit` has
+    one value, so nothing about it can be got wrong in a way that
+    satisfies something -- but it can make the term ill-sorted, and then
+    the obligation cannot be settled at all. That is what this cell
+    observes: the promise comes back proved only while `()` is built as
+    the value of its own type.
+    """
+    return _over_x(
+        None,
+        f"(= (.amount result) {_spelled(v)})",
+        [f"(example (f 1) {A} (Holder () {v}))"],
+        f"(Holder () {v})",
+        returns="Holder",
+        before="(deftype Holder (record (nothing Unit) (amount Int)))\n\n",
+    ), 1
+
+
 THE_POSITIONS = (
+    ("the unit value written in an expression", _the_unit_value_in_an_expression),
     ("a wildcard in a first clause", _a_wildcard_in_a_first_clause),
     ("a name in a first clause", _a_name_in_a_first_clause),
     ("a wildcard in a middle clause", _a_wildcard_in_a_middle_clause),
