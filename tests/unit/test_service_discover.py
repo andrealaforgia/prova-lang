@@ -86,12 +86,15 @@ def test_discover_makes_no_verification_or_build_claim():
             "HOW: reword the entry that says it."
         )
 
-    for owed in ("trust", "discharged_by", "rechecked_by_this_tool"):
-        assert owed in manifest_text, (
-            f"WHAT: the manifest uses the word 'proved' and does not publish "
-            f"{owed!r}. "
-            "WHY: a reader who meets 'proved' must be able to look up what it "
-            "rests on -- the solver's word, or a rule of core-0 -- before "
-            "sending a single request. "
-            "HOW: publish it beside the operation that answers it."
-        )
+    published = service.handle(DISCOVER)["result"]["operation_schemas"]["verify"][
+        "response"
+    ]["fields"]
+    assert "trust" in published, (
+        f"WHAT: the manifest uses the word 'proved' and the fields it "
+        f"publishes for a verify answer are {sorted(published)}. "
+        "WHY: a reader who meets 'proved' must be able to look up what it "
+        "rests on -- the solver's word, or a rule of core-0 -- before sending "
+        "a single request, and the field carrying that is read from the "
+        "published shape rather than found somewhere in the text. "
+        "HOW: describe the field in manifest.py beside the others."
+    )

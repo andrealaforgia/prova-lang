@@ -29,7 +29,18 @@ Two programs were added to close that: one triples the number 2 and
 promises 6 — a literal the product cannot cancel against — and one
 matches 0 against a literal clause and then a catch-all, where both
 clauses match and the first must win. Each defect now turns one of them
-red. **Survivors after tightening: none of the seven.**
+red. **That sentence used to read "survivors: none of the seven", and it
+overstated what had been shown.** Those seven were the defects I thought
+of. An independent review of the same code found four more that survived
+the whole suite, two of them giving a `proved` the evaluator
+contradicts: a match whose clauses are read in source order rather than
+innermost-first, a negation translated as the thing it negates, a
+timed-out query read as settled, and a solver's "cannot tell" read as
+"nothing refutes it". Each now has its own expectation -- the first two
+in the verify-driven oracle, the last two at the seam where a verdict
+becomes a finding -- and the honest statement is this one: no defect
+from either list survives, and a defect neither list thought of is one
+this probe says nothing about.
 
 ## Every edge of the two public surfaces
 

@@ -51,15 +51,21 @@ ACYCLIC_CALLS = "acyclic_calls"
 
 THE_RULES_OF_THE_PROFILE = {
     TOTALITY_OF_THE_PROFILE: (
-        "Every operation core-0 has is defined for every value of its declared "
-        "types: the profile has no division and no other partial primitive, "
-        "field selection is resolved from the operand's nominal type by the "
-        "checker that accepted this program, and every match it contains was "
-        "shown exhaustive. The one thing a clause could still fail to be "
-        "defined at is a call whose precondition does not hold, and each of "
-        "those calls is a call_precondition obligation of its own, listed and "
-        "settled separately. No solver is asked about an entry resting on this "
-        "rule."
+        "Read over the total meaning of core-0, every operation the profile "
+        "has is defined for every value of its declared types: there is no "
+        "division and no other partial primitive, field selection is resolved "
+        "from the operand's nominal type by the checker that accepted this "
+        "program, and every match it contains was shown exhaustive. That is "
+        "all this entry claims. It does not claim that running a clause "
+        "answers a value, because three things can stop a run of one: a call "
+        "whose precondition does not hold, a call whose postcondition does "
+        "not hold, which the evaluator checks and refuses, and the evaluation "
+        "depth budget, which stops a run that nests deeper than this tool "
+        "runs. The first of those is a call_precondition obligation of its "
+        "own, listed and settled separately; the second is the callee's own "
+        "body_postcondition obligation, also listed; the third is a budget "
+        "this tool declares and not a statement about the program. No solver "
+        "is asked about an entry resting on this rule."
     ),
     ACYCLIC_CALLS: (
         "The combined dependency graph of bodies and contracts must be acyclic "
@@ -522,14 +528,29 @@ class Inventory:
         return {result: counted[result] for result in sorted(counted)}
 
     def _note(self, entries: list, settled: list) -> str:
+        """What a reader of the counts alone is told.
+
+        It names what was settled and what was not, rather than how many
+        were attempted: an obligation something tried and could not
+        settle -- because it is outside what this tool translates, or
+        because the solver could not be loaded or ran out of time -- is
+        not a settled one, and a note that counted it as settled would
+        say work was done that was not.
+        """
         if not settled:
             return NOTHING_WAS_ATTEMPTED
+        counted = self._by_result(entries)
+        decided = counted.get("proved", 0) + counted.get("disproved", 0)
         return (
-            f"{len(settled)} of the {len(entries)} obligations of this "
-            "program were put to a solver or settled by a rule of core-0, "
-            "and each entry says which. A result of 'proved' is a statement "
-            "about this revision of this source and nothing else; read the "
-            "disclosure beside the inventory for what it rests on."
+            f"{decided} of the {len(entries)} obligations of this program "
+            f"were settled: {counted.get('proved', 0)} proved and "
+            f"{counted.get('disproved', 0)} disproved. "
+            f"{counted.get('unknown', 0)} were tried and could not be "
+            f"settled, and {counted.get('not_attempted', 0)} were not "
+            "attempted; each of those says why beside it. A result of "
+            "'proved' is a statement about this revision of this source and "
+            "nothing else; read the disclosure beside the inventory for what "
+            "it rests on."
         )
 
     def _by_kind(self) -> dict:

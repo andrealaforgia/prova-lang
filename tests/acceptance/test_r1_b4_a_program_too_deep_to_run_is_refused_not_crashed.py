@@ -215,6 +215,46 @@ def test_a_long_chain_is_still_checked_and_its_obligations_still_listed():
     )
 
 
+def test_asking_what_the_longest_chain_owes_is_refused_not_crashed():
+    """Given the chain of 600 functions, when a caller asks what it
+    owes, then the tool answers a refusal naming the budget on the size
+    of an answer -- not a crash, not a partial answer, and not an
+    inventory it could not finish writing.
+
+    The test above asks about a chain of 240, which fits. This one keeps
+    the subject at 600: the answer this program needs is larger than a
+    caller may be given, and what the tool does about that is answer, in
+    the shape every other refusal takes.
+    """
+    response = _run(
+        "verify",
+        chained_functions(A_CHAIN_THAT_USED_TO_CRASH),
+        "verify over a chain of 600 functions",
+    )
+
+    assert response["status"] == "resource_exhausted", (
+        f"WHAT: the answer to a chain of {A_CHAIN_THAT_USED_TO_CRASH} "
+        f"functions has status {response['status']!r}. "
+        "WHY: its settled inventory is larger than the megabyte a caller may "
+        "be given, and an answer a caller cannot be given whole is withheld "
+        f"whole. HOW: inspect the answer: {response}"
+    )
+    assert {d.get("category") for d in response["diagnostics"]} == {
+        "output_budget_exceeded"
+    }, (
+        f"WHAT: the refusal cites {[d.get('category') for d in response['diagnostics']]}. "
+        "WHY: the budget that was passed is the one on the size of an answer, "
+        "and a caller reading another category would look for another defect. "
+        f"HOW: inspect the answer: {response}"
+    )
+    assert "result" not in response and "trust" not in response, (
+        f"WHAT: a refused answer carries {sorted(response)}. "
+        "WHY: nothing was answered about the program, so it must carry no "
+        "inventory and no disclosure of trust. "
+        f"HOW: inspect the answer: {response}"
+    )
+
+
 def test_the_shipped_hour_clock_is_still_run():
     """Given the hour clock this repository ships, when a caller asks
     for its examples, then every one of them still passes: a budget on

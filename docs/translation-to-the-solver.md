@@ -139,11 +139,18 @@ So, obligation by obligation:
   precondition, and what the function answers over them is the value the
   example states. The arguments are closed values, so the formula has no
   variable in it.
-- **a contract's definedness.** Not sent to a solver. Every operation
-  `core-0` has is defined for every value of its declared types; the one
-  thing a clause could still fail to be defined at is a call whose
-  precondition does not hold, and each of those is a call-precondition
-  obligation of its own, listed and settled separately.
+- **a contract's definedness.** Not sent to a solver, and the narrowest
+  of these claims. Read over the total meaning of `core-0` above, every
+  operation the profile has is defined for every value of its declared
+  types. That is all this entry claims. It does **not** claim that
+  running a clause answers a value, because three things can stop a run
+  of one: a call whose precondition does not hold, a call whose
+  postcondition does not hold — which the evaluator checks and refuses —
+  and the evaluation depth budget, which stops a run that nests deeper
+  than this tool runs. The first is a call-precondition obligation of
+  its own, listed and settled separately; the second is the callee's own
+  body-to-postcondition obligation, also listed; the third is a budget
+  this tool declares and is not a statement about your program.
 - **a function's structural ending.** Not sent to a solver. The checker
   refuses any program whose combined dependency graph has a cycle, so
   every call this function can reach ends, and so does it.

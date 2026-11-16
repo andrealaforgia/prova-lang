@@ -37,6 +37,18 @@ benefit is one place deciding how every primitive is built.
 
 ## What needed no refactor
 
-Eleven other changed units are recorded with the reason none was needed:
-each has one responsibility, one to three small methods, and no literal
-or decision it shares with another. The record names them one by one.
+Eleven other changed units, each with its reason in the step record:
+
+| Unit | Why none was needed |
+|---|---|
+| `encoding.Translation` | one method per kind of expression, each 1 to 6 lines, dispatched once |
+| `encoding.Term` | a value with named constructors and no behaviour to move |
+| `encoding.published_primitives` | the one declaration the manifest and the document both read |
+| `solving._Sorts` | one responsibility: the types of one claim in the solver's terms |
+| `solving.PinnedZ3` | the port itself: three small methods, each loading the solver inside the call that needs it |
+| `discharge.ValidatedWitness` | a value built in one place, by the replay that confirmed it |
+| `obligations.Inventory` | one responsibility, and its refusal of an obligation with no finding is the rule that nothing is skipped |
+| `obligations.PathCondition` | prepared before the feature, in its own commit |
+| `provenance.SolverStanding` | two constructors and four small readers, refusing the state that names a solver and a reason at once |
+| `budgets.Run` | one method added, one line |
+| `budgets.Budgets` | one method added, one line |

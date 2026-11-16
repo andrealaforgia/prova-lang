@@ -683,6 +683,7 @@ def _run_discover() -> dict:
                 CONTRACT_REPORT_OPERATIONS
             ),
             "tree_schema": tree.SCHEMA.published(),
+            "solver": provenance.the_solver_it_requires(),
             "encoding": {
                 "version": encoding.VERSION,
                 "primitives": encoding.published_primitives(),
@@ -804,7 +805,12 @@ def _run_discover() -> dict:
                     "entry disproved carries an input that breaks it and that this "
                     "tool refuses when it runs the program over it. Nothing is "
                     "skipped: every obligation listed carries one of those words. The "
-                    "answer also carries 'trust', which says that a proved obligation "
+                    "answer carries 'trust' when a solver was asked about at least "
+                    "one obligation, and not otherwise: an answer whose every "
+                    "obligation was settled by a rule of core-0, or left outside "
+                    "what this tool translates, asked no solver and says so under "
+                    "'stands_on' instead. Where it is carried, 'trust' says that a "
+                    "proved obligation "
                     "rests on the solver's word and that this tool does not check it "
                     "again; the solver and the translation it names are the ones under "
                     "'stands_on'. The shape published under operation_schemas for "

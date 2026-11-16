@@ -290,6 +290,38 @@ def the_components() -> dict:
     }
 
 
+def the_solver_it_requires() -> dict:
+    """What this tool requires of a solver, as the manifest publishes it.
+
+    Read from the installed package's own metadata, so the one place the
+    version is pinned is pyproject.toml and a client reading the manifest
+    is reading that pin. Naming it costs no answer the time of loading a
+    solver: what an answer really asked is said under `stands_on`.
+    """
+    return {
+        "name": solving.SOLVER,
+        "package": solving.PACKAGE,
+        "required": _the_requirement(),
+        "installed": _the_solver_it_is_pinned_to(),
+    }
+
+
+def _the_requirement() -> str:
+    """The exact requirement this tool declares for its solver."""
+    try:
+        required = importlib.metadata.requires("prova") or []
+    except importlib.metadata.PackageNotFoundError:
+        return "the metadata of this tool is not installed, so the "\
+            "requirement it declares cannot be read"
+    for requirement in required:
+        if requirement.startswith(solving.PACKAGE):
+            return requirement[len(solving.PACKAGE):] or "any version"
+    return (
+        f"this tool declares no requirement on {solving.PACKAGE!r}, so no "
+        "version of it is pinned"
+    )
+
+
 def _the_solver_it_is_pinned_to() -> str:
     try:
         return f"{solving.PACKAGE} {importlib.metadata.version(solving.PACKAGE)}"
