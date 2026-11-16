@@ -78,7 +78,7 @@ def _over_x(requires, ensures, examples, body, returns="Int", before=""):
 def _greater_on_the_right(v):
     return _over_x(
         f"(> x {v})",
-        f"(>= result {v + 1})",
+        f"(> result {_spelled(v)})",
         [f"(example (f {v + 1}) {A} {v + 1})"],
         "x",
     ), v + 1
@@ -87,7 +87,7 @@ def _greater_on_the_right(v):
 def _less_on_the_left(v):
     return _over_x(
         f"(< {v} x)",
-        f"(>= result {v + 1})",
+        f"(> result {_spelled(v)})",
         [f"(example (f {v + 1}) {A} {v + 1})"],
         "x",
     ), v + 1
@@ -96,7 +96,7 @@ def _less_on_the_left(v):
 def _at_least_on_the_right(v):
     return _over_x(
         f"(>= x {v})",
-        f"(> result {v - 1})",
+        f"(>= result {_spelled(v)})",
         [f"(example (f {v}) {A} {v})"],
         "x",
     ), v
@@ -105,7 +105,7 @@ def _at_least_on_the_right(v):
 def _at_most_on_the_left(v):
     return _over_x(
         f"(<= {v} x)",
-        f"(> result {v - 1})",
+        f"(>= result {_spelled(v)})",
         [f"(example (f {v}) {A} {v})"],
         "x",
     ), v
@@ -114,7 +114,7 @@ def _at_most_on_the_left(v):
 def _greater_on_the_left(v):
     return _over_x(
         f"(> {v} x)",
-        f"(< result {v})",
+        f"(< result {_spelled(v)})",
         [f"(example (f {v - 1}) {A} {v - 1})"],
         "x",
     ), v - 1
@@ -123,7 +123,7 @@ def _greater_on_the_left(v):
 def _at_most_on_the_right(v):
     return _over_x(
         f"(<= x {v})",
-        f"(< result {v + 1})",
+        f"(<= result {_spelled(v)})",
         [f"(example (f {v}) {A} {v})"],
         "x",
     ), v
@@ -132,7 +132,7 @@ def _at_most_on_the_right(v):
 def _equality(v):
     return _over_x(
         f"(or (= x {v}) (> x {v + 1}))",
-        f"(>= result {v})",
+        f"(>= result {_spelled(v)})",
         [f"(example (f {v}) {A} {v})"],
         "x",
     ), v
@@ -141,7 +141,7 @@ def _equality(v):
 def _inside_a_promise(v):
     return _over_x(
         f"(> x {v})",
-        f"(and (>= result {v + 1}) (or (> result {v}) (= result {v + 1})))",
+        f"(and (> result {_spelled(v)}) (or (> result {_spelled(v)}) (= result {v + 1})))",
         [f"(example (f {v + 1}) {A} {v + 1})"],
         "x",
     ), v + 1
@@ -161,16 +161,16 @@ def _the_right_factor(v):
 
 def _what_a_factor_promises(v):
     if v > 0:
-        return f"(>= result {v})"
+        return f"(>= result {_spelled(v)})"
     if v < 0:
-        return f"(<= result {v})"
-    return "(= result 0)"
+        return f"(<= result {_spelled(v)})"
+    return f"(= result {_spelled(v)})"
 
 
 def _added(v):
     return _over_x(
         "(> x 0)",
-        f"(> result {v})",
+        f"(> result {_spelled(v)})",
         [f"(example (f 1) {A} {v + 1})"],
         f"(+ x {v})",
     ), 1
@@ -179,7 +179,7 @@ def _added(v):
 def _taken_from(v):
     return _over_x(
         "(> x 0)",
-        f"(< result {v})",
+        f"(< result {_spelled(v)})",
         [f"(example (f 1) {A} {v - 1})"],
         f"(- {v} x)",
     ), 1
@@ -187,7 +187,7 @@ def _taken_from(v):
 
 def _taken_away(v):
     return _over_x(
-        f"(> x {v})",
+        f"(> x {_spelled(v)})",
         "(> result 0)",
         [f"(example (f {v + 1}) {A} 1)"],
         f"(- x {v})",
@@ -197,7 +197,7 @@ def _taken_away(v):
 def _the_first_clause(v):
     return _over_x(
         None,
-        f"(= result (if (= x {v}) 1 2))",
+        f"(= result (if (= x {_spelled(v)}) 1 2))",
         [f"(example (f {v}) {A} 1)", f"(example (f {v + 1}) {A} 2)"],
         f"(match x ({v} 1) (_ 2))",
     ), v
@@ -206,7 +206,7 @@ def _the_first_clause(v):
 def _a_middle_clause(v):
     return _over_x(
         None,
-        f"(= result (if (= x {v + 1}) 0 (if (= x {v}) 1 2)))",
+        f"(= result (if (= x {_spelled(v + 1)}) 0 (if (= x {_spelled(v)}) 1 2)))",
         [f"(example (f {v}) {A} 1)", f"(example (f {v + 1}) {A} 0)"],
         f"(match x ({v + 1} 0) ({v} 1) (_ 2))",
     ), v
@@ -227,12 +227,12 @@ def _a_record_field(v):
 
 def _a_call_argument(v):
     callee = _function(
-        "g", "y", ("Int", "Int"), f"(> y {v})", f"(> result {v})",
+        "g", "y", ("Int", "Int"), f"(> y {_spelled(v)})", f"(> result {_spelled(v)})",
         [f"(example (g {v + 1}) {A} {v + 1})"], "y",
     )
     return _over_x(
         "(> x 0)",
-        f"(> result {v})",
+        f"(> result {_spelled(v)})",
         [f"(example (f 1) {A} {v + 1})"],
         f"(g (+ x {v}))",
         before=callee + "\n",
@@ -273,6 +273,16 @@ def _a_literal_call_argument(v):
     ), 1
 
 
+def _spelled(v):
+    """The same number written another way: a literal one below it, plus
+    one. A promise that names the number this way and a program that
+    writes it as the literal agree only if the literal is read exactly,
+    so a sign dropped, a value truncated to a machine word, a zero read
+    as a one or an operand swapped breaks the cell by itself rather than
+    cancelling out against the other side."""
+    return f"(+ {v - 1} 1)"
+
+
 def _over_u(ensures, examples, body, returns="Int"):
     return _function("f", "u", ("Unit", returns), None, ensures, examples, body)
 
@@ -284,16 +294,16 @@ def _a_wildcard_in_a_first_clause(v):
     does would answer the later clause instead."""
     return _over_x(
         None,
-        f"(= result {v})",
+        f"(= result {_spelled(v)})",
         [f"(example (f {v}) {A} {v})", f"(example (f {v + 1}) {A} {v})"],
-        f"(match x (_ {v}) ({v + 1} {v + 2})))"[:-1],
+        f"(match x (_ {v}) ({v + 1} {v + 2}))",
     ), v + 1
 
 
 def _a_name_in_a_first_clause(v):
     return _over_x(
         None,
-        f"(= result {v})",
+        f"(= result {_spelled(v)})",
         [f"(example (f {v}) {A} {v})", f"(example (f {v + 1}) {A} {v})"],
         f"(match x (anyvalue {v}) ({v + 1} {v + 2}))",
     ), v + 1
@@ -302,7 +312,7 @@ def _a_name_in_a_first_clause(v):
 def _a_wildcard_in_a_middle_clause(v):
     return _over_x(
         None,
-        f"(= result (if (= x {v}) 0 {v}))",
+        f"(= result (if (= x {_spelled(v)}) 0 {_spelled(v)}))",
         [f"(example (f {v}) {A} 0)", f"(example (f {v + 1}) {A} {v})"],
         f"(match x ({v} 0) (_ {v}) ({v + 1} {v + 2}))",
     ), v + 1
@@ -311,7 +321,7 @@ def _a_wildcard_in_a_middle_clause(v):
 def _a_name_in_a_middle_clause(v):
     return _over_x(
         None,
-        f"(= result (if (= x {v}) 0 {v}))",
+        f"(= result (if (= x {_spelled(v)}) 0 {_spelled(v)}))",
         [f"(example (f {v}) {A} 0)", f"(example (f {v + 1}) {A} {v})"],
         f"(match x ({v} 0) (anyvalue {v}) ({v + 1} {v + 2}))",
     ), v + 1
@@ -319,7 +329,7 @@ def _a_name_in_a_middle_clause(v):
 
 def _the_unit_pattern_in_a_first_clause(v):
     return _over_u(
-        f"(= result {v})",
+        f"(= result {_spelled(v)})",
         [f"(example (f ()) {A} {v})"],
         f"(match u (() {v}) (_ (+ {v} 1)))",
     ), "()"
@@ -331,7 +341,7 @@ def _true_written_in_an_expression(v):
     two cannot cancel out."""
     return _over_x(
         None,
-        f"(= result (> x {v}))",
+        f"(= result (> x {_spelled(v)}))",
         [f"(example (f {v + 1}) {A} true)", f"(example (f {v}) {A} false)"],
         f"(if (> x {v}) true false)",
         returns="Bool",
@@ -341,7 +351,7 @@ def _true_written_in_an_expression(v):
 def _false_written_in_an_expression(v):
     return _over_x(
         None,
-        f"(= result (not (> x {v})))",
+        f"(= result (not (> x {_spelled(v)})))",
         [f"(example (f {v + 1}) {A} false)", f"(example (f {v}) {A} true)"],
         f"(if (> x {v}) false true)",
         returns="Bool",
