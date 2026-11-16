@@ -213,9 +213,11 @@ def _a_middle_clause(v):
 
 
 def _a_record_field(v):
+    """The field is pinned against the same number written another way,
+    so a value read with the wrong sign or magnitude cannot satisfy it."""
     return _over_x(
         None,
-        f"(> (.amount result) {v - 1})",
+        f"(= (.amount result) (+ {v - 1} 1))",
         [f"(example (f 1) {A} (Box {v}))"],
         f"(Box {v})",
         returns="Box",
@@ -255,7 +257,24 @@ def _a_boolean_clause(v):
     ), v + 1
 
 
+def _a_literal_call_argument(v):
+    """The argument is the literal itself, and what comes back is pinned
+    against the same number written another way."""
+    callee = _function(
+        "g", "y", ("Int", "Int"), f"(>= y {v - 1})", "(= result y)",
+        [f"(example (g {v}) {A} {v})"], "y",
+    )
+    return _over_x(
+        None,
+        f"(= result (+ {v - 1} 1))",
+        [f"(example (f 1) {A} {v})"],
+        f"(g {v})",
+        before=callee + "\n",
+    ), 1
+
+
 THE_POSITIONS = (
+    ("a literal as the argument of a call", _a_literal_call_argument),
     ("the pattern of a boolean clause", _a_boolean_clause),
     ("greater, literal on the right", _greater_on_the_right),
     ("less, literal on the left", _less_on_the_left),

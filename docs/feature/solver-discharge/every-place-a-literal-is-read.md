@@ -9,13 +9,13 @@ literal value, a sign or a boolean, with the test cell that observes it.
 The grid in `tests/properties/test_f18_a_literal_keeps_its_value_everywhere.py`
 crosses 16 values — nothing, one and two either way, the edges of a
 32-bit and a 64-bit word from both sides, past an unsigned 64-bit word,
-and 30 digits either way — with 19 positions, and every cell is a
+and 30 digits either way — with 20 positions, and every cell is a
 program whose promise sits exactly at the boundary the literal sets.
-304 cells, under two seconds, no sampling.
+320 cells, under a second, no sampling.
 
 | Place in the code | What it reads | Cell that observes it |
 |---|---|---|
-| `encoding.Translation._integer` → `Term.integer` | every integer literal of an expression | all 304 cells; a value read wrongly breaks the boundary |
+| `encoding.Translation._integer` → `Term.integer` | every integer literal of an expression | all 320 cells; a value read wrongly breaks the boundary |
 | `encoding.Translation._boolean` → `truth`/`falsity` | `true` and `false` in an expression | the boolean-clause position, and the promise about a boolean |
 | `encoding.Translation._unit` → `unit` | `()` | none: no program in the oracle has a `Unit`-typed expression, and the profile's `Unit` has one value, so no cell could tell a right reading from a wrong one. Stated, not claimed |
 | `encoding.Translation._operator` rows `<` `<=` `>` `>=` | a literal on either side of each of the four orders | eight positions: each order with the literal left and right |
@@ -26,10 +26,10 @@ program whose promise sits exactly at the boundary the literal sets.
 | `encoding.Translation._matched` `PatInt` | a literal as a match pattern | the first-clause and middle-clause positions, and the negative literal as a pattern |
 | `encoding.Translation._matched` `PatBool` | `true`/`false` as a match pattern | the boolean-clause position |
 | `encoding.Translation._matched` `PatUnit` / `PatConstructor` | the unit pattern and a nullary constructor pattern | constructor patterns by the two shipped examples and the clause tests; the unit pattern has no cell, for the reason above |
-| `encoding.Translation._construction` → `shape` | a literal as the value of a record field or a union payload | the record-field position; a union payload carries no literal in this fragment's programs |
-| `encoding.Translation._expanded_call` → `_arguments_of` | a literal inside the argument of a call | the call-argument position |
+| `encoding.Translation._construction` → `shape` | a literal as the value of a record field or a union payload | the record-field position, which pins the field against the same number written another way; a union payload carries no literal in this fragment's programs |
+| `encoding.Translation._expanded_call` → `_arguments_of` | a literal inside the argument of a call, and a literal as the whole argument | the two call-argument positions; the second pins what comes back against the same number written another way, because the first could not notice a sign dropped there |
 | `encoding.Translation.term_of_value` | the literal arguments and expected value of a declared example | the expected-value position, and every cell's own example |
-| `solving` row `INTEGER` → `IntVal` | the value handed to the solver | all 304 cells |
+| `solving` row `INTEGER` → `IntVal` | the value handed to the solver | all 320 cells |
 | `solving` row `TRUTH`/`FALSITY` → `BoolVal` | the boolean handed to the solver | the boolean-clause position |
 | `solving` rows `SUM` `DIFFERENCE` `PRODUCT` | the arithmetic the solver is given | the sum, difference and factor positions |
 | `solving` rows `LESS` `AT_MOST` `GREATER` `AT_LEAST` `EQUALS` | the comparison the solver is given | the eight order positions and the equality position |
@@ -46,3 +46,11 @@ say the reading is correct: that rests on the cells, on the differential
 check against the evaluator inside each of them, and on the mutants put
 back one at a time. Three places are named as having no cell, with the
 reason; they are not counted as covered.
+
+## Two cells this table made stronger
+
+Writing the table found two of its own rows watched by a cell that could
+not have noticed: the record field and the call argument were pinned
+against a bound a mangled value still satisfied. Both now pin the value
+against the same number written another way, and a mutant dropping the
+sign in either place turns them red. That is what the table is for.
