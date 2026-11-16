@@ -243,6 +243,9 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - A docs/feature/solver-discharge/oracle.md (+96 -0 lines)
 - A docs/feature/solver-discharge/probe.md (+102 -0 lines)
 - A docs/feature/solver-discharge/refactor.md (+54 -0 lines)
+- A docs/solver-discharge/DECISIONS.md (+26 -0 lines)
+- A docs/solver-discharge/SUMMARY.md (+788 -0 lines)
+- A docs/solver-discharge/TRACE.md (+5 -0 lines)
 - A docs/translation-to-the-solver.md (+206 -0 lines)
 - M pyproject.toml (+6 -1 lines)
 - M src/prova/budgets.py (+13 -0 lines)
@@ -320,6 +323,7 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - 8e2a41a Record what the stopped run knows, and not one word more
 - 815030d Watch the three places a seventh review found open
 - 44fd5a6 Refuse to publish a run this tool could not finish as a refusal
+- a11a9ef Hand the change over with what it does not show
 
 ## 1. oracle: Frame the work and write the oracle (revision 1)
 
@@ -777,6 +781,21 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 - **pre-review receipt** (run by the tool when this record was written):
   - candidate: commit 44fd5a658433929892031a80723836af2c05dbf3
   - no checks declared
+
+## 17. examine: Examine the handed-off change as a user (revision 1)
+
+- **examiner**: examine-f18
+- **rows**:
+  - X1 | pass | observation=verify on examples/hour-clock.prova: 20 obligations, all 20 proved, none not_attempted; by_kind 3+3+3+8+3; discharged_by 14 solver and 6 structure; identical over 3 runs.
+  - X2 | pass | observation=verify on the SPEC reservation example: 18 obligations all proved (12 solver, 6 structure), including the step precondition at both call sites and the four step examples; stable over 2 runs.
+  - X3 | pass | observation=add-one promising (> result 0): body_postcondition disproved with witness [-1]; evaluate at -1 refuses (postcondition_violation) and at 5 answers 6; three more false promises gave witnesses that all replay as refusals.
+  - X4 | pass | observation=guarded if call proved by solver, its unguarded twin disproved with witness [0] that evaluate refuses; the match form behaves the same.
+  - X5 | pass | observation=every answer where a solver was asked carries trust {trusted_from solver, solver z3 5.4.1, encoding core-0-to-smt 1, rechecked_by_this_tool false}; discover publishes the pin ==5.4.1.0; a program with no solver question carries no trust block and says 'not applicable'.
+  - X6 | pass | observation=(* x y) of two unknown numbers: unknown, execution_status unsupported, with the reason naming linear multiplication; a let body and a constructor pattern carrying patterns also unknown with their reasons; no unknown without a reason in the session.
+  - X7 | pass | observation=each entry carries discharged_by solver or structure; structure entries name their rule (totality_of_the_profile, acyclic_calls) and result.inventory.rules spells both out; consistent across 11 programs.
+  - X8 | pass | observation=zero hits for verified/proved correct/sound/guarantee/safe in discover, verify, check, examples answers (positive control fires on the document); claim kind obligation_inventory, scope this input; a false worked example is disproved.
+  - X9 | pass | observation=discover publishes encoding.documented_in docs/translation-to-the-solver.md; the 206-line document exists and reads as followable: premise-by-premise faithfulness argument, solver outcome table, what the tool does not claim; matches observed behaviour.
+  - X10 | pass | observation=check, examples (8 passed), parse (tree), format (idempotent), evaluate unchanged on hour-clock; format output is idempotent though the shipped file is not in canonical form (noted, not a fault).
 
 ## Not backed by the diff
 
