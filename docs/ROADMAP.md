@@ -1248,3 +1248,10 @@ there.
   request whose JSON nests about 20000 arrays deep ends in `RecursionError` inside
   the JSON reader. Also decide whether `operation` holding a surrogate is echoed back
   unchanged (it is today). Each should answer one JSON response.
+- **A lowered interpreter digit limit still fails in the reader.** With
+  `PYTHONINTMAXSTRDIGITS=640` (or `-X int_max_str_digits`) and a 1000-digit integer
+  literal in a program, `reader.py` `int(self.text)` raises and the command answers
+  `tool_failure`, on every operation, before R3 and after it. R2's literal limit (1000
+  digits) is only safe while the interpreter's own limit is at least that; read the
+  limit actually in force and refuse a literal above it with the same `syntax`
+  refusal. Pre-existing; raised by the R3 review.
