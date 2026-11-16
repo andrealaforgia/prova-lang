@@ -25,33 +25,71 @@ A class (b) survivor is a defect in the oracle and is not allowed to
 remain. Classes (c) and (d) are allowed to remain **only** with their
 line in this file.
 
-## Survivors
+## What has been examined, and by whom
 
-**The whole-suite pass was stopped by the Owner part way through.** The
-harness printed a line only for a mutant that survived a pass, never for
-one a pass killed, so the output does not say how many of the 135 were
-asked the whole suite before the stop -- only that **none of those it
-reached survived it**. That silence is a defect of the harness, not a
-result: the ledger added afterwards records every verdict as it is
-decided, so the next run cannot lose this again.
+Two runs have looked at these mutants. My own was stopped part way
+through its whole-suite pass on the Owner's instruction, and its harness
+printed nothing for a mutant a pass killed, so it cannot say how many of
+its 135 cheap-pass survivors were reached -- only that none of those it
+reached survived. An independent soundness review then ran its own clean
+harness over **36 survivors that matter** and reported each one.
 
-The table below is therefore what is known and nothing more. Every row
-survived the two cheap passes. A row is marked **not asked** where the
-whole-suite pass did not reach it, which is all of them except those the
-stop had already passed, and the output cannot say which those were.
-**None of these rows is classified.** A mutant that no cheap cell
-notices may well be killed by a test outside those passes -- the twenty
-`_declare` reversals below swap each primitive's name with its meaning,
-which the shipped-document test almost certainly catches, and that test
-is in the suite but in neither cheap pass. Calling them survivors now
-would be a claim this run did not earn.
+Of those 36: **11 were killed** by tests already here, **21 are
+equivalent or direction-safe** with the arguments below, **3 were real
+gaps**, and **4 did not return a verdict**. The three gaps are now
+closed, and the fourth of the unreturned four has been measured here.
 
-### Argued, from the sample run that did complete
+## The three real gaps, closed
 
-| Module | Function | Line | Operator | Class | Argument |
-|---|---|---|---|---|---|
-| `encoding.py` | (module level) | 39 | module constant: int constant +1 | (c) | `EXPANSION_LIMIT = 64` bounds how far calls are expanded, chosen rather than measured. The deepest expansion any program in the oracle needs is 3, so 63, 64 and 65 are indistinguishable to every test. A program that did approach the bound is answered `unknown` either way, with the bound named in its reason |
-| `encoding.py` | (module level) | 39 | module constant: int constant -1 | (c) | the same bound, the same argument |
+| Mutant | What it did | Closed by |
+|---|---|---|
+| `encoding.py` `_matched`, `and` read as `or` | dropped the test on a constructor pattern's payload: `(match u ((Only 0) 7) (_ 0))` with `(ensures (> result 0))` came back **proved** while `evaluate f (Only 1)` is refused. A wrong `proved`, the worst defect this tool can have | `test_a_pattern_carrying_patterns_is_left_unsettled_with_its_reason`, over four shapes: a literal and a name inside a union variant, a literal inside a record, and a pattern inside a pattern. Each must answer `unknown`/`unsupported` naming the pattern, while the contract and the ending stay proved |
+| `discharge.py` `_finding_for`, arguments reversed | put a whole sentence where one of SPEC's seven execution statuses belongs, for every obligation outside the fragment | `test_every_entry_carries_one_word_from_each_vocabulary` over five programs inside and outside the fragment, and the same two assertions on every entry of all 528 grid cells |
+| `discharge.py` `_if_answered_another_value`, arguments reversed | made a disproof name its own refusal text as the function to run, which no caller could run | `test_a_disproof_names_a_function_a_caller_can_run`: the witness must name `f`, carry `["1"]`, name the expected value in its refusal, and run through `evaluate` |
+
+Each was re-run under the clean harness after the cells were added, with
+the control first: all three turn their named cell red.
+
+## The four that had not returned a verdict, now measured
+
+All four were measured afterwards rather than argued from inspection,
+and the fourth is not a survivor at all.
+
+| Mutant | Class | Argument |
+|---|---|---|
+| `NEGATION` index `-1` | (c) | the parts of a negation are exactly one term, so `p[-1]` is `p[0]` |
+| `FIELD` carried index sign flip | (c) | what a field term carries is the pair (constructor, field), so `c[-1]` is `c[1]` |
+| `PRODUCT` operands reversed | (c) | multiplication is commutative |
+| `Inventory.as_dict` settled test inverted | **killed** | not a survivor: the suite turns it red (1 failed, 162 passed before `-x` stopped it). I ran this one here rather than leave it unmeasured |
+
+## Equivalent or direction-safe, with the argument
+
+Each of these can change no answer a reader acts on. The argument is the
+reviewer's, checked against the code here.
+
+| Site | Class | Argument |
+|---|---|---|
+| `encoding.py` `EXPANSION_LIMIT` ±1 | (c) | a bound chosen rather than measured; the deepest expansion any program here needs is 3 |
+| `encoding.py` `_expanded_call` `+= 2`, `>` to `>=` | (c) | trips the bound sooner: more `unknown`, never a proof |
+| `encoding.py` `all_of` 187/188 int mutations | (c) | a one-part conjunction and the part itself are the same term to the solver |
+| `encoding.py` `_in_scope_at_the_call` `[0]` to `[-1]` | (c) | only the first segment of a site can begin with `ensures`; at worst a proof becomes `unknown` |
+| `discharge.py` `_if_answered_another_value` operands reversed | (c) | `values_equal` is symmetric |
+| `solving.py` `_written` operands reversed | (c) | a malformed witness fails to parse and the disproof degrades to `unknown` |
+| `solving.py` `asked` `<` to `<=` | (c) | one more millisecond is refused |
+| `solving.py` `could_not_tell` branches swapped | (c) | swaps two sentences; the status is computed separately |
+| `solving.py` `_Sorts.__init__` reversed | (c) | `_places` is keyed by constructor name |
+| `solving.py` SUM/DIFFERENCE/LESS/EQUALS index sign flips | (c) | `p[-0]` is `p[0]`: the same program |
+| `@dataclass(frozen=True)` to `False`, 17 rows | (c) | nothing writes to an instance; the freeze is a construction guard, not an answer |
+| `obligations.py` `_parts_of` / `_parts_of_match` reversals | (c) | the path-condition parts become a conjunction either way |
+| `obligations.py` `text_of`, `pattern_text`, `_note`, `_by_kind`, `_by_result`, `_owed_by` | (c) | text a reader reads and counts beside it; no verdict depends on them |
+| `solving.py` `asked` 107 reversed, `THE_LEAST_WORTH_ASKING` ±1 | (d) | the no-time-left branch cannot be entered through the public surface: a 299-obligation program refuses at 1-56 ms and proves at 58 ms |
+| `encoding.py` `_operator` refusal message `Add` to `Sub` | (d) | the checker refuses an operator outside the eleven before the encoder sees it |
+
+A (c) row changes no answer; a (d) row names a branch no input of this
+profile can enter. Neither becomes true by being written here: each is
+an argument a reviewer can read and reject.
+
+## My own stopped run, for the record
 
 ### Survived the two cheap passes, not classified
 

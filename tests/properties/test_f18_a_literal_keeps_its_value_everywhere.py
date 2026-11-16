@@ -30,6 +30,12 @@ import pytest
 
 from prova import service
 
+LOGICAL_RESULTS = ("proved", "disproved", "unknown", "not_attempted")
+EXECUTION_STATUSES = (
+    "completed", "unsupported", "timed_out", "cancelled",
+    "resource_exhausted", "invalid_input", "tool_failure",
+)
+
 A = "=>"
 
 # Every value a literal is read at: nothing, one either way, two either
@@ -517,6 +523,20 @@ def test_a_literal_keeps_its_value_wherever_the_encoder_reads_one(
         "this cell says nothing about the literal it is for. "
         f"HOW: the program was:\n{source}\n{owed}"
     )
+    for entry in owed["result"]["inventory"]["obligations"]:
+        assert entry["result"] in LOGICAL_RESULTS, (
+            f"WHAT: {entry['id']} stands as {entry['result']!r}, which is "
+            f"not one of {sorted(LOGICAL_RESULTS)}. "
+            "WHY: SPEC.md fixes the four words a logical result may carry. "
+            f"HOW: the program was:\n{source}"
+        )
+        assert entry["execution_status"] in EXECUTION_STATUSES, (
+            f"WHAT: {entry['id']} reports the attempt as "
+            f"{entry['execution_status']!r}, which is not one of "
+            f"{sorted(EXECUTION_STATUSES)}. "
+            "WHY: SPEC.md fixes the seven words an execution status may "
+            f"carry. HOW: the program was:\n{source}"
+        )
     unsettled = [
         (entry["id"], entry["result"], entry.get("reason", "")[:120])
         for entry in owed["result"]["inventory"]["obligations"]
