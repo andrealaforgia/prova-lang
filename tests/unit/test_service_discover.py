@@ -66,7 +66,8 @@ def test_discover_lists_diagnostic_categories_and_resource_limits():
 
 
 def test_discover_makes_no_verification_or_build_claim():
-    """The manifest still claims no program verified and none built.
+    """The manifest still claims no program built, and says what the word
+    `verified` rests on wherever it uses it.
 
     Superseded in part by F18: the manifest now has to describe the four
     words an obligation can stand as, one of which is `proved`, so the
@@ -75,20 +76,49 @@ def test_discover_makes_no_verification_or_build_claim():
     verified a program, that it built one, or that something holds -- so
     the two words naming those stay forbidden, and `proved` is allowed
     only where the manifest also says what it rests on.
+
+    Superseded again by F21, for the same reason and in the same shape:
+    this tool now does say whether a program as a whole was shown, so
+    `verified` has to be sayable here. What a reader must never meet is
+    the word with nothing beside it saying what it rests on, so it is
+    allowed only where the field that carries it is published and that
+    field names all three conditions behind it.
     """
     manifest_text = json.dumps(service.handle(DISCOVER)).lower()
 
-    for word in ("verified", "built", "holds"):
+    for word in ("built", "holds"):
         assert word not in manifest_text, (
             f"WHAT: the manifest contains {word!r}. "
-            "WHY: this tool verifies no program as a whole and builds none, "
-            "so a reader of the manifest must not be told otherwise. "
+            "WHY: this tool builds no program and asserts that nothing "
+            "holds, so a reader of the manifest must not be told otherwise. "
             "HOW: reword the entry that says it."
         )
 
     published = service.handle(DISCOVER)["result"]["operation_schemas"]["verify"][
         "response"
     ]["fields"]
+    if "verified" in manifest_text:
+        assert "aggregate" in published, (
+            f"WHAT: the manifest uses the word 'verified' and the fields it "
+            f"publishes for a verify answer are {sorted(published)}. "
+            "WHY: a reader who meets 'verified' must be able to look up what "
+            "it stands for before sending a single request, and the field "
+            "carrying it is read from the published shape rather than found "
+            "somewhere in the text. "
+            "HOW: describe the field in manifest.py beside the others."
+        )
+        said = str(published["aggregate"]).lower()
+        for owed in ("discharged", "examples", "static"):
+            assert owed in said, (
+                f"WHAT: the manifest publishes the field that carries "
+                f"'verified' and what it says about it does not mention "
+                f"{owed!r}: {said}. "
+                "WHY: the word rests on a complete inventory all discharged, "
+                "on passing examples and on the static checks passing; a "
+                "reader told the word and not those three is told a verdict "
+                "with no conditions. "
+                "HOW: say all three in the field's description."
+            )
     assert "trust" in published, (
         f"WHAT: the manifest uses the word 'proved' and the fields it "
         f"publishes for a verify answer are {sorted(published)}. "
