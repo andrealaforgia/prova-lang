@@ -81,6 +81,20 @@ protected and re-aiming it:
 | the session never says `proved` | the same, over a whole session's answers |
 | a chain of 600 is listed | it is still *checked*; what it owes is asked of a chain of 240, which is just as far past the depth limit |
 
+## One decision worth stating plainly
+
+The disclosure of trust is carried when **a solver answered about at
+least one obligation**, and not otherwise. Three kinds of answer carry
+none: one whose every obligation a rule of `core-0` settled, one whose
+obligations were all left outside what this tool translates, and one
+that needed a solver and could not load it -- there a solver was reached
+for and answered nothing, so there is no word of its to disclose. All
+three say what stood behind them under `stands_on` instead.
+
+An audit-trail limit worth naming: the two edits to existing tests that
+this round needed rode in the same commit as production code rather than
+in commits of their own. History is not rewritten to hide that.
+
 ## What is still open
 
 - The time budget bounding the solver is implemented and is not forced

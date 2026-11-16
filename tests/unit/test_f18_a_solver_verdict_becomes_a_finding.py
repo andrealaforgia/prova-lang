@@ -278,3 +278,49 @@ def test_the_solver_is_never_given_more_time_than_the_run_has():
         "outlive the run that asked it. "
         f"HOW: inspect what was given: {solver.given}"
     )
+
+
+def test_an_answer_that_could_not_load_a_solver_discloses_nothing(monkeypatch):
+    """Given a program whose obligations need a solver, when the solver
+    cannot be loaded at all, then the answer completes, carries no
+    disclosure of trust, and says a solver was needed and could not be
+    had.
+
+    A solver was reached for here and answered nothing, so there is no
+    word of its to disclose. The published rule says the disclosure is
+    carried when a solver answered, which is what this reads.
+    """
+    import sys
+
+    from prova import service
+
+    monkeypatch.setitem(sys.modules, "z3", None)
+    answer = service.handle({"operation": "verify", "source": A_PROGRAM})
+
+    assert answer["status"] == "completed", (
+        f"WHAT: a run whose solver could not be loaded is answered "
+        f"{answer['status']!r}. "
+        "WHY: the obligations a rule of core-0 settles are settled anyway, "
+        "and the rest are owed with the reason; a refusal of the whole answer "
+        "would lose both. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert "trust" not in answer, (
+        f"WHAT: the answer carries {answer.get('trust')}. "
+        "WHY: no solver answered about any obligation, so there is no word of "
+        "a solver's to take on trust; disclosing one would name a solver that "
+        "settled nothing here. "
+        f"HOW: carry it only where a solver answered: {sorted(answer)}"
+    )
+    said = answer["stands_on"]["versions"]["solver"]
+    assert said.startswith("not applicable:") and "could not load" in said, (
+        f"WHAT: the answer says {said!r} about the solver behind it. "
+        "WHY: a reader has to be able to tell an answer that asked no solver "
+        "from one that needed a solver and could not have it. "
+        f"HOW: inspect what it stands on: {answer['stands_on']}"
+    )
+    stood = {
+        (entry["result"], entry["execution_status"])
+        for entry in answer["result"]["inventory"]["obligations"]
+    }
+    assert stood == {("proved", "completed"), ("unknown", "tool_failure")}, stood

@@ -115,9 +115,11 @@ The translation defines a **total** reading of a `core-0` program: every
 well-typed expression denotes a value, because the profile has no partial
 primitive, no effect and no call that fails to end. The evaluator agrees
 with that reading wherever it returns a value at all. Where it does not
-agree it does not return a different value — it refuses the call, because
-a precondition did not hold, and a refusal is not a counterexample to
-anything.
+agree it does not return a different value — it refuses, and a refusal is
+not a counterexample to anything. Three things make it refuse, the same
+three listed under contract definedness below: a callee's precondition
+that does not hold, a callee's postcondition that does not hold, and the
+evaluation depth budget.
 
 So, obligation by obligation:
 
@@ -185,9 +187,13 @@ hand it straight to a run.
 
 ## What this tool does not claim
 
-- **The solver's word is taken, not checked.** Every answer that asked a
-  solver carries that disclosure beside its result, and names the solver
-  and its version. This tool keeps no proof certificate and runs no
+- **The solver's word is taken, not checked.** Every answer a solver
+  really answered about carries that disclosure beside its result, and
+  names the solver and its version. An answer carries none when every
+  obligation was settled by a rule, when every one was left outside this
+  fragment, or when a solver was needed and could not be loaded — in
+  that last case nothing was answered, so there is nothing to disclose,
+  and `stands_on` says a solver was needed and could not be had. This tool keeps no proof certificate and runs no
   checking kernel of its own. A defect in the solver, or in the
   translation described here, would reach you as a `proved`.
 - Parser, type checker, this translation, the solver and the runtime are

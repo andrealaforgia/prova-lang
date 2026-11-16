@@ -45,7 +45,7 @@ Eleven other changed units, each with its reason in the step record:
 | `encoding.Term` | a value with named constructors and no behaviour to move |
 | `encoding.published_primitives` | the one declaration the manifest and the document both read |
 | `solving._Sorts` | one responsibility: the types of one claim in the solver's terms |
-| `solving.PinnedZ3` | the port itself: three small methods, each loading the solver inside the call that needs it |
+| `solving.PinnedZ3` | the port itself: five small methods, of which one loads the solver, inside the call that needs it, for the two that ask |
 | `discharge.ValidatedWitness` | a value built in one place, by the replay that confirmed it |
 | `obligations.Inventory` | one responsibility, and its refusal of an obligation with no finding is the rule that nothing is skipped |
 | `obligations.PathCondition` | prepared before the feature, in its own commit |
