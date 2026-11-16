@@ -13,6 +13,7 @@ from prova import (
     discharge,
     encoding,
     evaluator,
+    examples,
     formatter,
     manifest,
     obligations,
@@ -1227,9 +1228,26 @@ class Refusal:
         }
 
 
+@dataclass(frozen=True)
+class Checked:
+    """A program the checker accepted, beside what the checker said
+    about it.
+
+    What it said is nothing -- a program it said anything about is
+    refused and never reaches here -- and that empty answer is carried
+    rather than thrown away because an operation that has to show the
+    static checks passed must rest on the checker's own answer and not
+    on a claim of its own.
+    """
+
+    program: syntax.Program
+    diagnostics: tuple
+
+
 def _checked_program(source: SubmittedText, run: Run):
     """The program `source` declares, checked against every rule of
-    core-0 -- or the `Refusal` to answer with instead.
+    core-0 and carrying the checker's answer -- or the `Refusal` to
+    answer with instead.
 
     Every operation that reads source asks here, so a source refused for
     one of them is refused the same way for all of them, and a caller
@@ -1255,14 +1273,14 @@ def _checked_program(source: SubmittedText, run: Run):
     diagnostics = checker.check_program(program)
     if diagnostics:
         return Refusal("invalid_program", tuple(diagnostics), revision)
-    return program
+    return Checked(program, tuple(diagnostics))
 
 
 def _run_check(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("check")
-    program = checked
+    program = checked.program
 
     return {
         "operation": "check",
@@ -1291,7 +1309,7 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("verify")
-    program = checked
+    program = checked.program
 
     owed = obligations.inventory_for(program)
     settled = discharge.Discharge(program, solving.PinnedZ3(), run).settle(owed)
@@ -1327,7 +1345,7 @@ def _run_parse(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("parse")
-    program = checked
+    program = checked.program
 
     return {
         "operation": "parse",
@@ -1362,7 +1380,7 @@ def _run_format(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("format")
-    program = checked
+    program = checked.program
 
     return {
         "operation": "format",
@@ -1383,34 +1401,12 @@ def _run_examples(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("examples")
-    program = checked
+    program = checked.program
 
-    results = []
-    for function in program.functions.values():
-        place = _declared_place(program, function.name)
-        try:
-            for ordinal, example in enumerate(function.examples):
-                entry = {
-                    "function": function.name,
-                    "ordinal": ordinal,
-                    "arguments": [render(a) for a in example.args],
-                    "expected": render(example.expected),
-                }
-                run.stop_if_exhausted()
-                try:
-                    actual = evaluator.call_function(function, example.args, program)
-                except evaluator.EvaluationTooDeep as too_deep:
-                    return _too_deep_to_run("examples", source, too_deep)
-                except (evaluator.PreconditionViolation, evaluator.PostconditionViolation) as violation:
-                    entry["actual"] = None
-                    entry["passed"] = False
-                    entry["reason"] = str(violation)
-                else:
-                    entry["actual"] = render(actual)
-                    entry["passed"] = evaluator.values_equal(actual, example.expected)
-                results.append(entry)
-        except TooLargeToWrite as too_large:
-            return _too_large_to_write("examples", source, too_large, place)
+    ran = examples.run_declared(program, run)
+    stopped = _if_the_run_was_stopped("examples", source, program, ran)
+    if stopped is not None:
+        return stopped
 
     return {
         "operation": "examples",
@@ -1419,8 +1415,35 @@ def _run_examples(source: SubmittedText, run: Run) -> dict:
         "source_digest": _source_digest(source),
         "stands_on": _stands_on(),
         "diagnostics": [],
-        "result": {"examples": results},
+        "result": {"examples": ran.published()},
     }
+
+
+def _if_the_run_was_stopped(
+    operation: str,
+    source: SubmittedText,
+    program: syntax.Program,
+    ran: examples.DeclaredExamples,
+) -> dict | None:
+    """The refusal to answer `operation` with, when running the declared
+    examples met a limit of this tool, or nothing at all.
+
+    The two limits are the two this tool declares about running a
+    program: how deep a run may nest, and how many digits an answer
+    writes. Each is answered exactly as it was before the run had an
+    owner of its own, so an operation that refuses for one of them
+    refuses with the same words and in the same place.
+    """
+    if ran.stopped_by is None:
+        return None
+    if isinstance(ran.stopped_by, evaluator.EvaluationTooDeep):
+        return _too_deep_to_run(operation, source, ran.stopped_by)
+    return _too_large_to_write(
+        operation,
+        source,
+        ran.stopped_by,
+        _declared_place(program, ran.stopped_at),
+    )
 
 
 def _parse_value_text(text: SubmittedText) -> object:
@@ -1461,7 +1484,7 @@ def _run_evaluate(source: SubmittedText, asked: EvaluationAsked, run: Run) -> di
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("evaluate")
-    program = checked
+    program = checked.program
     revision = SourceRevision.of(source)
 
     function_name = asked.function.spelling
