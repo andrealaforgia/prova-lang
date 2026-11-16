@@ -159,20 +159,22 @@ def _sites_in(module: str, tree: ast.AST) -> list:
                                               setattr(n, "orelse", a)))(
                     n.body, n.orelse))
 
-    for owner in ast.walk(tree):
-        if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            inside = {id(n) for n in ast.walk(owner)}
-            for site in found:
-                if site.function == "?" and any(
-                    id(n) == id(x) for n in ast.walk(owner) for x in ()
-                ):
-                    pass
-            for site in found:
-                if site.function == "?":
-                    for node in ast.walk(owner):
-                        if getattr(node, "lineno", None) == site.line:
-                            site.function = owner.name
-                            break
+    owners = [
+        (owner.lineno, getattr(owner, "end_lineno", owner.lineno), owner.name)
+        for owner in ast.walk(tree)
+        if isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+    for site in found:
+        enclosing = [
+            (end - start, name)
+            for start, end, name in owners
+            if start <= site.line <= end
+        ]
+        if enclosing:
+            site.function = min(enclosing)[1]
+        else:
+            site.function = "(module level)"
+            site.operator = "module constant: " + site.operator
     return found
 
 
@@ -229,18 +231,39 @@ def _judge(job, seconds: int) -> dict:
     where = _with_source(text, module)
     try:
         code, killer = _run(THE_FIRST_PASS, where / "src", seconds)
-        passes = "first"
+        reached = "first"
         if code == 0:
             code, killer = _run(THE_SECOND_PASS, where / "src", seconds)
-            passes = "second"
-        if code == 0:
-            code, killer = _run(THE_WHOLE_SUITE, where / "src", seconds * 6)
-            passes = "whole suite"
+            reached = "second"
         return {
             "module": module, "index": index, "function": site.function,
             "line": site.line, "operator": site.operator,
+            "verdict": "killed" if code else "survived the cheap passes",
+            "killed_by": killer, "pass": reached,
+        }
+    finally:
+        shutil.rmtree(where, ignore_errors=True)
+
+
+def _asked_the_whole_suite(answer: dict, seconds: int) -> dict:
+    """One survivor of the cheap passes, asked the whole suite.
+
+    Run only for a survivor, and once each: a mutant no close cell
+    notices may still be noticed by some other test, and that is the
+    difference between a survivor to argue about and one to close.
+    """
+    built = _mutant_source(answer["module"], answer["index"])
+    if built is None:
+        return {**answer, "verdict": "unmutatable"}
+    text, _ = built
+    where = _with_source(text, answer["module"])
+    try:
+        code, killer = _run(THE_WHOLE_SUITE, where / "src", seconds)
+        return {
+            **answer,
             "verdict": "killed" if code else "SURVIVED",
-            "killed_by": killer, "pass": passes,
+            "killed_by": killer or answer.get("killed_by", ""),
+            "pass": "whole suite" if code else "survived everything",
         }
     finally:
         shutil.rmtree(where, ignore_errors=True)
@@ -286,6 +309,24 @@ def main() -> None:
                 print(f"{answer['verdict']:12} {answer.get('operator', '')} "
                       f"at {answer['module']}:{answer.get('line', '?')} "
                       f"({answer.get('function', '?')})", flush=True)
+    cheap_survivors = [
+        a for a in judged if a["verdict"] == "survived the cheap passes"
+    ]
+    print(f"\n{len(cheap_survivors)} survived the cheap passes; "
+          "asking each the whole suite once", flush=True)
+    if cheap_survivors:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=said.workers
+        ) as pool:
+            settled = list(
+                pool.map(lambda a: _asked_the_whole_suite(a, 480), cheap_survivors)
+            )
+        by_key = {(a["module"], a["index"]): a for a in settled}
+        judged = [by_key.get((a["module"], a["index"]), a) for a in judged]
+        for a in settled:
+            if a["verdict"] == "SURVIVED":
+                print(f"SURVIVED EVERYTHING {a['operator']} at "
+                      f"{a['module']}:{a['line']} ({a['function']})", flush=True)
     survived = [a for a in judged if a["verdict"] == "SURVIVED"]
     print(f"\nkilled {sum(1 for a in judged if a['verdict'] == 'killed')}, "
           f"survived {len(survived)}, "
