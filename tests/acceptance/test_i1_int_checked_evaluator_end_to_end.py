@@ -4,8 +4,9 @@ evaluator -- is demonstrable end to end through the product's real surface.
 One Owner session, each request its own fresh `prova` process: check the
 reservation program; run `step` on a fresh input; run its declared examples;
 see an invalid input, a wrong body and an invalid program each rejected under
-its own distinct category; and see `build` and `verify` refused as
-unavailable. No response in the session claims verification, proof or a build.
+its own distinct category; ask what the program owes; and see `build` refused
+as unavailable. No response in the session claims a build, and none says an
+obligation is proved, or a program verified, without saying what that rests on.
 
 Drives only the `prova` command's JSON stdin/stdout surface. No imports from
 src/prova.
@@ -20,15 +21,21 @@ import subprocess
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # Words no answer of this tool may use, because each of them would claim
-# work it does not do: it verifies no program as a whole, builds nothing
-# and asserts that nothing holds.
-FORBIDDEN_WORDS = ("verified", "built", "holds")
+# work it does not do: it builds nothing and asserts that nothing holds.
+FORBIDDEN_WORDS = ("built", "holds")
 
 # `proved` is not among them any more: an obligation settled by the
 # solver stands as 'proved', so the word has to be sayable. What a
 # reader must never meet is that word with nothing beside it saying what
 # it rests on, so wherever it appears these three must appear too.
 WHAT_PROVED_RESTS_ON = ("trust", "discharged_by", "rechecked_by_this_tool")
+
+# `verified` is not among them any more either, and for the same reason:
+# an answer now says whether the whole of a program was shown, so the
+# word has to be sayable. The same rule guards it. Wherever it appears,
+# the three conditions it rests on appear beside it: the obligations of
+# the inventory discharged, the declared examples, and the static checks.
+WHAT_VERIFIED_RESTS_ON = ("discharged", "examples", "static_checks")
 
 RESERVE_OLD = "(Outcome (Reservation (+ (.reserved current) 1)) true)"
 RESERVE_TYPE_ERROR = (
@@ -157,13 +164,23 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
     assert refused.get("operation") == "build", refused
     assert refused.get("status") == "unavailable", refused
 
-    # 8. Nothing in the whole session claims verification or a build, and
-    #    nothing says an obligation is proved without saying what that
-    #    rests on.
+    # 8. Nothing in the whole session claims a build, nothing says an
+    #    obligation is proved without saying what that rests on, and
+    #    nothing says a program is verified without saying the same.
     for raw in raw_outputs:
         lowered = raw.lower()
         for word in FORBIDDEN_WORDS:
             assert word not in lowered, f"response claims {word!r}: {raw}"
+        if "verified" in lowered:
+            for owed in WHAT_VERIFIED_RESTS_ON:
+                assert owed in lowered, (
+                    f"a response says a program is verified and does not say "
+                    f"{owed!r}: a reader told the whole of a program was "
+                    f"shown, and not told that every obligation was "
+                    f"discharged, that the declared examples were run and "
+                    f"that the static checks passed, is told a verdict with "
+                    f"no conditions: {raw}"
+                )
         if "proved" not in lowered:
             continue
         for owed in WHAT_PROVED_RESTS_ON:
