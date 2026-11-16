@@ -11,7 +11,7 @@ crosses 16 values — nothing, one and two either way, the edges of a
 32-bit and a 64-bit word from both sides, past an unsigned 64-bit word,
 and 30 digits either way — with 33 positions, and every cell is a
 program whose promise sits exactly at the boundary the literal sets.
-528 cells, under a second, no sampling.
+528 cells in about 1.2 seconds, no sampling.
 
 | Place in the code | What it reads | Cell that observes it |
 |---|---|---|

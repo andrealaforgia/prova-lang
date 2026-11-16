@@ -34,10 +34,16 @@ its 135 cheap-pass survivors were reached -- only that none of those it
 reached survived. An independent soundness review then ran its own clean
 harness over **36 survivors that matter** and reported each one.
 
-Of those 36: **11 were killed** by tests already here, **21 are
-equivalent or direction-safe** with the arguments below, **3 were real
-gaps**, and **4 did not return a verdict**. The three gaps are now
-closed, and the fourth of the unreturned four has been measured here.
+**The counts below are of mutants, not of rows of this file**: one row
+can stand for several mutants (the seventeen `frozen=True` rows are one
+row here), which is why the two numbers differ.
+
+Of those 36 mutants: **15 were killed** by tests already here (L02, L03,
+L04, L05, L09, L11, L14, L22-L28 and L36), **18 are equivalent or
+direction-safe** with the arguments below, and **3 were real gaps**.
+15 + 18 + 3 = 36. The four that had returned no verdict when the review
+was written are inside those totals: L33, L34 and L35 are three of the
+18 equivalents, and L36 is one of the 15 killed.
 
 ## The three real gaps, closed
 
@@ -101,18 +107,18 @@ an argument a reviewer can read and reject.
 | `discharge.py` | `_finding_for` | 193 | call arguments reversed | not asked |
 | `discharge.py` | `_if_answered_another_value` | 270 | call arguments reversed | not asked |
 | `discharge.py` | `_if_answered_another_value` | 272 | call arguments reversed | not asked |
-| `discharge.py` | `_value_of` | 302 | call arguments reversed | not asked |
-| `discharge.py` | `_value_of` | 302 | int constant +1 | not asked |
-| `discharge.py` | `_value_of` | 302 | int constant -1 | not asked |
-| `discharge.py` | `_value_of` | 302 | int constant sign flip | not asked |
-| `discharge.py` | `_value_of` | 303 | int constant -1 | not asked |
-| `discharge.py` | `disclosure` | 162 | True/False swap | not asked |
-| `discharge.py` | `not_attempted_because` | 126 | call arguments reversed | not asked |
+| `discharge.py` | `_value_of` | 302 | call arguments reversed | **killed** since, by one of the two runs |
+| `discharge.py` | `_value_of` | 302 | int constant +1 | **killed** since, by one of the two runs |
+| `discharge.py` | `_value_of` | 302 | int constant -1 | **killed** since, by one of the two runs |
+| `discharge.py` | `_value_of` | 302 | int constant sign flip | **killed** since, by one of the two runs |
+| `discharge.py` | `_value_of` | 303 | int constant -1 | **killed** since, by one of the two runs |
+| `discharge.py` | `disclosure` | 162 | True/False swap | **killed** since, by one of the two runs |
+| `discharge.py` | `not_attempted_because` | 126 | call arguments reversed | **killed** since, by one of the two runs |
 | `encoding.py` | `(module level)` | 101 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 102 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 103 | module constant: call arguments reversed | not asked |
-| `encoding.py` | `(module level)` | 104 | module constant: call arguments reversed | not asked |
-| `encoding.py` | `(module level)` | 109 | module constant: call arguments reversed | not asked |
+| `encoding.py` | `(module level)` | 104 | module constant: call arguments reversed | **killed** since, by one of the two runs |
+| `encoding.py` | `(module level)` | 109 | module constant: call arguments reversed | **killed** since, by one of the two runs |
 | `encoding.py` | `(module level)` | 114 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 118 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 133 | module constant: True/False swap | not asked |
@@ -123,27 +129,27 @@ an argument a reviewer can read and reject.
 | `encoding.py` | `(module level)` | 39 | module constant: int constant +1 | not asked |
 | `encoding.py` | `(module level)` | 39 | module constant: int constant -1 | not asked |
 | `encoding.py` | `(module level)` | 48 | module constant: True/False swap | not asked |
-| `encoding.py` | `(module level)` | 66 | module constant: call arguments reversed | not asked |
-| `encoding.py` | `(module level)` | 71 | module constant: call arguments reversed | not asked |
+| `encoding.py` | `(module level)` | 66 | module constant: call arguments reversed | **killed** since, by one of the two runs |
+| `encoding.py` | `(module level)` | 71 | module constant: call arguments reversed | **killed** since, by one of the two runs |
 | `encoding.py` | `(module level)` | 76 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 77 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 78 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 79 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 80 | module constant: call arguments reversed | not asked |
-| `encoding.py` | `(module level)` | 83 | module constant: call arguments reversed | not asked |
-| `encoding.py` | `(module level)` | 88 | module constant: call arguments reversed | not asked |
-| `encoding.py` | `(module level)` | 89 | module constant: call arguments reversed | not asked |
+| `encoding.py` | `(module level)` | 83 | module constant: call arguments reversed | **killed** since, by one of the two runs |
+| `encoding.py` | `(module level)` | 88 | module constant: call arguments reversed | **killed** since, by one of the two runs |
+| `encoding.py` | `(module level)` | 89 | module constant: call arguments reversed | **killed** since, by one of the two runs |
 | `encoding.py` | `(module level)` | 92 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 93 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `(module level)` | 96 | module constant: call arguments reversed | not asked |
 | `encoding.py` | `__init__` | 283 | int constant +1 | not asked |
 | `encoding.py` | `__init__` | 283 | int constant -1 | not asked |
-| `encoding.py` | `_constructor_owning` | 419 | int constant -1 | not asked |
-| `encoding.py` | `_declare` | 59 | call arguments reversed | not asked |
-| `encoding.py` | `_expanded_call` | 487 | int constant +1 | not asked |
-| `encoding.py` | `_expanded_call` | 487 | int constant -1 | not asked |
-| `encoding.py` | `_expanded_call` | 487 | int constant sign flip | not asked |
-| `encoding.py` | `_expanded_call` | 488 | compare Gt to GtE | not asked |
+| `encoding.py` | `_constructor_owning` | 419 | int constant -1 | **killed** since, by one of the two runs |
+| `encoding.py` | `_declare` | 59 | call arguments reversed | **killed** since, by one of the two runs |
+| `encoding.py` | `_expanded_call` | 487 | int constant +1 | **killed** since, by one of the two runs |
+| `encoding.py` | `_expanded_call` | 487 | int constant -1 | **killed** since, by one of the two runs |
+| `encoding.py` | `_expanded_call` | 487 | int constant sign flip | **killed** since, by one of the two runs |
+| `encoding.py` | `_expanded_call` | 488 | compare Gt to GtE | **killed** since, by one of the two runs |
 | `encoding.py` | `_matched` | 471 | and/or swap | not asked |
 | `encoding.py` | `_operator` | 381 | Add to Sub | not asked |
 | `encoding.py` | `_operator` | 381 | operands reversed | not asked |
@@ -151,7 +157,7 @@ an argument a reviewer can read and reject.
 | `encoding.py` | `all_of` | 187 | int constant sign flip | not asked |
 | `encoding.py` | `all_of` | 188 | int constant -1 | not asked |
 | `obligations.py` | `(module level)` | 113 | module constant: True/False swap | not asked |
-| `obligations.py` | `(module level)` | 125 | module constant: True/False swap | not asked |
+| `obligations.py` | `(module level)` | 125 | module constant: True/False swap | **killed** since, by one of the two runs |
 | `obligations.py` | `(module level)` | 136 | module constant: True/False swap | not asked |
 | `obligations.py` | `(module level)` | 148 | module constant: True/False swap | not asked |
 | `obligations.py` | `(module level)` | 164 | module constant: True/False swap | not asked |
@@ -186,8 +192,8 @@ an argument a reviewer can read and reject.
 | `obligations.py` | `_parts_of` | 696 | operands reversed | not asked |
 | `obligations.py` | `_parts_of_match` | 719 | operands reversed | not asked |
 | `obligations.py` | `_parts_of_match` | 721 | operands reversed | not asked |
-| `obligations.py` | `as_dict` | 500 | operands reversed | not asked |
-| `obligations.py` | `as_dict` | 504 | call arguments reversed | not asked |
+| `obligations.py` | `as_dict` | 500 | operands reversed | **killed** since, by one of the two runs |
+| `obligations.py` | `as_dict` | 504 | call arguments reversed | **killed** since, by one of the two runs |
 | `obligations.py` | `pattern_text` | 802 | branches of a conditional swapped | not asked |
 | `obligations.py` | `text` | 187 | int constant -1 | not asked |
 | `obligations.py` | `text_of` | 741 | branches of a conditional swapped | not asked |
@@ -215,7 +221,7 @@ an argument a reviewer can read and reject.
 | `solving.py` | `(module level)` | 38 | module constant: True/False swap | not asked |
 | `solving.py` | `(module level)` | 44 | module constant: True/False swap | not asked |
 | `solving.py` | `(module level)` | 62 | module constant: True/False swap | not asked |
-| `solving.py` | `(module level)` | 71 | module constant: True/False swap | not asked |
+| `solving.py` | `(module level)` | 71 | module constant: True/False swap | **killed** since, by one of the two runs |
 | `solving.py` | `__init__` | 309 | operands reversed | not asked |
 | `solving.py` | `_written` | 362 | operands reversed | not asked |
 | `solving.py` | `asked` | 106 | compare Lt to LtE | not asked |
