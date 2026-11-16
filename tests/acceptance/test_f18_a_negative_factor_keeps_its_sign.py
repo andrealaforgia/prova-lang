@@ -21,6 +21,8 @@ and names the input that breaks it.
 
 from __future__ import annotations
 
+import pytest
+
 from _f18_fixtures import completed, entry_named, evaluate, not_proved, verify
 
 # Three times minus one is negative, so a promise of a positive answer
@@ -282,3 +284,88 @@ def test_the_same_promise_under_a_bound_at_zero_is_proved():
     the Owner asks what it owes, then all 4 obligations come back
     proved."""
     _all_proved(A_BOUND_AT_ZERO, "a bound at zero", 4)
+
+
+# The three programs a third review round named, each one a place a
+# literal is read that nothing else here reaches: a negative literal in
+# an equality, one as a match pattern, and one far past a machine word
+# measured against another that is exactly a machine word.
+A_NEGATIVE_LITERAL_IN_AN_EQUALITY = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (requires (or (= x -3) (> x 0)))
+  (ensures (> result 0))
+  (examples (example (f 7) => 7))
+  x)
+"""
+
+A_NEGATIVE_LITERAL_AS_A_PATTERN = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (requires (< x 0))
+  (ensures (> result 0))
+  (examples (example (f -2) => 5))
+  (match x (-1 -7) (_ 5)))
+"""
+
+A_LITERAL_PAST_A_MACHINE_WORD = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (requires (> x -1000000000000000000000000000000))
+  (ensures (> result -9223372036854775808))
+  (examples (example (f 7) => 7))
+  x)
+"""
+
+# A promise about a boolean, false for one of the two values: the input
+# the answer names is read back as a boolean rather than a number.
+A_PROMISE_ABOUT_A_BOOLEAN = """(defn f
+  (sig ((b Bool)) -> Bool ! pure)
+  (ensures result)
+  (examples (example (f true) => true))
+  b)
+"""
+
+
+@pytest.mark.parametrize(
+    "source,label,breaks_at",
+    [
+        (A_NEGATIVE_LITERAL_IN_AN_EQUALITY, "a negative literal in an equality", "-3"),
+        (A_NEGATIVE_LITERAL_AS_A_PATTERN, "a negative literal as a pattern", "-1"),
+        (
+            A_LITERAL_PAST_A_MACHINE_WORD,
+            "a literal past a machine word",
+            "-9223372036854775808",
+        ),
+        (A_PROMISE_ABOUT_A_BOOLEAN, "a promise about a boolean", "false"),
+    ],
+)
+def test_a_promise_a_literal_makes_false_is_disproved(source, label, breaks_at):
+    """Given a program whose promise one value of its input breaks, when
+    the Owner asks what it owes, then the promise is disproved, the
+    answer names that value, and running the program over it is refused
+    for that promise."""
+    entry = entry_named(
+        completed(verify(source), label), "body_postcondition:f:body", label
+    )
+
+    assert entry["result"] == "disproved", (
+        f"WHAT: with {label}, the promise is answered {entry['result']!r}. "
+        f"WHY: the input {breaks_at} meets what this program asks of its "
+        "input and breaks what it promises; a tool that read the literal at "
+        "another value would call the promise kept, which is a wrong proved. "
+        f"HOW: inspect the entry: {entry}"
+    )
+    assert entry["counterexample"]["arguments"] == [breaks_at], (
+        f"WHAT: the answer names {entry['counterexample']['arguments']} and "
+        f"the only value that breaks this promise is {breaks_at}. "
+        "WHY: the Owner is sent to that input to see the defect; another one "
+        "would send them to a program that works. "
+        f"HOW: inspect the entry: {entry}"
+    )
+    replayed = evaluate(source, "f", [breaks_at])
+    assert "postcondition_violation" in {
+        d.get("category") for d in (replayed.get("diagnostics") or [])
+    }, (
+        f"WHAT: running f over {breaks_at} is not refused for the promise it "
+        f"breaks: {replayed}. "
+        "WHY: a witness that does not replay is not a counterexample. "
+        f"HOW: inspect the run: {replayed}"
+    )
