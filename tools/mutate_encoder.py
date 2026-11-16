@@ -282,6 +282,45 @@ def _control(seconds: int) -> None:
     shutil.rmtree(where, ignore_errors=True)
 
 
+FINAL = ("killed", "SURVIVED", "unmutatable")
+
+
+def _already_decided(ledger: pathlib.Path) -> dict:
+    """What a previous run settled, so a run that was stopped loses
+    nothing: a mutant with a final verdict is not asked again, and one
+    that only survived the cheap passes is asked the suite again."""
+    settled = {}
+    if not ledger.exists():
+        return settled
+    for line in ledger.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            answer = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        settled[(answer["module"], answer["index"])] = answer
+    return settled
+
+
+def _note(ledger, answer: dict) -> None:
+    """One decided mutant, on disk before the next one starts."""
+    ledger.write(json.dumps(answer) + "\n")
+    ledger.flush()
+    os.fsync(ledger.fileno())
+
+
+def _report(judged: list, where: str) -> None:
+    lines = ["| module | function | line | operator | verdict | killed by |",
+             "|---|---|---|---|---|---|"]
+    for a in judged:
+        lines.append(
+            f"| {a['module']} | {a.get('function','?')} | {a.get('line','?')} "
+            f"| {a.get('operator','?')} | {a['verdict']} | "
+            f"{a.get('killed_by','') or ''} |")
+    pathlib.Path(where).write_text("\n".join(lines) + "\n")
+
+
 def main() -> None:
     asked = argparse.ArgumentParser(description=__doc__)
     asked.add_argument("--sample", type=int, default=0)
@@ -289,7 +328,19 @@ def main() -> None:
     asked.add_argument("--seconds", type=int, default=120)
     asked.add_argument("--out", default="")
     asked.add_argument("--report", default="")
+    asked.add_argument("--ledger", default="",
+                       help="append one JSON line per decided mutant here, "
+                            "and skip what it already settled")
+    asked.add_argument("--report-from", default="",
+                       help="write the markdown report from a ledger and stop")
     said = asked.parse_args()
+
+    if said.report_from:
+        judged = list(_already_decided(pathlib.Path(said.report_from)).values())
+        _report(judged, said.report or "mutants.md")
+        print(f"{len(judged)} decided mutants written to "
+              f"{said.report or 'mutants.md'}")
+        return
 
     jobs = []
     for module in THE_MODULES:
@@ -301,10 +352,20 @@ def main() -> None:
         print(f"sampling the first {len(jobs)}")
 
     _control(said.seconds)
-    judged = []
+    ledger_path = pathlib.Path(said.ledger or "mutants.jsonl")
+    settled = _already_decided(ledger_path)
+    final = {k for k, a in settled.items() if a["verdict"] in FINAL}
+    if final:
+        print(f"{len(final)} mutants were decided by an earlier run and are "
+              "not asked again", flush=True)
+    jobs = [job for job in jobs if job not in final]
+
+    judged = [a for k, a in settled.items() if k in final]
+    ledger = ledger_path.open("a", encoding="utf-8")
     with concurrent.futures.ThreadPoolExecutor(max_workers=said.workers) as pool:
         for answer in pool.map(lambda job: _judge(job, said.seconds), jobs):
             judged.append(answer)
+            _note(ledger, answer)
             if answer["verdict"] != "killed":
                 print(f"{answer['verdict']:12} {answer.get('operator', '')} "
                       f"at {answer['module']}:{answer.get('line', '?')} "
@@ -318,12 +379,14 @@ def main() -> None:
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=said.workers
         ) as pool:
-            settled = list(
+            asked_the_suite = list(
                 pool.map(lambda a: _asked_the_whole_suite(a, 480), cheap_survivors)
             )
-        by_key = {(a["module"], a["index"]): a for a in settled}
+        by_key = {(a["module"], a["index"]): a for a in asked_the_suite}
         judged = [by_key.get((a["module"], a["index"]), a) for a in judged]
-        for a in settled:
+        for a in asked_the_suite:
+            _note(ledger, a)
+        for a in asked_the_suite:
             if a["verdict"] == "SURVIVED":
                 print(f"SURVIVED EVERYTHING {a['operator']} at "
                       f"{a['module']}:{a['line']} ({a['function']})", flush=True)
@@ -333,15 +396,9 @@ def main() -> None:
           f"unmutatable {sum(1 for a in judged if a['verdict'] == 'unmutatable')}")
     if said.out:
         pathlib.Path(said.out).write_text(json.dumps(judged, indent=1))
+    ledger.close()
     if said.report:
-        lines = ["| module | function | line | operator | verdict | killed by |",
-                 "|---|---|---|---|---|---|"]
-        for a in judged:
-            lines.append(
-                f"| {a['module']} | {a.get('function','?')} | {a.get('line','?')} "
-                f"| {a.get('operator','?')} | {a['verdict']} | "
-                f"{a.get('killed_by','') or ''} |")
-        pathlib.Path(said.report).write_text("\n".join(lines) + "\n")
+        _report(judged, said.report)
     sys.exit(1 if survived else 0)
 
 
