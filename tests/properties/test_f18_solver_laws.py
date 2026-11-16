@@ -57,6 +57,14 @@ ASKS = {
     "anything": (None, -50),
     "a positive number": ("(> n 0)", 1),
     "a number that is not negative": ("(>= n 0)", 0),
+    # The same bound written four ways against a negative literal, with
+    # the literal on each side of each operator: a translation that lost
+    # the sign of a literal in a comparison would read every one of
+    # these as a bound five above zero rather than five below it.
+    "a number above minus five": ("(> n -5)", -4),
+    "a number not below minus five": ("(>= n -5)", -5),
+    "a number minus five is below": ("(< -5 n)", -4),
+    "a number minus five is not above": ("(<= -5 n)", -5),
 }
 
 # What it promises about its answer.
@@ -66,6 +74,13 @@ PROMISES = {
     "a positive answer": "(> result 0)",
     "an answer at least as large as its input": "(>= result n)",
     "twice its input": "(= result (* n 2))",
+    # Promises measured against a negative bound, again with the literal
+    # on each side.
+    "an answer above minus six": "(> result -6)",
+    "an answer not below minus five": "(>= result -5)",
+    "an answer minus six is below": "(< -6 result)",
+    "an answer minus six is not above": "(<= -6 result)",
+    "minus three times its input": "(= result (* -3 n))",
 }
 
 # What it does, with a model of the value it answers written beside it.
@@ -75,6 +90,13 @@ BODIES = {
     "doubles": ("(* n 2)", lambda n: n * 2),
     "negates": ("(- 0 n)", lambda n: -n),
     "answers its input or zero": ("(if (> n 0) n 0)", lambda n: n if n > 0 else 0),
+    # Bodies carrying a negative literal: as a factor on each side of
+    # the product, as the left operand of a difference, and written -0.
+    "multiplies by minus three": ("(* -3 n)", lambda n: -3 * n),
+    "multiplies by minus three the other way": ("(* n -3)", lambda n: n * -3),
+    "takes three from it": ("(- n 3)", lambda n: n - 3),
+    "takes it from minus three": ("(- -3 n)", lambda n: -3 - n),
+    "answers minus zero times it": ("(* -0 n)", lambda n: 0),
 }
 
 # A model of each promise, so what the program answers can be judged
@@ -85,12 +107,22 @@ KEEPS = {
     "a positive answer": lambda n, answer: answer > 0,
     "an answer at least as large as its input": lambda n, answer: answer >= n,
     "twice its input": lambda n, answer: answer == n * 2,
+    "an answer above minus six": lambda n, answer: answer > -6,
+    "an answer not below minus five": lambda n, answer: answer >= -5,
+    "an answer minus six is below": lambda n, answer: -6 < answer,
+    "an answer minus six is not above": lambda n, answer: -6 <= answer,
+    "minus three times its input": lambda n, answer: answer == -3 * n,
 }
 
 # Plans whose promise is false for some whole number the function
 # accepts, written out here so every case of LAW2 really is one the tool
 # must disprove rather than one it happens to.
 PROMISES_THAT_ARE_FALSE = (
+    # A bound five below zero is not a bound at zero: this is the
+    # shape a lost sign in a comparison reads as kept.
+    ("a number above minus five", "a positive answer", "answers its input"),
+    ("a number not below minus five", "a positive answer", "answers its input"),
+    ("anything", "an answer not below minus five", "takes three from it"),
     ("anything", "a positive answer", "answers its input"),
     ("anything", "an answer that is not negative", "answers its input"),
     ("anything", "an answer that is not negative", "negates"),
@@ -130,6 +162,15 @@ PROMISES_THAT_HOLD = (
     ),
     ("anything", "nothing", "negates"),
     ("a positive number", "a positive answer", "adds one"),
+    ("a number above minus five", "an answer above minus six", "answers its input"),
+    ("a number minus five is below", "an answer minus six is below", "answers its input"),
+    (
+        "a number not below minus five",
+        "an answer not below minus five",
+        "answers its input",
+    ),
+    ("anything", "minus three times its input", "multiplies by minus three"),
+    ("anything", "nothing", "answers minus zero times it"),
 )
 
 THE_PROMISE = "body_postcondition:f:body"
@@ -203,7 +244,11 @@ def _refusals(source: str, arguments: list) -> set:
 # the first few, and distances far past any machine word, because Int is
 # the mathematical integers here and a translation that quietly made it
 # a machine number would agree with the evaluator only near zero.
-THE_DISTANCES = (0, 1, 2, 41, 10**18, 10**30, 10**60)
+# Distances from the smallest number a function accepts. The first few
+# step across a negative bound where there is one, and 44 to 50 reach
+# -6, -5, -4 and 0 from the lowest number the plan ever starts at, so
+# the inputs cover both sides of every bound these tables write.
+THE_DISTANCES = (0, 1, 2, 41, 44, 45, 46, 50, 10**18, 10**30, 10**60)
 
 
 @given(

@@ -215,3 +215,70 @@ def test_a_call_reached_through_two_tests_is_proved_under_both():
         "any other way they would prove less than the program says. "
         f"HOW: inspect the entry: {entry}"
     )
+
+
+# A bound five below zero, written with a negative literal. Nothing
+# about it promises a positive answer: a translation that lost the sign
+# of the literal would read it as a bound five above zero and call the
+# promise kept.
+A_BOUND_BELOW_ZERO = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (requires (> x -5))
+  (ensures (> result 0))
+  (examples (example (f 7) => 7))
+  x)
+"""
+
+# The same program with the bound the promise really needs.
+A_BOUND_AT_ZERO = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (requires (> x 0))
+  (ensures (> result 0))
+  (examples (example (f 7) => 7))
+  x)
+"""
+
+
+def test_a_bound_five_below_zero_does_not_promise_a_positive_answer():
+    """Given a function accepting every number above minus five and
+    promising a positive answer, when the Owner asks what it owes, then
+    the promise is disproved and the input it names is refused when the
+    program runs over it."""
+    label = "a bound five below zero"
+    entry = entry_named(
+        completed(verify(A_BOUND_BELOW_ZERO), label),
+        "body_postcondition:f:body",
+        label,
+    )
+
+    assert entry["result"] == "disproved", (
+        f"WHAT: a promise of a positive answer by a function that accepts "
+        f"minus four is answered {entry['result']!r}. "
+        "WHY: a bound five below zero is not a bound at zero; a translation "
+        "that lost the sign of the literal would read the two as one and "
+        "call this promise kept, which is a wrong proved. "
+        f"HOW: inspect the entry: {entry}"
+    )
+    arguments = entry["counterexample"]["arguments"]
+    assert all(int(written) <= 0 for written in arguments), (
+        f"WHAT: the input named is {arguments}, which is above zero. "
+        "WHY: every number above zero keeps this promise; only one between "
+        "minus five and zero breaks it. "
+        f"HOW: inspect the entry: {entry}"
+    )
+    replayed = evaluate(A_BOUND_BELOW_ZERO, "f", arguments)
+    assert "postcondition_violation" in {
+        d.get("category") for d in (replayed.get("diagnostics") or [])
+    }, (
+        f"WHAT: running f over {arguments} is not refused for the promise it "
+        f"breaks: {replayed}. "
+        "WHY: a witness that does not replay is not a counterexample. "
+        f"HOW: inspect the run: {replayed}"
+    )
+
+
+def test_the_same_promise_under_a_bound_at_zero_is_proved():
+    """Given the same function accepting only numbers above zero, when
+    the Owner asks what it owes, then all 4 obligations come back
+    proved."""
+    _all_proved(A_BOUND_AT_ZERO, "a bound at zero", 4)

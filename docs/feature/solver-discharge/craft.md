@@ -97,9 +97,13 @@ in commits of their own. History is not rewritten to hide that.
 
 ## What is still open
 
-- The time budget bounding the solver is implemented and is not forced
-  by any test: the fragment admits no instance slow enough to time out
-  without racing the wall clock. It is stated here as unproven.
+- The time budget bounding the solver is forced by two tests now: one
+  requires every question put to the solver to be given no more than the
+  milliseconds the whole run may take, and one requires a timed-out
+  verdict to come back `unknown` with a timed-out attempt and never
+  proved. What stays unproven is only the end-to-end case: no program of
+  this fragment makes the real solver run out of time, so nothing
+  observes that mapping from outside the tool.
 - The 1 MiB answer budget now binds `verify` for programs of a few
   hundred functions. Whether that limit should rise is the Owner's to
   decide.
