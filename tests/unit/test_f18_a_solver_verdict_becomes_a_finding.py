@@ -221,6 +221,49 @@ def test_a_candidate_the_program_refuses_is_a_disproof():
     assert entry["counterexample"]["arguments"] == ["1"], entry
 
 
+def test_each_of_the_three_answers_a_solver_can_give_is_read_as_itself():
+    """Given each of the three answers a solver can give, when this tool
+    reads it, then no solution is validity, a solution is a candidate,
+    and "I cannot tell" is neither of them.
+
+    No program of this fragment makes the real solver say it cannot
+    tell, so the only way to see what this tool does with that answer is
+    to hand it the answer. It is handed here beside the other two, read
+    by the same function the real question uses.
+    """
+    import z3
+
+    solver = z3.Solver()
+    n = z3.Int("n")
+    solver.add(n == 3)
+    assert solver.check() == z3.sat, "the solver could not settle n == 3"
+
+    def read(outcome):
+        return solving.verdict_for(
+            z3, outcome, solver, lambda model: (("n", str(model[n])),)
+        )
+
+    no_solution, a_solution, could_not_tell = (
+        read(z3.unsat),
+        read(z3.sat),
+        read(z3.unknown),
+    )
+
+    assert isinstance(no_solution, solving.Unrefutable), no_solution
+    assert isinstance(a_solution, solving.Refuted), a_solution
+    assert isinstance(could_not_tell, solving.Undecided), (
+        f"WHAT: a solver that could not tell is read as {could_not_tell}. "
+        "WHY: 'nothing refutes it' and 'I cannot tell' are different "
+        "answers; reading the second as the first would report a claim as "
+        "proved that no search settled, which is the worst defect this tool "
+        "can have. "
+        "HOW: read each of the three answers as itself."
+    )
+    assert a_solution.assignment == (("n", "3"),), a_solution
+    assert solving.could_not_tell("timeout").execution_status == "timed_out"
+    assert solving.could_not_tell("incomplete").execution_status == "completed"
+
+
 def test_the_solver_is_never_given_more_time_than_the_run_has():
     """Given a run under the budgets this tool declares, then every
     question put to the solver is given no more milliseconds than the

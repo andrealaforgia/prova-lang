@@ -156,26 +156,7 @@ class _Question:
         for assumption in self._claim.assumptions:
             solver.add(self._built(assumption))
         solver.add(z3.Not(self._built(self._claim.conclusion)))
-        outcome = solver.check()
-        if outcome == z3.unsat:
-            return Unrefutable()
-        if outcome == z3.sat:
-            return Refuted(self._read(solver.model()))
-        return self._could_not_tell(solver.reason_unknown())
-
-    def _could_not_tell(self, said: str) -> Undecided:
-        out_of_time = "timeout" in said or "canceled" in said
-        return Undecided(
-            f"the solver could not settle this obligation: {said}. "
-            + (
-                "The run's time budget bounds every question put to it, so a "
-                "question that runs out is left unsettled rather than "
-                "answered from half a search."
-                if out_of_time
-                else "It is left unsettled rather than answered either way."
-            ),
-            "timed_out" if out_of_time else "completed",
-        )
+        return verdict_for(z3, solver.check(), solver, self._read)
 
     def _read(self, model) -> tuple[tuple[str, str], ...]:
         """The solution, as one text per variable written the way a
@@ -241,6 +222,45 @@ _HOW_EACH_PRIMITIVE_IS_BUILT = {
     encoding.NEGATION.name: lambda q, p, c: q.z3.Not(p[0]),
     encoding.CONDITIONAL.name: lambda q, p, c: q.z3.If(p[0], p[1], p[2]),
 }
+
+
+def verdict_for(z3, outcome, solver, assignment):
+    """Which verdict the solver's answer to one question is.
+
+    The three answers a solver can give are read here, in one place, and
+    each is named: no solution, a solution, or it could not tell. The
+    last is read as its own verdict and never as the first -- "nothing
+    refutes it" and "I cannot tell" are different answers, and reading
+    the second as the first would report a claim proved that no search
+    settled.
+
+    Separate from the question that asked it so that each of the three
+    can be read on its own: no program of this fragment makes a solver
+    say it cannot tell, so the only way to see what this tool does with
+    that answer is to hand it the answer.
+    """
+    if outcome == z3.unsat:
+        return Unrefutable()
+    if outcome == z3.sat:
+        return Refuted(assignment(solver.model()))
+    return could_not_tell(solver.reason_unknown())
+
+
+def could_not_tell(said: str) -> Undecided:
+    """What a solver's own reason for not telling becomes: unsettled,
+    with the reason kept, and timed out where that is what happened."""
+    out_of_time = "timeout" in said or "canceled" in said
+    return Undecided(
+        f"the solver could not settle this obligation: {said}. "
+        + (
+            "The run's time budget bounds every question put to it, so a "
+            "question that runs out is left unsettled rather than answered "
+            "from half a search."
+            if out_of_time
+            else "It is left unsettled rather than answered either way."
+        ),
+        "timed_out" if out_of_time else "completed",
+    )
 
 
 class _Sorts:
