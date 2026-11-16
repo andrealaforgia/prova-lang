@@ -70,7 +70,7 @@ Every row in this table has since been re-run with bytecode writing off,
 the cache cleared and the restored files touched after each mutant, and
 the harness is checked by a control: a same-length mutant must be red
 and the unmutated run after it must be green. Of the 37 mutants in that sweep, 35 were red at the named cell; the two
-that were not are the two corrected above. This table has 25 rows, one
+that were not are the two corrected above. This table has 26 rows, one
 per site, which is deliberately not the same number: several mutants
 attack one site, and one site can be watched by several cells.
 
