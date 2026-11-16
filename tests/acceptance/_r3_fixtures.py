@@ -41,18 +41,33 @@ BUDGET_VARIABLE = "PROVA_BUDGET_INPUT_SIZE"
 DECLARED_INPUT_SIZE = 1024 * 1024
 
 
-def multiplying(literal: str, times: int) -> str:
-    """A program whose only function multiplies `literal` by itself
-    `times` times, and nothing else."""
+BUDGET_TIME_VARIABLE = "PROVA_BUDGET_OPERATION_TIME"
+DECLARED_OPERATION_TIME = 10_000
+
+
+def product_of(literal: str, times: int) -> str:
+    """The text of `literal` multiplied by itself `times` times."""
     body = literal
     for _ in range(times - 1):
         body = f"(* {body} {literal})"
+    return body
+
+
+def computing(body: str) -> str:
+    """A program whose only function computes `body`, and nothing
+    else."""
     return (
         "(defn big\n"
         "  (sig () -> Int ! pure)\n"
         "  (examples (example (big) => 1))\n"
         f"  {body})\n"
     )
+
+
+def multiplying(literal: str, times: int) -> str:
+    """A program whose only function multiplies `literal` by itself
+    `times` times, and nothing else."""
+    return computing(product_of(literal, times))
 
 
 def send(request: object, environment: dict | None = None) -> ToolRun:

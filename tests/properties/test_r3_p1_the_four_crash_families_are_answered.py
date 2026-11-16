@@ -390,10 +390,13 @@ def test_a_budget_written_in_the_environment_is_read_or_refused(text):
         response = _answered({"operation": "discover"}, why)
 
     significant = text.lstrip("0")
+    # 4300 digits is what an interpreter turns into one number before it
+    # refuses; a longer run is not a number at all, and a shorter one is
+    # read and answered against the budget this tool declares.
     a_number_the_tool_may_run_under = (
         text.isascii()
         and text.isdecimal()
-        and len(significant) <= len(str(DECLARED_INPUT_SIZE))
+        and len(significant) <= 4300
         and int(significant or "0") <= DECLARED_INPUT_SIZE
     )
     if a_number_the_tool_may_run_under:

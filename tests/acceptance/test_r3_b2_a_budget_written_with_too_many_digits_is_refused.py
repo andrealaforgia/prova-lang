@@ -15,7 +15,9 @@ measured against the lowered number.
 from __future__ import annotations
 
 from _r3_fixtures import (
+    BUDGET_TIME_VARIABLE,
     BUDGET_VARIABLE,
+    DECLARED_OPERATION_TIME,
     DECLARED_INPUT_SIZE,
     INVALID_INPUT,
     MALFORMED_REQUEST,
@@ -107,3 +109,35 @@ def test_a_budget_above_the_declared_number_is_still_refused():
         response, MALFORMED_REQUEST, "a budget above the declared maximum"
     )
     assert refusal.get("symbol") == BUDGET_VARIABLE, refusal
+
+
+def test_a_number_above_a_budget_is_still_answered_with_the_sentence_it_had():
+    """Given a caller that writes 123456 where this tool declares 10000
+    milliseconds, and another that writes 10485761 where it declares
+    1048576 bytes, when each asks for the manifest, then each is told
+    its number is above the one this tool declares -- not that it was
+    refused by its length, which would send it to count characters.
+    """
+    for variable, written, declared in (
+        (BUDGET_TIME_VARIABLE, "123456", DECLARED_OPERATION_TIME),
+        (BUDGET_VARIABLE, "10485761", DECLARED_INPUT_SIZE),
+    ):
+        response = answered(
+            {"operation": "discover"},
+            f"{variable} written as {written}",
+            {variable: written},
+        )
+        refusal = diagnostic_of(
+            response, MALFORMED_REQUEST, f"{variable} written as {written}"
+        )
+        reason = refusal.get("reason", "")
+        assert f"is {int(written)}, above the {declared}" in reason, (
+            f"{variable} written as {written} was refused with "
+            f"{reason[:300]!r}. A number this tool reads is answered against "
+            "the number it declares, in the sentence callers already read."
+        )
+        assert "characters long" not in reason, (
+            f"{variable} written as {written} was refused for its length: "
+            f"{reason[:300]!r}. Six or eight digits are read as one number; "
+            "only a run no reader turns into a number is refused by length."
+        )

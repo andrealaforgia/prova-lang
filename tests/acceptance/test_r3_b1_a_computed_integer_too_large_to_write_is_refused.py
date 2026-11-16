@@ -17,6 +17,8 @@ from __future__ import annotations
 from _r3_fixtures import (
     A_THOUSAND_NINES,
     A_THOUSAND_NINES_VALUE,
+    computing,
+    product_of,
     RESOURCE_EXHAUSTED,
     WRITTEN_DIGITS_EXCEEDED,
     WRITTEN_DIGITS_LIMIT,
@@ -157,4 +159,123 @@ def test_an_integer_far_beyond_64_bits_is_still_exact():
         f"the answer carries {response['result']['value']!r}, not the exact "
         "product. An integer past 64 bits is kept exactly: the limit is on "
         "the digits an answer writes, not on what a program may mean."
+    )
+
+
+def test_a_negative_result_at_the_limit_is_written_with_its_sign():
+    """Given a program whose result is the 4000-digit product made
+    negative, when a caller evaluates it, then the exact negative number
+    comes back: the sign is not one of the digits this tool counts.
+    """
+    response = answered(
+        {"operation": "evaluate",
+         "source": computing(f"(* -1 {product_of(A_THOUSAND_NINES, 4)})"),
+         "function": "big", "arguments": []},
+        "an evaluation whose result is 4000 digits below zero",
+    )
+
+    assert response["status"] == "completed", (
+        f"a negative result of {WRITTEN_DIGITS_LIMIT} digits was answered "
+        f"{str(response)[:300]}. The limit counts the digits of the number, "
+        "leaving the sign out, as the limit on a literal of a source does."
+    )
+    assert int(response["result"]["value"]) == -(A_THOUSAND_NINES_VALUE**4), (
+        f"the answer carries {response['result']['value'][:40]!r}...: a "
+        "negative result is written exactly, with its sign."
+    )
+
+
+def test_a_negative_result_past_the_limit_is_refused_with_the_digits_it_reached():
+    """Given a program whose result is ten times that product, made
+    negative, 4001 digits below zero, when a caller evaluates it, then
+    it is refused saying 4001 digits were reached.
+    """
+    response = answered(
+        {"operation": "evaluate",
+         "source": computing(f"(* -1 (* 10 {product_of(A_THOUSAND_NINES, 4)}))"),
+         "function": "big", "arguments": []},
+        "an evaluation whose result is 4001 digits below zero",
+    )
+
+    assert response["status"] == RESOURCE_EXHAUSTED, (
+        f"a negative result of 4001 digits was answered {str(response)[:300]}: "
+        "a number below zero is measured by the same digits as one above it."
+    )
+    refusal = diagnostic_of(
+        response, WRITTEN_DIGITS_EXCEEDED, "a negative result of 4001 digits"
+    )
+    assert (refusal.get("expected"), refusal.get("actual")) == (
+        WRITTEN_DIGITS_LIMIT,
+        4001,
+    ), (
+        f"the refusal says {refusal.get('expected')!r} and "
+        f"{refusal.get('actual')!r}, not {WRITTEN_DIGITS_LIMIT} and 4001: "
+        f"{refusal}."
+    )
+
+
+def test_the_first_result_past_the_limit_is_refused_and_the_last_inside_it_is_written():
+    """Given two programs, one computing the 3999-digit product and one
+    computing ten to the 4000, the first number of 4001 digits, when
+    each is evaluated, then the first is written exactly and the second
+    is refused saying 4001 digits were reached.
+    """
+    inside = answered(
+        {"operation": "evaluate",
+         "source": computing(
+             f"(* {'9' * 999} {product_of(A_THOUSAND_NINES, 3)})"
+         ),
+         "function": "big", "arguments": []},
+        "an evaluation whose result has 3999 digits",
+    )
+    assert inside["status"] == "completed", str(inside)[:300]
+    assert int(inside["result"]["value"]) == (10**999 - 1) * (
+        A_THOUSAND_NINES_VALUE**3
+    ), "a result of 3999 digits came back as some other number."
+
+    a_power_of_ten = "1" + "0" * 999
+    past = answered(
+        {"operation": "evaluate",
+         "source": computing(f"(* 10000 {product_of(a_power_of_ten, 4)})"),
+         "function": "big", "arguments": []},
+        "an evaluation whose result is ten to the 4000",
+    )
+    assert past["status"] == RESOURCE_EXHAUSTED, (
+        f"ten to the 4000, the first number of 4001 digits, was answered "
+        f"{str(past)[:300]}. A result of exactly {WRITTEN_DIGITS_LIMIT} digits "
+        "is written and the next number up is refused; a limit that lets the "
+        "first number past it through is one digit wide of what it says."
+    )
+    refusal = diagnostic_of(past, WRITTEN_DIGITS_EXCEEDED, "ten to the 4000")
+    assert (refusal.get("expected"), refusal.get("actual")) == (
+        WRITTEN_DIGITS_LIMIT,
+        4001,
+    ), f"the refusal says {refusal}, not 4000 and 4001."
+
+
+def test_a_result_this_interpreter_will_not_write_is_refused_by_its_own_number():
+    """Given a caller that starts the tool with its interpreter writing
+    at most 1000 digits as one number, below the 4000 this tool
+    declares, when a program computes a result of 2000 digits, then the
+    refusal names the 1000 that really stopped it and the 2000 reached.
+    """
+    response = answered(
+        {"operation": "evaluate", "source": multiplying(A_THOUSAND_NINES, 2),
+         "function": "big", "arguments": []},
+        "an evaluation under an interpreter that writes 1000 digits",
+        {"PYTHONINTMAXSTRDIGITS": "1000"},
+    )
+
+    assert response["status"] == RESOURCE_EXHAUSTED, (
+        f"a result of 2000 digits under an interpreter that writes 1000 was "
+        f"answered {str(response)[:300]}: the tool answers the number that "
+        "really stopped it rather than breaking on the way out."
+    )
+    refusal = diagnostic_of(
+        response, WRITTEN_DIGITS_EXCEEDED, "a result of 2000 digits"
+    )
+    assert (refusal.get("expected"), refusal.get("actual")) == (1000, 2000), (
+        f"the refusal says {refusal.get('expected')!r} and "
+        f"{refusal.get('actual')!r}: a caller reading 4000 and 4000 learns "
+        "neither the limit in force nor how far its result stood past it."
     )

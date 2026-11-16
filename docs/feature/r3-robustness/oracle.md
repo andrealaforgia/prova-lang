@@ -73,3 +73,10 @@ A budget variable whose *name* cannot be written is observed only
 through a real command, not in the in-process fuzz: a running process
 cannot hold such a variable, because its environment is written in
 bytes.
+
+One defect older than this delivery was found while reviewing it and is
+left where it stands: a source writing a 1000-digit integer literal,
+read by a command whose interpreter was started with
+`PYTHONINTMAXSTRDIGITS=640`, is answered `tool_failure` from the
+reader. It behaves the same way on the tree before this change, and
+repairing the digit limit R2 added is not in this delivery's scope.

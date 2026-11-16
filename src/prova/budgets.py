@@ -174,17 +174,20 @@ class Budget:
                 "declares",
             )
         significant = written.lstrip("0")
-        if len(significant) > len(str(self.maximum)):
+        readable = sys.get_int_max_str_digits()
+        if len(significant) > readable:
+            # Only a run of digits the interpreter will not turn into a
+            # number at all is refused by its length; every text that
+            # can be read as a number is read, and answered against the
+            # number this tool declares exactly as it was before.
             return UnreadableBudget(
                 self.lowered_with(),
                 f"the budget written in {self.lowered_with()} is "
                 f"{len(written)} characters long, writing a number of "
-                f"{len(significant)} digits where this tool declares "
-                f"{self.maximum} {self.unit}, a number of "
-                f"{len(str(self.maximum))} digits: a caller may lower a budget "
-                "for its own run and may not raise the one this tool answers "
-                "for, and a run of digits that long is not read as one number "
-                "at all -- it is refused here by its length, before anything "
+                f"{len(significant)} digits, and the interpreter this tool "
+                f"runs on turns at most {readable} digits into one number: a "
+                "run of digits longer than that is not read as a number at "
+                "all, so it is refused here by its length, before anything "
                 f"reads it; write a whole number no larger than {self.maximum}, "
                 f"as {max(1, self.maximum // 2)}, or leave the variable unset",
             )

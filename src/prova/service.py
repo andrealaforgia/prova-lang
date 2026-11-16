@@ -740,7 +740,11 @@ def _run_discover() -> dict:
                 ),
                 "computed_integers": (
                     f"An integer a run of this tool computes is written into "
-                    f"an answer up to {WRITTEN_DIGITS.maximum} digits long. A "
+                    f"an answer up to {WRITTEN_DIGITS.maximum} digits long, "
+                    "counted the way an integer literal of a source is "
+                    "counted: every digit of the number, leading zeros and "
+                    "all, with the sign left out, so a negative result of "
+                    f"{WRITTEN_DIGITS.maximum} digits is written too. A "
                     "longer result is answered 'resource_exhausted' with a "
                     f"'{checker.WRITTEN_DIGITS_EXCEEDED}' refusal standing at "
                     "the function that computed it, carrying the limit beside "

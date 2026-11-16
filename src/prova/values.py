@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import sys
+
+# What one decimal digit is worth in bits, and one bit in decimal digits.
+# Both are asked about the size of a number before its exact size is
+# counted, and both are written here once so the two never disagree.
+BITS_PER_DIGIT = math.log2(10)
+DIGITS_PER_BIT = math.log10(2)
 
 
 class TooLargeToWrite(Exception):
@@ -53,7 +60,7 @@ class DigitsWritten:
         limit whatever its digits are, and only a value past that is
         compared with the first number the limit excludes.
         """
-        if value.bit_length() <= int(self.maximum * 3.321928094887362):
+        if value.bit_length() <= int(self.maximum * BITS_PER_DIGIT):
             return False
         return abs(value) >= 10**self.maximum
 
@@ -65,7 +72,7 @@ class DigitsWritten:
         is reached from the bits of the number instead.
         """
         size = abs(value)
-        counted = max(1, int(size.bit_length() * 0.30102999566398114))
+        counted = max(1, int(size.bit_length() * DIGITS_PER_BIT))
         while 10**counted <= size:
             counted += 1
         while counted > 1 and 10 ** (counted - 1) > size:
@@ -110,15 +117,17 @@ class DigitsWritten:
         result it is already under.
         """
         written = sys.get_int_max_str_digits()
+        reached = self.digits_of(value)
         return TooLargeToWrite(
-            f"this operation computed an integer the interpreter running this "
-            f"tool will not write: it writes at most {written} digits as one "
-            f"number, below the {self.maximum} this tool declares, because the "
-            "caller of this process lowered that number. Start the tool "
-            "without lowering the digits its interpreter writes, or have the "
-            f"program compute a result of at most {written} digits",
+            f"this operation computed an integer of {reached} digits, which "
+            f"the interpreter running this tool will not write: it writes at "
+            f"most {written} digits as one number, below the {self.maximum} "
+            "this tool declares, because the caller of this process lowered "
+            "that number. Start the tool without lowering the digits its "
+            "interpreter writes, or have the program compute a result of at "
+            f"most {written} digits",
             written,
-            self.maximum,
+            reached,
         )
 
 

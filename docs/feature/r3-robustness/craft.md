@@ -44,19 +44,41 @@ untouched.
 
 | Check | Command | Result |
 |---|---|---|
-| Whole suite | `uv run pytest -q tests --durations=10` | 1339 passed in 240.85s, exit 0 (the run the workspace recorded) |
+| Whole suite | `uv run pytest -q tests --durations=10` | 1344 passed in 208.38s, exit 0 (the run the workspace recorded after the review fixes) |
 | The new tests, nine times | the six new files, `-q --durations=5` | passed all nine times; median run 1.30s, slowest run 1.35s (measured on the first 21 of the 22, before the last unit test was added) |
 | Slowest new test | same runs | 0.10s, the request too long to read |
 | Mechanical check | `uv run python -m compileall -q src tests` | exit 0 here and on the pre-feature tree: no new finding |
 
-The suite was 1317 tests before this change and is 1339 now: 22 added,
+The suite was 1317 tests before this change and is 1344 now: 27 added,
 none edited, none removed.
+
+## What the independent review changed
+
+The review rejected the first version and named ten findings; seven were
+repaired here.
+
+| Finding | What was wrong | What it is now |
+|---|---|---|
+| F1 | the refusal for a value the *interpreter* will not write carried the tool's own 4000 as the digits reached | it carries the number the interpreter writes as the limit and the real digit count as what was reached, and a test starts the command with `PYTHONINTMAXSTRDIGITS=1000` to see it |
+| F2 | a budget written as `123456` or `10485761` was refused "by its length", which is false: a reader reads both | only a run of digits longer than the interpreter turns into one number is refused by length; every number a reader reads keeps the sentence it had |
+| F3, F4 | a negative result past the limit, and the first number past the limit, were not pinned | the family now carries 3999, 4000, 4001 and ten to the 4000, above and below zero |
+| F8 | the decision table said the deepest request nests 3 | it says 2, which is what the shipped sentence and the measurement say |
+| F9 | two conversion constants were written as bare numbers | they are named once, from `math` |
+| F10 | the documented length did not say whether the sign counts | it says the sign is left out, as the limit on a literal already does |
+
+F5 and F6 are recorded narrowings, not defects. F7 -- a 1000-digit
+*literal* read under `PYTHONINTMAXSTRDIGITS=640` ending in
+`tool_failure` from `reader.py` -- is a pre-existing defect of the digit
+limit R2 added: it behaves identically on the tree before this change,
+and it is out of this delivery's scope.
+
+Each repair was probed by putting the defect back: every one of the four
+mutants turned its test red, and the tree was restored afterwards.
 
 ## What is not proved here
 
-The branch that answers a value the *interpreter* will not write,
-reached only when the caller of the process lowers the digits Python
-writes below the 4000 this tool declares, is exercised by a unit test
-that lowers that setting; nothing else in the suite reaches it. A budget
-variable whose name is not UTF-8 text is observed only through a real
-command, because a running process cannot hold one in memory.
+A budget variable whose name is not UTF-8 text is observed only through
+a real command, because a running process cannot hold one in memory.
+The behaviour of this tool under an interpreter whose digit limit is
+lowered is proved for a value it *computes*, not for a literal a source
+writes: that path is F7 above, which this delivery does not touch.
