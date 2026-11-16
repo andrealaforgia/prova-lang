@@ -184,26 +184,31 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
 
 ## Observed side effects (git, BASE to HEAD)
 
-- A docs/feature/r3-robustness/craft.md (+62 -0 lines)
-- A docs/feature/r3-robustness/oracle.md (+75 -0 lines)
+- A docs/feature/r3-robustness/craft.md (+84 -0 lines)
+- A docs/feature/r3-robustness/oracle.md (+82 -0 lines)
+- A docs/r3-robustness/DECISIONS.md (+15 -0 lines)
+- A docs/r3-robustness/SUMMARY.md (+478 -0 lines)
+- A docs/r3-robustness/TRACE.md (+6 -0 lines)
 - M src/prova/__main__.py (+19 -5 lines)
-- M src/prova/budgets.py (+16 -1 lines)
+- M src/prova/budgets.py (+19 -1 lines)
 - M src/prova/checker.py (+9 -0 lines)
-- M src/prova/service.py (+337 -28 lines)
-- M src/prova/values.py (+131 -1 lines)
-- A tests/acceptance/_r3_fixtures.py (+148 -0 lines)
-- A tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py (+160 -0 lines)
-- A tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py (+109 -0 lines)
+- M src/prova/service.py (+341 -28 lines)
+- M src/prova/values.py (+140 -1 lines)
+- A tests/acceptance/_r3_fixtures.py (+163 -0 lines)
+- A tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py (+281 -0 lines)
+- A tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py (+143 -0 lines)
 - A tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py (+136 -0 lines)
 - A tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py (+115 -0 lines)
-- A tests/properties/test_r3_p1_the_four_crash_families_are_answered.py (+504 -0 lines)
+- A tests/properties/test_r3_p1_the_four_crash_families_are_answered.py (+507 -0 lines)
 - A tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py (+79 -0 lines)
 
 ## Commits (git log, BASE to HEAD)
 
 - 681c689 Answer four inputs that used to end in nothing a caller could read
+- aaed6cf Write the generated records of this delivery into the repository
+- 5578be9 Repair what the review of this delivery found
 
-## 2. oracle: Frame the work and write the oracle (revision 2)
+## 5. oracle: Frame the work and write the oracle (revision 3)
 
 - **request**:
   - /Users/andrealaforgia/.cache/nwave/nwstep-runs/prova-r3/request.md
@@ -303,11 +308,12 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - S19: The owner is absent, so I decide: the refusal carries a new located category written_integer_digits_exceeded, published among the diagnostic categories and their schemas and documented in discover under computed_integers with its reason, while resource_limits.limits keeps its exactly two names, so the existing F14 test stands unedited and the refusal can still carry the place of the function that computed the number.
   - DEC1: The limit is 4000 digits, chosen below the 4300 the interpreter writes as one number by default so that the tool refuses with its own sentence instead of meeting the interpreter's error, and far above the 20 digits of a 64-bit number and the 1000 digits of the longest literal this tool reads.
   - DEC2: A value past the limit is refused rather than written by a routine of this tool's own: the request calls refusal the safe default, writing a number of unbounded length would put work with no stated bound between the answer and the caller, and the refusal names a number the caller can design against.
-  - DEC3: A request may nest 64 arrays or objects inside one another, counting the request object: the deepest request this tool answers today nests 3, 64 is far above anything a client writes and far below the 1000 frames the interpreter allows, and Python's own recursion limit is left alone.
-  - DEC4: A budget variable is refused by the digits it writes, before any attempt to read it as a number: the text is refused when the digits left after leading zeros are more than the digits of the budget this tool declares, so no run of digits is ever handed to the reader that breaks on long ones and a zero-padded small number is still read.
+  - DEC3: A request may nest 64 arrays or objects inside one another, counting the request object: the deepest request this tool answers today nests 2, an evaluate request carrying its arguments, so 64 is far above anything a client writes and far below the 1000 frames the interpreter allows, and Python's own recursion limit is left alone.
+  - DEC4: A budget variable is refused by the digits it writes only when the run of digits, after leading zeros, is longer than the interpreter in force turns into one number; every text a reader can read is read and answered against the number this tool declares, in the sentence a caller already meets, so nothing that was accepted or refused before changes meaning.
   - DEC5: One rule decides whether a text can be written as UTF-8, the SubmittedText reader R2 added, and it is now asked for the operation field and for the PROVA_BUDGET variables as well; the one place an answer becomes characters refuses to print any answer still carrying such a text, so the promise holds for texts no reader named.
   - DEC6: No formal model: the four behaviours are decisions about one input taken inside one process with no state kept between runs, no concurrency and no protocol, so a Quint model would restate the code without adding a question it could answer.
   - DEC7: Jev was not asked anything: the host running this delivery forbids any remote question service for this run, so every choice above was taken locally and is recorded here with its reason.
+  - DEC8: The first rule written for a budget variable compared its digits with the digits of the declared maximum, which refused 123456 and 10485761 -- numbers a reader reads -- with a sentence saying they were not read at all; the independent review found it, and the rule now gates only what no reader turns into a number.
 - **mapping**:
   - P1 => test_an_evaluation_whose_result_cannot_be_written_is_refused_where_the_function_stands
   - P2 => test_running_the_examples_of_such_a_program_is_refused_the_same_way
@@ -381,37 +387,36 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   - MSG2 | PROVA_BUDGET_INPUT_SIZE holding 5000 digits | the text written in that variable is 5000 digits long and this tool reads a budget of at most 7 | a run of digits longer than the budget this tool declares cannot lower anything, and reading it would end the command before it read its request | write a whole number no larger than 1048576, or leave the variable unset | test=test_a_budget_written_as_5000_digits_is_refused_by_name
   - MSG3 | a request whose JSON nests 20000 arrays inside one another | the request nests deeper than the 64 arrays or objects this tool reads | the reader calls itself once per array, so a deeper request would exhaust the interpreter before the operation was read | send a request nesting at most 64, and read that number from what discover documents about request nesting | test=test_a_request_nesting_20000_arrays_is_refused_as_nesting_too_deeply
   - MSG4 | an operation field whose first character is half of a surrogate pair | the character at position 0 of the operation field cannot be written as UTF-8 | this tool writes every text it answers with as bytes, and half a character has none, so a client reading it back could not write it either | send the operation as text whose characters can all be written as UTF-8 | test=test_an_operation_that_cannot_be_written_is_refused_by_field_and_position
-- **red**: `uv run pytest -q tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py tests/properties/test_r3_p1_the_four_crash_families_are_answered.py tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py` exited 1 in 4.275s
-  - failing on the pre-feature tree (14): tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_an_evaluation_whose_result_cannot_be_written_is_refused_where_the_function_stands, tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_running_the_examples_of_such_a_program_is_refused_the_same_way, tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py::test_a_budget_written_as_5000_digits_is_refused_by_name, tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py::test_a_request_nesting_20000_arrays_is_refused_as_nesting_too_deeply, tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py::test_the_manifest_states_how_deep_a_request_may_nest_and_how_long_a_number_may_be, tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py::test_an_operation_that_cannot_be_written_is_refused_by_field_and_position, tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py::test_a_budget_variable_that_cannot_be_written_is_refused_without_echoing_it, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_every_request_of_the_four_families_is_answered_and_the_rest_still_works, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_an_integer_of_any_size_is_written_or_refused_by_its_digits, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_budget_written_in_the_environment_is_read_or_refused, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_request_of_any_nesting_depth_is_answered, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_surrogate_anywhere_leaves_an_answer_a_client_can_write, tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_an_answer_holding_half_a_character_is_refused_before_it_is_printed, tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_an_ordinary_answer_is_written_exactly_as_json
-  - tests (read from the run): 14 failed, 7 passed in 3.35s
+- **red**: `uv run pytest -q tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py tests/properties/test_r3_p1_the_four_crash_families_are_answered.py tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py` exited 1 in 4.686s
+  - failing on the pre-feature tree (18): tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_an_evaluation_whose_result_cannot_be_written_is_refused_where_the_function_stands, tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_running_the_examples_of_such_a_program_is_refused_the_same_way, tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_a_negative_result_past_the_limit_is_refused_with_the_digits_it_reached, tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_the_first_result_past_the_limit_is_refused_and_the_last_inside_it_is_written, tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_a_result_this_interpreter_will_not_write_is_refused_by_its_own_number, tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py::test_a_budget_written_as_5000_digits_is_refused_by_name, tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py::test_a_request_nesting_20000_arrays_is_refused_as_nesting_too_deeply, tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py::test_the_manifest_states_how_deep_a_request_may_nest_and_how_long_a_number_may_be, tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py::test_an_operation_that_cannot_be_written_is_refused_by_field_and_position, tests/acceptance/test_r3_b4_a_text_the_tool_cannot_write_is_never_echoed.py::test_a_budget_variable_that_cannot_be_written_is_refused_without_echoing_it, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_every_request_of_the_four_families_is_answered_and_the_rest_still_works, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_an_integer_of_any_size_is_written_or_refused_by_its_digits, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_budget_written_in_the_environment_is_read_or_refused, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_request_of_any_nesting_depth_is_answered, tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_surrogate_anywhere_leaves_an_answer_a_client_can_write, tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_an_answer_holding_half_a_character_is_refused_before_it_is_printed, tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_an_ordinary_answer_is_written_exactly_as_json, tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_a_value_this_interpreter_will_not_write_is_refused_by_the_number_that_stopped_it
+  - tests (read from the run): 18 failed, 9 passed in 3.81s
   ```text
-          """Given an answer that somehow carries half a character, when it is
-          turned into the text a caller reads, then what is printed is a
-          refusal instead, and every text in it can be written as UTF-8.
-          """
-  >       printed = service.printable_answer(
-                    ^^^^^^^^^^^^^^^^^^^^^^^^
-              {"operation": "\ud800check", "status": "unavailable", "diagnostics": []}
-          )
-  E       AttributeError: module 'prova.service' has no attribute 'printable_answer'
-
-  tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py:23: AttributeError
-  ______________ test_an_ordinary_answer_is_written_exactly_as_json ______________
-
-      def test_an_ordinary_answer_is_written_exactly_as_json():
-          """Given an ordinary answer, when it is turned into the text a
-          caller reads, then it is that answer, written as 1 JSON object.
-          """
-          answer = {"operation": "check", "status": "completed", "diagnostics": []}
-
-  >       printed = service.printable_answer(answer)
                     ^^^^^^^^^^^^^^^^^^^^^^^^
   E       AttributeError: module 'prova.service' has no attribute 'printable_answer'
 
-  tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py:46: AttributeError
+  tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py:49: AttributeError
+  _ test_a_value_this_interpreter_will_not_write_is_refused_by_the_number_that_stopped_it _
+
+      def test_a_value_this_interpreter_will_not_write_is_refused_by_the_number_that_stopped_it():
+          """Given a process whose caller lowered the digits its interpreter
+          writes to 640, below the 4000 this tool declares, when a value of
+          700 digits is written, then the tool refuses and names the 640 that
+          really stopped it, instead of breaking on the way out.
+          """
+          written_before = sys.get_int_max_str_digits()
+          sys.set_int_max_str_digits(640)
+          try:
+  >           with pytest.raises(values.TooLargeToWrite) as refused:
+                                 ^^^^^^^^^^^^^^^^^^^^^^
+  E           AttributeError: module 'prova.values' has no attribute 'TooLargeToWrite'
+
+  tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py:66: AttributeError
   =========================== short test summary info ============================
   FAILED tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_an_evaluation_whose_result_cannot_be_written_is_refused_where_the_function_stands
   FAILED tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_running_the_examples_of_such_a_program_is_refused_the_same_way
+  FAILED tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_a_negative_result_past_the_limit_is_refused_with_the_digits_it_reached
+  FAILED tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_the_first_result_past_the_limit_is_refused_and_the_last_inside_it_is_written
+  FAILED tests/acceptance/test_r3_b1_a_computed_integer_too_large_to_write_is_refused.py::test_a_result_this_interpreter_will_not_write_is_refused_by_its_own_number
   FAILED tests/acceptance/test_r3_b2_a_budget_written_with_too_many_digits_is_refused.py::test_a_budget_written_as_5000_digits_is_refused_by_name
   FAILED tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py::test_a_request_nesting_20000_arrays_is_refused_as_nesting_too_deeply
   FAILED tests/acceptance/test_r3_b3_a_request_that_nests_too_deeply_is_refused.py::test_the_manifest_states_how_deep_a_request_may_nest_and_how_long_a_number_may_be
@@ -424,23 +429,24 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   FAILED tests/properties/test_r3_p1_the_four_crash_families_are_answered.py::test_a_surrogate_anywhere_leaves_an_answer_a_client_can_write
   FAILED tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_an_answer_holding_half_a_character_is_refused_before_it_is_printed
   FAILED tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_an_ordinary_answer_is_written_exactly_as_json
-  14 failed, 7 passed in 3.35s
+  FAILED tests/unit/test_r3_an_answer_carrying_a_text_nobody_can_write_is_refused.py::test_a_value_this_interpreter_will_not_write_is_refused_by_the_number_that_stopped_it
+  18 failed, 9 passed in 3.81s
   ```
 
-## 4. craft: Craft the change (revision 2)
+## 6. craft: Craft the change (revision 3)
 
-- **green**: `uv run pytest -q tests --durations=10` exited 0 in 239.68s
-  - tests (read from the run): 1339 passed in 239.48s
-  - slowest: 11.12s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  - slowest: 7.28s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  - slowest: 6.46s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  - slowest: 5.51s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  - slowest: 4.58s call tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
-  - slowest: 4.48s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  - slowest: 3.43s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  - slowest: 2.71s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  - slowest: 2.56s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  - slowest: 2.38s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+- **green**: `uv run pytest -q tests --durations=10` exited 0 in 208.524s
+  - tests (read from the run): 1344 passed in 208.38s
+  - slowest: 9.65s call tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  - slowest: 6.29s call tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  - slowest: 5.57s call tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  - slowest: 4.82s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  - slowest: 4.25s call tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
+  - slowest: 3.97s call tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  - slowest: 2.89s call tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  - slowest: 2.36s call tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  - slowest: 2.27s call tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  - slowest: 2.02s call tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
   ```text
   ........................................................................ [  5%]
   ........................................................................ [ 10%]
@@ -449,30 +455,76 @@ kit: 70665f43199a1bd55f2513590e3e4580069d3ebc2dfa38f1c14d28495b6dbeb3 commit: no
   ........................................................................ [ 26%]
   ........................................................................ [ 32%]
   ........................................................................ [ 37%]
-  ........................................................................ [ 43%]
+  ........................................................................ [ 42%]
   ........................................................................ [ 48%]
   ........................................................................ [ 53%]
-  ........................................................................ [ 59%]
+  ........................................................................ [ 58%]
   ........................................................................ [ 64%]
   ........................................................................ [ 69%]
   ........................................................................ [ 75%]
   ........................................................................ [ 80%]
-  ........................................................................ [ 86%]
+  ........................................................................ [ 85%]
   ........................................................................ [ 91%]
   ........................................................................ [ 96%]
-  ...........................................                              [100%]
+  ................................................                         [100%]
   ============================= slowest 10 durations =============================
-  11.12s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
-  7.28s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
-  6.46s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
-  5.51s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
-  4.58s call     tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
-  4.48s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
-  3.43s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
-  2.71s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
-  2.56s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
-  2.38s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
-  1339 passed in 239.48s (0:03:59)
+  9.65s call     tests/properties/test_i1_s3_p4.py::test_p4_ill_typed_current_is_rejected_distinctly
+  6.29s call     tests/properties/test_i1_s3_p3.py::test_p3_malformed_current_text_is_rejected_distinctly
+  5.57s call     tests/properties/test_i1_s3_p3_field_count_and_constructor.py::test_p3_field_count_and_unknown_constructor_rejected_as_input_failure
+  4.82s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_interleaved_sequences_keep_per_request_verdicts
+  4.25s call     tests/properties/test_r1_p1_every_mangled_request_is_answered_with_one_json_response.py::test_every_mangled_request_in_the_corpus_is_answered_and_exits_cleanly
+  3.97s call     tests/properties/test_s1_b2_no_forbidden_claim_property.py::test_no_evaluate_run_ever_emits_a_forbidden_claim
+  2.89s call     tests/properties/test_i1_s3_p5_interleaved.py::test_p5_valid_request_follows_every_rejection_family
+  2.36s call     tests/properties/test_i1_s3_p4.py::test_p4_finite_families_exhaustively_crossed_with_both_events
+  2.27s call     tests/properties/test_i1_s6_p5.py::test_p5_mixed_sequence_each_response_matches_its_own_request
+  2.02s call     tests/properties/test_f1_hour_clock_dial_property.py::test_the_shipped_clock_ticks_from_an_hour_on_its_dial_and_refuses_one_off_it
+  1344 passed in 208.38s (0:03:28)
   ```
-- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.046s
+- **scorecard**: `uv run python -m compileall -q src tests` exited 0 in 0.044s
 - **typesafe**: refused: the host running this delivery forbids every remote question service for this run, so no question was sent; each open choice was decided locally and recorded with its reason in the oracle decisions
+
+## 7. selfreview: Self-review (revision 1)
+
+- **answers**:
+  - D1: pass - the change follows the recorded decisions: one new located diagnostic category instead of a third name under resource_limits.limits, refusal rather than a writing routine of its own, and the two numbers documented in discover
+  - D2: fixed:each number has one owner: values.DigitsWritten holds 4000 and the manifest documents it from that object, service.RequestNesting holds 64 and documents itself, the one walk over the texts of a value serves both the reader of a field and the printer of an answer, and the two conversion constants the review found written twice as bare numbers are now named once from math
+  - D3: pass - values.py imports nothing of this tool, budgets.py still imports no service, service.py reads budgets and values, and the command at the boundary is the only place that reads the environment and standard input
+  - D4: fixed:the refusal and the limit are objects, not flags: src/prova/values.py:54 decides from the value itself whether it can be written, counting its digits without its sign, and TooLargeToWrite carries the limit beside the digits reached so no answer can be built without both; the review found the interpreter-forced refusal carrying the wrong count and it now carries the number that really stopped the run
+  - D5: pass - src/prova/service.py:823 is one small class with one question (how deeply a text nests) and values.DigitsWritten is another with one (how many digits an answer writes); neither holds state and neither knows an operation name
+  - D6: pass - no pattern was introduced: the change follows the value objects the reader and the budgets already use, and the one exception carried out of a stage is carried the way TooDeeplyNested already is
+  - D7: pass - the words of the domain are the ones the tool already publishes: a limit, a refusal in a published category, a budget a caller lowers, and the request the tool reads; nothing was named after a mechanism
+  - D8: pass - reading the environment and standard input stays in __main__.py, the answers are built in service.py, and values.py decides only what it can write
+  - D9: pass - the four acceptance files drive the real command over its own standard input and output through tests/acceptance/_r3_fixtures.py:64, and the one unit file exercises the public functions of an internal module, which the test mandates allow
+  - D10: pass - every new test name reads as a sentence about what a caller sees, with no production symbol, no process id and no layer term
+  - D11: pass - the acceptance files share one fixture module and the in-process fuzz keeps its own harness, mirroring the split R1 and R2 already use between the real command and the entry point called in process
+  - D12: pass - four generated laws, derandomised, each with an oracle independent of the code: tests/properties/test_r3_p1_the_four_crash_families_are_answered.py:330 predicts the digits of a product from arithmetic and requires the exact number back under the limit
+  - D13: pass - the whole suite is 1344 tests in 208.38s in the run the workspace recorded; the new files passed nine runs in a row, median 1.30s for the set and 0.10s for the slowest single test
+  - D14: pass - no new test repeats another's pair: the fixed corpus proves every family is answered, each law widens one family, and the acceptance files pin the one sentence a caller reads, including the boundary at 3999, 4000 and 4001 digits above and below zero
+  - D15: pass - each new refusal says what failed, why it matters and what to do: src/prova/values.py:96 names the digits reached and the limit and tells the caller to compute a smaller result, and every new assertion message names expected, actual and the contract it breaks
+  - D16: n/a: each of the four is a decision about one input inside one process, with no state kept between runs, no protocol and no concurrency, so a formal model would restate the code
+  - D17: fixed:the documents state the numbers the recorded runs produced, name the decision that differs from both options the request offered, list what the independent review changed, and say what is not proved; the decision table said a request nests 3 where the shipped sentence says 2, and it now says 2
+- **independent_review**:
+  - REV1 | reviewer=impl-review-r3 | findings=10 (verdict REJECT at aaed6cf) | resolution=F1 F2 F3 F4 F8 F9 F10 fixed after the review, F5 F6 recorded narrowings, F7 pre-existing and logged
+
+## 8. handoff: Hand off (revision 1)
+
+- **summary** (sentences the diff backs):
+  - A request whose own JSON nests deeper than this tool reads is refused before the JSON reader sees it, and a request at the limit is answered as before, with the bounded read of F14 still running first.
+- **not_verified**:
+  - A source writing a 1000-digit integer literal, read by a command whose interpreter was started with PYTHONINTMAXSTRDIGITS=640, is still answered tool_failure from the reader: a defect older than this delivery, identical on the tree before it, and out of scope here.
+  - No independent reviewer or examiner has seen the repairs: the recorded review rejected the earlier candidate, and the verdict on this one is still owed.
+  - The behaviour of a budget variable whose name is not UTF-8 text is observed only through a real command; a running process cannot hold such a variable, so the in-process fuzz never sends one.
+  - Nothing was measured about how long this tool takes to refuse a very large result: the refusal is reached from the bits of the number, and no timing of it was taken.
+  - The suite was run on macOS with Python 3.12 only; no other platform or interpreter version was tried.
+- **pre-review receipt** (run by the tool when this record was written):
+  - candidate: commit 5578be992d09bd38341190823c077a296514e1f6
+  - no checks declared
+
+## Not backed by the diff
+
+- Four inputs that used to end in something other than an answer about the request now each get one JSON response.: a guarantee names no test function of the change
+- An integer a program computes but this tool will not write is refused where the function stands, in a new published category carrying the limit beside the digits reached; a value at or below the limit is written exactly, sign and all, and the first number past it is refused.: a guarantee names no test function of the change
+- A budget variable holding a run of digits no reader turns into a number is refused by name, while every number a reader reads keeps the sentence it had.: a guarantee names no test function of the change
+- A text that cannot be written as UTF-8 is never copied into an answer: the operation field, the budget variables and the last step before printing all ask the one rule that decides it.: a guarantee names no test function of the change
+- The two new numbers, 4000 digits and 64 nestings, are documented in discover with their reasons, and resource_limits.limits keeps the two names callers already read.: a guarantee names no test function of the change
+- Checked by acceptance tests driving the real command, by four derandomised generated laws over the four families, and by a unit test for the step no accepted request reaches; each repair the review asked for was probed by putting the defect back and watching its test turn red.: a guarantee names no test function of the change
