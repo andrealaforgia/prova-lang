@@ -369,3 +369,68 @@ def test_a_promise_a_literal_makes_false_is_disproved(source, label, breaks_at):
         "WHY: a witness that does not replay is not a counterexample. "
         f"HOW: inspect the run: {replayed}"
     )
+
+
+# The three programs the fifth review round named: a clause that always
+# matches, standing before a clause that matches one value, so the first
+# must win. A pattern that always matches read as one that never does
+# answers the later clause instead.
+A_WILDCARD_BEFORE_A_LITERAL = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (ensures (= result 6))
+  (examples (example (f 1) => 5))
+  (match x (_ 5) (1 6)))
+"""
+
+A_NAME_BEFORE_A_LITERAL = """(defn f
+  (sig ((x Int)) -> Int ! pure)
+  (ensures (= result 6))
+  (examples (example (f 1) => 5))
+  (match x (anyvalue 5) (1 6)))
+"""
+
+THE_UNIT_PATTERN_BEFORE_A_WILDCARD = """(defn f
+  (sig ((u Unit)) -> Int ! pure)
+  (ensures (= result 2))
+  (examples (example (f ()) => 1))
+  (match u (() 1) (_ 2)))
+"""
+
+
+@pytest.mark.parametrize(
+    "source,label",
+    [
+        (A_WILDCARD_BEFORE_A_LITERAL, "a wildcard before a literal clause"),
+        (A_NAME_BEFORE_A_LITERAL, "a name before a literal clause"),
+        (THE_UNIT_PATTERN_BEFORE_A_WILDCARD, "the unit pattern before a wildcard"),
+    ],
+)
+def test_a_promise_only_a_later_clause_would_keep_is_disproved(source, label):
+    """Given a program whose first clause always matches and whose
+    promise names what a later clause would answer, when the Owner asks
+    what it owes, then the promise is disproved, the answer names an
+    input that breaks it, and running the program over that input is
+    refused for that promise."""
+    entry = entry_named(
+        completed(verify(source), label), "body_postcondition:f:body", label
+    )
+
+    assert entry["result"] == "disproved", (
+        f"WHAT: with {label}, the promise is answered {entry['result']!r}. "
+        "WHY: the first clause that matches wins and it matches everything, "
+        "so the later clause is never the answer; a tool that read an "
+        "always-matching pattern as one that never matches would call this "
+        "promise kept, which is a wrong proved. "
+        f"HOW: inspect the entry: {entry}"
+    )
+    arguments = entry["counterexample"]["arguments"]
+    assert len(arguments) == 1, arguments
+    replayed = evaluate(source, "f", arguments)
+    assert "postcondition_violation" in {
+        d.get("category") for d in (replayed.get("diagnostics") or [])
+    }, (
+        f"WHAT: running f over {arguments} is not refused for the promise it "
+        f"breaks: {replayed}. "
+        "WHY: a witness that does not replay is not a counterexample. "
+        f"HOW: inspect the run: {replayed}"
+    )

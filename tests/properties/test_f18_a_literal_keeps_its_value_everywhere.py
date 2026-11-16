@@ -273,7 +273,89 @@ def _a_literal_call_argument(v):
     ), 1
 
 
+def _over_u(ensures, examples, body, returns="Int"):
+    return _function("f", "u", ("Unit", returns), None, ensures, examples, body)
+
+
+def _a_wildcard_in_a_first_clause(v):
+    """A clause that always matches, standing before a clause that only
+    matches one number: the first wins, so the later literal is never
+    the answer. A pattern that always matches read as one that never
+    does would answer the later clause instead."""
+    return _over_x(
+        None,
+        f"(= result {v})",
+        [f"(example (f {v}) {A} {v})", f"(example (f {v + 1}) {A} {v})"],
+        f"(match x (_ {v}) ({v + 1} {v + 2})))"[:-1],
+    ), v + 1
+
+
+def _a_name_in_a_first_clause(v):
+    return _over_x(
+        None,
+        f"(= result {v})",
+        [f"(example (f {v}) {A} {v})", f"(example (f {v + 1}) {A} {v})"],
+        f"(match x (anyvalue {v}) ({v + 1} {v + 2}))",
+    ), v + 1
+
+
+def _a_wildcard_in_a_middle_clause(v):
+    return _over_x(
+        None,
+        f"(= result (if (= x {v}) 0 {v}))",
+        [f"(example (f {v}) {A} 0)", f"(example (f {v + 1}) {A} {v})"],
+        f"(match x ({v} 0) (_ {v}) ({v + 1} {v + 2}))",
+    ), v + 1
+
+
+def _a_name_in_a_middle_clause(v):
+    return _over_x(
+        None,
+        f"(= result (if (= x {v}) 0 {v}))",
+        [f"(example (f {v}) {A} 0)", f"(example (f {v + 1}) {A} {v})"],
+        f"(match x ({v} 0) (anyvalue {v}) ({v + 1} {v + 2}))",
+    ), v + 1
+
+
+def _the_unit_pattern_in_a_first_clause(v):
+    return _over_u(
+        f"(= result {v})",
+        [f"(example (f ()) {A} {v})"],
+        f"(match u (() {v}) (_ (+ {v} 1)))",
+    ), "()"
+
+
+def _true_written_in_an_expression(v):
+    """`true` and `false` written as expressions, promised against the
+    test they stand for rather than against themselves, so swapping the
+    two cannot cancel out."""
+    return _over_x(
+        None,
+        f"(= result (> x {v}))",
+        [f"(example (f {v + 1}) {A} true)", f"(example (f {v}) {A} false)"],
+        f"(if (> x {v}) true false)",
+        returns="Bool",
+    ), v + 1
+
+
+def _false_written_in_an_expression(v):
+    return _over_x(
+        None,
+        f"(= result (not (> x {v})))",
+        [f"(example (f {v + 1}) {A} false)", f"(example (f {v}) {A} true)"],
+        f"(if (> x {v}) false true)",
+        returns="Bool",
+    ), v + 1
+
+
 THE_POSITIONS = (
+    ("a wildcard in a first clause", _a_wildcard_in_a_first_clause),
+    ("a name in a first clause", _a_name_in_a_first_clause),
+    ("a wildcard in a middle clause", _a_wildcard_in_a_middle_clause),
+    ("a name in a middle clause", _a_name_in_a_middle_clause),
+    ("the unit pattern in a first clause", _the_unit_pattern_in_a_first_clause),
+    ("true written in an expression", _true_written_in_an_expression),
+    ("false written in an expression", _false_written_in_an_expression),
     ("a literal as the argument of a call", _a_literal_call_argument),
     ("the pattern of a boolean clause", _a_boolean_clause),
     ("greater, literal on the right", _greater_on_the_right),
