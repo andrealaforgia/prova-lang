@@ -379,7 +379,85 @@ def _the_unit_value_in_an_expression(v):
     ), 1
 
 
+def _two_arguments_in_order(v):
+    """A callee whose two parameters are not interchangeable, called with
+    the number second. Reversing the arguments of an expanded call would
+    answer the difference the other way round."""
+    callee = (
+        "(defn g\n  (sig ((a Int) (b Int)) -> Int ! pure)\n"
+        "  (ensures (= result (- a b)))\n"
+        f"  (examples (example (g 3 1) {A} 2))\n  (- a b))\n"
+    )
+    return _over_x(
+        None,
+        f"(= result (- x {_spelled(v)}))",
+        [f"(example (f {v}) {A} 0)"],
+        f"(g x {v})",
+        before=callee + "\n",
+    ), v
+
+
+def _two_arguments_the_other_way(v):
+    callee = (
+        "(defn g\n  (sig ((a Int) (b Int)) -> Int ! pure)\n"
+        "  (ensures (= result (- a b)))\n"
+        f"  (examples (example (g 3 1) {A} 2))\n  (- a b))\n"
+    )
+    return _over_x(
+        None,
+        f"(= result (- {_spelled(v)} x))",
+        [f"(example (f {v}) {A} 0)"],
+        f"(g {v} x)",
+        before=callee + "\n",
+    ), v
+
+
+def _an_argument_that_is_itself_a_call(v):
+    callee = (
+        "(defn g\n  (sig ((a Int) (b Int)) -> Int ! pure)\n"
+        "  (ensures (= result (- a b)))\n"
+        f"  (examples (example (g 3 1) {A} 2))\n  (- a b))\n"
+    )
+    return _over_x(
+        None,
+        f"(= result (- x {_spelled(v)}))",
+        [f"(example (f {v}) {A} 0)"],
+        f"(g x (g {v} 0))",
+        before=callee + "\n",
+    ), v
+
+
+def _two_records_compared(v):
+    """Two values of one record type, equal exactly when their fields
+    are. An equality that looked only at the constructor would call them
+    equal always."""
+    return _over_x(
+        None,
+        f"(= result (= x {_spelled(v)}))",
+        [f"(example (f {v}) {A} true)", f"(example (f {v + 1}) {A} false)"],
+        f"(= (Box x) (Box {v}))",
+        returns="Bool",
+        before="(deftype Box (record (amount Int)))\n\n",
+    ), v
+
+
+def _two_union_values_compared(v):
+    return _over_x(
+        None,
+        f"(= result (= x {_spelled(v)}))",
+        [f"(example (f {v}) {A} true)", f"(example (f {v + 1}) {A} false)"],
+        f"(= (Only x) (Only {v}))",
+        returns="Bool",
+        before="(deftype Maybe (union (Only (value Int)) (Nothing)))\n\n",
+    ), v
+
+
 THE_POSITIONS = (
+    ("the number as the second argument of a call", _two_arguments_in_order),
+    ("the number as the first argument of a call", _two_arguments_the_other_way),
+    ("an argument that is itself a call", _an_argument_that_is_itself_a_call),
+    ("two records of one type compared", _two_records_compared),
+    ("two union values of one variant compared", _two_union_values_compared),
     ("the unit value written in an expression", _the_unit_value_in_an_expression),
     ("a wildcard in a first clause", _a_wildcard_in_a_first_clause),
     ("a name in a first clause", _a_name_in_a_first_clause),

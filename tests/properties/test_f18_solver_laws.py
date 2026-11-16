@@ -260,7 +260,7 @@ THE_DISTANCES = (0, 1, 2, 41, 44, 45, 46, 50, 10**18, 10**30, 10**60)
         st.sampled_from(THE_DISTANCES), st.integers(min_value=0, max_value=40)
     ),
 )
-@settings(max_examples=25, deadline=None, derandomize=True)
+@settings(max_examples=60, deadline=None, derandomize=True)
 def test_what_is_proved_is_never_contradicted_by_running_the_program(
     plan, distance, second
 ):
@@ -350,7 +350,7 @@ def test_a_promise_that_holds_everywhere_comes_back_proved(plan):
 
 
 @given(plan=st.sampled_from(_EVERY_PLAN))
-@settings(max_examples=25, deadline=None, derandomize=True)
+@settings(max_examples=60, deadline=None, derandomize=True)
 def test_every_obligation_stands_as_one_result_beside_one_status(plan):
     """LAW3: given any program of the plan, when the Owner reads the
     answer, then each obligation carries one of the four results beside
