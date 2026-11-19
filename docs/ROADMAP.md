@@ -1167,12 +1167,6 @@ there.
 
 ### Follow-ups raised during delivery
 
-- **Decide what a build does with a symbolic link and with `..` in
-  `output_file`.** F22 refuses a relative path, a path carrying a zero byte and a
-  path whose file already exists, and writes through a temporary file in the
-  destination directory that it then links to the target; it reads nothing about
-  where a link points or where `..` leads. F24 owns where a build may write.
-  Raised during F22 by an independent review.
 - **A build killed between writing its temporary file and naming it leaves that
   temporary file behind** (`.prova-build-*.py` in the destination directory),
   never a half-written or replaced artefact. The premise cannot be timed from
@@ -1310,8 +1304,8 @@ durable statement of each behaviour.
 | R2 two crashes | 96195ed | A 1000-digit integer limit; one UTF-8 rule in the request reader for every text field (lone surrogates are `malformed_request`). | None recorded. |
 | R3 robustness | 984a349 | 4000-digit limit on written integers (below the interpreter's 4300), request nesting limit 64. | Refused rather than written by this tool's own routine. |
 | R3b digit limit | 8ddf8d2 | One digit limit (4000, or the interpreter's if lower), enforced and published under every interpreter setting; a disabled interpreter limit refuses nothing. | The declared 4000 stays the ceiling even when the interpreter allows more. |
-| F21 verified aggregate | d666663 | `verify` says `verified` only when every obligation is proved, every declared example ran and passed, and the checker accepted; else `not_verified` naming what stopped it. A form given an extra operand (`if`, `let`, `deftype`, field selector) is refused. | Mutation sample was 20 of 54 changes; the 5 survivors (frozen flags) are equivalent. |
-| F25 machine descriptor | fc3fea7 | `machine` answers whether a descriptor's five roles resolve, with checked types; every text of the descriptor is read before the program. | A role that must hold for all inputs is accepted only with no `requires`, or `true`, here and in what it reaches; other clauses are refused, not proved (follow-up). |
+| F21 verified aggregate | 9fec8bc | `verify` says `verified` only when every obligation is proved, every declared example ran and passed, and the checker accepted; else `not_verified` naming what stopped it. A form given an extra operand (`if`, `let`, `deftype`, field selector) is refused. | Mutation sample was 20 of 54 changes; the 5 survivors (frozen flags) are equivalent. |
+| F25 machine descriptor | 49a4f12 | `machine` answers whether a descriptor's five roles resolve, with checked types; every text of the descriptor is read before the program. | A role that must hold for all inputs is accepted only with no `requires`, or `true`, here and in what it reaches; other clauses are refused, not proved (follow-up). |
 | F22 minimal `build` | 5aa3a02 | `build` writes one self-contained Python module only for a program that is `verified`; the answer is measured against the budget before anything is published; the artefact checks each value against declared types. | One backend (generated Python); a kill between temporary file and name leaves the temporary file; no EXAMINE; last repair reviewed by the coordinator only. |
 | F26 machine obligations in `verify` | 1fb70c5 | `verify` with an optional `descriptor` adds three inductive obligations (initialisation, step enabledness, preservation), settled by the same solver route. | An empty required domain, or a solution past 4000 digits, is not certified (withheld, never disproved); no EXAMINE; repair not independently reviewed. |
 | F27 `step` | 29c9ca5 | `step` drives a machine event by event; a boundary rejection and a business rejection are told apart; a refused contract or an inadmissible event stops the run and publishes what ran. | One sequential state; an empty `events` list is refused; mutation sample small. |
