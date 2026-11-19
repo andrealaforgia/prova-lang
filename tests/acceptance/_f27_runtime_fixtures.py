@@ -147,6 +147,65 @@ def clock_that_leaves_its_invariant() -> tuple[str, dict]:
     return A_CLOCK_THAT_LEAVES_ITS_INVARIANT_SOURCE, dict(A_CLOCK_DESCRIPTOR)
 
 
+# A clock whose invariant is weaker than what its step asks for: the
+# invariant admits any hour from 1 upwards, and the step requires an hour
+# between 1 and 12. SPEC.md lines 360-361 let the step require an
+# invariant state, and nothing makes a descriptor name an invariant
+# strong enough for it, so the second tick from 12 o'clock reaches a
+# contract the values do not satisfy. Written here and shipped nowhere.
+A_CLOCK_WHOSE_STEP_ASKS_FOR_MORE_SOURCE = """(deftype Clock (record (hr Int)))
+(deftype Event (union (Tick)))
+(deftype Outcome (record (state Clock) (accepted Bool)))
+
+(defn one-or-more
+  (sig ((current Clock)) -> Bool ! pure)
+  (examples
+    (example (one-or-more (Clock 1)) => true)
+    (example (one-or-more (Clock 13)) => true)
+    (example (one-or-more (Clock 0)) => false))
+  (>= (.hr current) 1))
+
+(defn on-the-dial
+  (sig ((current Clock)) -> Bool ! pure)
+  (examples
+    (example (on-the-dial (Clock 12)) => true)
+    (example (on-the-dial (Clock 13)) => false))
+  (and (>= (.hr current) 1) (<= (.hr current) 12)))
+
+(defn initial
+  (sig () -> Clock ! pure)
+  (examples (example (initial) => (Clock 1)))
+  (Clock 1))
+
+(defn step
+  (sig ((current Clock) (event Event)) -> Outcome ! pure)
+  (requires (on-the-dial current))
+  (examples
+    (example (step (Clock 1) (Tick)) => (Outcome (Clock 2) true))
+    (example (step (Clock 12) (Tick)) => (Outcome (Clock 13) true)))
+  (match event
+    ((Tick) (Outcome (Clock (+ (.hr current) 1)) true))))
+
+(defn state-of
+  (sig ((produced Outcome)) -> Clock ! pure)
+  (examples (example (state-of (Outcome (Clock 3) true)) => (Clock 3)))
+  (.state produced))
+
+(defn admissible
+  (sig ((current Clock) (event Event)) -> Bool ! pure)
+  (examples (example (admissible (Clock 1) (Tick)) => true))
+  true)
+"""
+
+
+def clock_whose_step_asks_for_more() -> tuple[str, dict]:
+    """A machine whose step requires more than its invariant promises, so
+    a run reaches a contract the values do not satisfy."""
+    descriptor = dict(A_CLOCK_DESCRIPTOR)
+    descriptor["roles"] = dict(descriptor["roles"], invariant="one-or-more")
+    return A_CLOCK_WHOSE_STEP_ASKS_FOR_MORE_SOURCE, descriptor
+
+
 # --- the six rows SPEC.md's reservation table defines -----------------------
 
 
