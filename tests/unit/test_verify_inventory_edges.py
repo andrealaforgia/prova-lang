@@ -107,10 +107,10 @@ def test_a_program_that_does_not_check_is_refused_instead_of_listed():
     )
 
 
-def test_listing_what_verify_owes_did_not_make_build_answer():
+def test_listing_what_verify_owes_publishes_no_artefact():
     """Given the same program, when the Owner asks what must be shown and
-    then asks for a built artefact, then the first is answered and the
-    second is still refused as unavailable.
+    then asks for an artefact of it without saying which entry or where to
+    write, then the first is answered and the second carries no artefact.
 
     still passes if: both were refused -- the inventory of the first is
     read here as well.
@@ -122,10 +122,11 @@ def test_listing_what_verify_owes_did_not_make_build_answer():
     assert listed["result"]["inventory"]["obligations"], listed
 
     refused = _ask("build", source)
-    assert refused["status"] == "unavailable", (
-        "WHAT: `build` answered with "
-        f"{refused['status']!r} after `verify` learned to list obligations. "
-        "WHY: a build must stay closed while the obligations are not attempted. "
+    assert not refused.get("result"), (
+        "WHAT: a build request that says neither which entry to invoke nor "
+        f"where to write carried a result: {refused}. "
+        "WHY: an artefact is published only for a request this tool could "
+        "read whole. "
         f"HOW: inspect the answer: {refused}"
     )
-    assert {d["category"] for d in refused["diagnostics"]} == {"operation_unavailable"}, refused
+    assert refused["diagnostics"], refused

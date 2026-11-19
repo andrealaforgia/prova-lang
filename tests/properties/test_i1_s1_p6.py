@@ -137,7 +137,7 @@ def test_p6_refused_build_preserves_pre_existing_outputs(files):
 
         assert run.response is not None, f"non-JSON response refusing build: {run.stdout!r}"
         assert run.response.get("operation") == "build", run.response
-        assert run.response.get("status") == "unavailable", run.response
+        assert not run.response.get("result"), run.response
         assert ("prova.service", "handle") in run.calls, "the trace did not observe the request being handled"
 
         mutations = mutations_under(run, root)

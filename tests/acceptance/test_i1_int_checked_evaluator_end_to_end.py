@@ -4,8 +4,9 @@ evaluator -- is demonstrable end to end through the product's real surface.
 One Owner session, each request its own fresh `prova` process: check the
 reservation program; run `step` on a fresh input; run its declared examples;
 see an invalid input, a wrong body and an invalid program each rejected under
-its own distinct category; ask what the program owes; and see `build` refused
-as unavailable. No response in the session claims a build, and none says an
+its own distinct category; ask what the program owes; and ask for an artefact
+of it without saying which entry or where. No response in the session
+claims a build, and none says an
 obligation is proved, or a program verified, without saying what that rests on.
 
 Drives only the `prova` command's JSON stdin/stdout surface. No imports from
@@ -83,12 +84,12 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
     """Given the reservation program, when the Owner checks it, evaluates
     `step` on a fresh input, runs its declared examples, and then submits an
     invalid entry state, a wrong `step` body and an ill-typed program, and
-    finally asks what must still be shown about the program and for a built
-    artefact, then: the good program is accepted and evaluated correctly with
+    finally asks what must still be shown about the program and for an
+    artefact of it, naming neither an entry nor a destination, then: the good program is accepted and evaluated correctly with
     every example passing; each bad case is rejected under its own category
     with no successful result; the obligations are listed and none of them
-    attempted; build is refused as unavailable; and nothing claims
-    verification or a build."""
+    attempted; the build request this session sends is refused with no
+    artefact; and nothing claims verification or a build."""
     source = _reservation_source()
     raw_outputs: list[str] = []
 
@@ -150,7 +151,8 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
 
     # 7. What must be shown about the program is listed, and each entry says
     #    what became of it with nothing left for nobody to have attempted;
-    #    a build is still refused as unavailable, never attempted.
+    #    a build request that names neither an entry nor a destination is
+    #    refused and publishes nothing.
     owed = call({"operation": "verify", "source": source})
     assert owed.get("operation") == "verify", owed
     assert owed.get("status") == "completed", owed
@@ -162,7 +164,8 @@ def test_int_owner_checks_evaluates_examples_and_sees_rejections_and_refusals():
 
     refused = call({"operation": "build", "source": source})
     assert refused.get("operation") == "build", refused
-    assert refused.get("status") == "unavailable", refused
+    assert not refused.get("result"), refused
+    assert refused.get("diagnostics"), refused
 
     # 8. Nothing in the whole session claims a build, nothing says an
     #    obligation is proved without saying what that rests on, and
