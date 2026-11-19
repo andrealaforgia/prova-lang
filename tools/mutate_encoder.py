@@ -333,7 +333,24 @@ def main() -> None:
                             "and skip what it already settled")
     asked.add_argument("--report-from", default="",
                        help="write the markdown report from a ledger and stop")
+    asked.add_argument("--modules", default="",
+                       help="comma-separated module paths to mutate instead "
+                            "of the four named above, for a unit that decides "
+                            "a verdict and was written after them")
+    asked.add_argument("--also-ask", default="",
+                       help="comma-separated test paths to add to the cheap "
+                            "passes; they are added to the ones named above "
+                            "and never replace them, so the control below "
+                            "still proves the harness can see a change")
     said = asked.parse_args()
+
+    global THE_MODULES, THE_FIRST_PASS, THE_SECOND_PASS
+    if said.modules:
+        THE_MODULES = tuple(part for part in said.modules.split(",") if part)
+    if said.also_ask:
+        added = tuple(part for part in said.also_ask.split(",") if part)
+        THE_FIRST_PASS = THE_FIRST_PASS + added
+        THE_SECOND_PASS = THE_SECOND_PASS + added
 
     if said.report_from:
         judged = list(_already_decided(pathlib.Path(said.report_from)).values())
