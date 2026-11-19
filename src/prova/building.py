@@ -34,6 +34,7 @@ import json
 import os
 import pathlib
 import pprint
+import stat
 import tempfile
 from dataclasses import dataclass
 
@@ -753,17 +754,24 @@ class AnArtefactStandsThere:
 
 @dataclass(frozen=True)
 class SomethingUnreadableStandsThere:
-    """What a build finds under a name it cannot read: something is
-    there -- a file no one may read, a directory, a name the filesystem
-    refuses -- and this build can say nothing about what it is.
+    """What a build finds under a name whose bytes it cannot take for an
+    artefact: something is there -- a file no one may read, a directory,
+    a named pipe, a socket, a device, a name the filesystem refuses --
+    and this build can say nothing about what it holds.
 
     It is never replaced. The answer of an authorised replacement
     records the digest of what it replaced, and a digest this tool
     could not compute would be a digest of something else: a build that
     cannot say what it would destroy destroys nothing.
+
+    It carries the repair beside the reason, because the two kinds ask
+    for different ones: a file nobody may read is made readable, and
+    what is not a file at all is taken away or left alone under its own
+    name.
     """
 
     why: str
+    repair: str = "Make what stands there readable"
 
     def why_it_may_not_be_replaced(
         self, rule: "AuthorityRule", name: AskedBy, replacement: Replacement
@@ -772,22 +780,21 @@ class SomethingUnreadableStandsThere:
             return rule.refusing(
                 OUTPUT_FILE_EXISTS,
                 f"something is already standing under the name "
-                f"{name.written!r} and this tool could not read it: the "
-                f"operating system answered {self.why!r}. The answer of an "
+                f"{name.written!r} and this tool cannot take it for an "
+                f"artefact: {self.why}. The answer of an "
                 "authorised replacement records the digest of the bytes it "
                 "replaced, and those bytes could not be read, so this build "
                 "would have to destroy what it cannot name",
-                f"Make what stands there readable, or send a {name.field!r} "
-                "nothing stands at",
+                f"{self.repair}, or send a {name.field!r} nothing stands at",
             )
         return rule.refusing(
             OUTPUT_FILE_EXISTS,
             f"something is already standing under the name {name.written!r} "
-            f"and this tool could not read it: the operating system answered "
-            f"{self.why!r}. An artefact the Owner has is replaced only when "
-            "the request says so",
-            f"Send a {name.field!r} nothing stands at, or make what stands "
-            "there readable and send 'replace' as true",
+            f"and this tool cannot take it for an artefact: {self.why}. An "
+            "artefact the Owner has is replaced only when the request says "
+            "so, and this one would not be replaced even then",
+            f"Send a {name.field!r} nothing stands at, or {self.repair[0].lower()}"
+            f"{self.repair[1:]}",
         )
 
 
@@ -800,13 +807,55 @@ def _what_stands_at(
     free name is written, readable bytes may be replaced and have a
     digest, and something unreadable is neither replaced nor given a
     digest of its own.
+
+    What stands there is asked for its kind before anything is opened.
+    An artefact is a regular file, and opening a name that is not one
+    is not the harmless way of finding out what it is: opening a named
+    pipe waits for a writer that may never come, and a build into one
+    answered nothing at all, printing nothing, long after the budget
+    the caller lowered had passed. Nothing that is not a regular file
+    is an artefact this tool may replace, so its kind alone settles it.
     """
     try:
-        return AnArtefactStandsThere(path.read_bytes())
+        standing = os.lstat(path)
     except FileNotFoundError:
         return NothingStandsThere()
     except OSError as failure:
-        return SomethingUnreadableStandsThere(failure.strerror or str(failure))
+        return SomethingUnreadableStandsThere(
+            f"the operating system answered {failure.strerror or str(failure)!r} "
+            "when this tool asked what stands there"
+        )
+    if not stat.S_ISREG(standing.st_mode):
+        return SomethingUnreadableStandsThere(
+            f"what stands there is {_the_kind_of(standing.st_mode)}, and an "
+            "artefact is a regular file: this tool does not open it to find "
+            "out what is in it, because opening what is not a file waits on "
+            "whatever is behind the name",
+            "Take what stands there away",
+        )
+    try:
+        return AnArtefactStandsThere(path.read_bytes())
+    except OSError as failure:
+        return SomethingUnreadableStandsThere(
+            f"the operating system answered {failure.strerror or str(failure)!r} "
+            "when this tool read it"
+        )
+
+
+def _the_kind_of(mode: int) -> str:
+    """What the filesystem says stands under a name, named the way a
+    reader of the refusal would say it."""
+    for holds, called in (
+        (stat.S_ISDIR, "a directory"),
+        (stat.S_ISFIFO, "a named pipe"),
+        (stat.S_ISSOCK, "a socket"),
+        (stat.S_ISCHR, "a character device"),
+        (stat.S_ISBLK, "a block device"),
+        (stat.S_ISLNK, "a link"),
+    ):
+        if holds(mode):
+            return called
+    return "not a regular file"
 
 
 def _what_is_there(directory: pathlib.Path) -> str:
