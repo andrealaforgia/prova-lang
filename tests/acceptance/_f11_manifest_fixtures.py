@@ -120,11 +120,18 @@ A_MACHINE_DESCRIPTOR = {
     "assumptions": ["One count at a time, over one authoritative counter."],
 }
 
-# The program a request for `operation` is about: the machine for the one
-# operation whose other field names what its program declares, and the
+# The operations that take a descriptor: a descriptor names what its
+# program declares, so a request built out of every field one of these
+# publishes must be about the machine program above. `verify` is one of
+# them since it takes a descriptor it may leave out.
+OPERATIONS_ABOUT_A_MACHINE = ("machine", "verify")
+
+
+# The program a request for `operation` is about: the machine for the
+# operations whose other field names what its program declares, and the
 # program above for every other.
 def a_program_for(operation: str) -> str:
-    if operation == "machine":
+    if operation in OPERATIONS_ABOUT_A_MACHINE:
         return A_MACHINE_PROGRAM
     return A_PROGRAM
 
