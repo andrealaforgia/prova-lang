@@ -298,13 +298,39 @@ class Replacement:
     def asked(cls, authorised: bool) -> "Replacement":
         return cls(bool(authorised))
 
-    def over(self, standing: "bytes | None") -> "Replacement":
-        """This authorisation, knowing what stands under the name: the
-        digest is of the bytes that were there when the destination was
-        built, which is what the answer records."""
-        if standing is None:
-            return Replacement(self.authorised)
-        return Replacement(self.authorised, hashlib.sha256(standing).hexdigest())
+    def over(self, content: bytes) -> "Replacement":
+        """This authorisation over an artefact that was read: the digest
+        is of the bytes that were there when the destination was built,
+        which is what the answer records."""
+        return Replacement(self.authorised, hashlib.sha256(content).hexdigest())
+
+    def over_nothing(self) -> "Replacement":
+        """This authorisation where nothing stood under the name: there
+        is no digest, because nothing was replaced."""
+        return Replacement(self.authorised)
+
+    def how_to_publish_over_what_appeared(self) -> str:
+        """What to do about a file that appeared under the name while
+        this build was running.
+
+        Two different things went wrong, and they are not repaired the
+        same way: a request that authorised no replacement must
+        authorise one, and a request that did authorise one read a name
+        nothing stood at and may simply ask again, when the file that
+        appeared will be the one it replaces.
+        """
+        if self.authorised:
+            return (
+                "Nothing stood under that name when this build read the "
+                "destination, so this build had nothing to replace and "
+                "replaced nothing. Ask for the build again: the file that "
+                "appeared is then the artefact the authorised replacement "
+                "replaces"
+            )
+        return (
+            "Send 'replace' as true to authorise replacing it, or a name "
+            "nothing stands at, and ask for the build again"
+        )
 
     def names_what_it_replaces(self) -> bool:
         return self.digest is not None
@@ -361,6 +387,13 @@ class AuthorityRule:
         authorised directory; a name that is not a plain file name is
         refused before the filesystem is touched at all.
         """
+        climbing = self._why_the_authority_climbs()
+        if climbing is not None:
+            return self.refusing(
+                OUTPUT_OUTSIDE_AUTHORITY,
+                climbing,
+                "Send the directory itself, with no '..' anywhere in it",
+            )
         unusable = self._why_nothing_may_be_called(name)
         if unusable is not None:
             return self.refusing(
@@ -392,18 +425,13 @@ class AuthorityRule:
                 "Remove the link or choose another name inside the authorised "
                 "directory",
             )
-        standing = _bytes_standing_at(path)
-        if standing is not None and not replacement.authorised:
-            return self.refusing(
-                OUTPUT_FILE_EXISTS,
-                f"an artefact is already standing at {str(path)!r}, and an "
-                "artefact the Owner holds is replaced only when the request "
-                "says so",
-                "Send 'replace' as true to authorise the replacement, which "
-                "makes the answer record the digest of what it replaced, or "
-                f"send a {name.field!r} that holds nothing",
-            )
-        return AuthorisedDestination(self, name.written, replacement.over(standing))
+        standing = _what_stands_at(path)
+        refused = standing.why_it_may_not_be_replaced(self, name, replacement)
+        if refused is not None:
+            return refused
+        return AuthorisedDestination(
+            self, name.written, standing.authorising(replacement)
+        )
 
     def refusing(self, category: str, what: str, how: str) -> Unwritable:
         """Why this build may not write where it was asked to, in the
@@ -441,6 +469,24 @@ class AuthorityRule:
             "standing there is as it was. Give that directory a mode this "
             "tool may write in, or authorise another directory, and ask for "
             "the build again",
+        )
+
+    def _why_the_authority_climbs(self) -> "str | None":
+        """Why the directory this request authorised is not a directory
+        it plainly named, or `None`.
+
+        A path carrying '..' names one place before the filesystem
+        resolves it and may name another after, and the one a build
+        writes into must be the one the request can be read to name.
+        """
+        if ".." not in pathlib.PurePath(self.asked.written).parts:
+            return None
+        return (
+            f"the {self.asked.field!r} field of the request carries "
+            f"{self.asked.written!r}, which climbs through '..': a path "
+            "carrying '..' names one place as it is written and another "
+            "once the filesystem has resolved it, so it names no directory "
+            "a build can be held to"
         )
 
     def _why_nothing_may_be_called(self, name: AskedBy) -> "str | None":
@@ -654,8 +700,8 @@ class AuthorisedDestination:
                 f"a file appeared at {str(self.path)!r} while this build "
                 "was running, and this tool writes over nothing it was not "
                 "asked to. The artefact was not published and nothing at that "
-                "path was changed. Send 'replace' as true, or a name that "
-                "holds nothing, and ask for the build again",
+                "path was changed. "
+                + self.replacement.how_to_publish_over_what_appeared(),
             )
         except OSError as failure:
             return self.rule.not_writable(failure)
@@ -664,20 +710,103 @@ class AuthorisedDestination:
         return None
 
 
-def _bytes_standing_at(path: pathlib.Path) -> "bytes | None":
-    """The bytes of what stands under a name, or `None` where nothing
-    stands there.
+@dataclass(frozen=True)
+class NothingStandsThere:
+    """What a build finds under a free name: nothing, so there is
+    nothing to replace and nothing to record a digest of."""
 
-    What cannot be read -- a directory, a file this tool may not open --
-    stands there all the same, and is answered as standing rather than
-    as absent: a build never takes a name it cannot read for a free one.
+    def why_it_may_not_be_replaced(
+        self, rule: "AuthorityRule", name: AskedBy, replacement: Replacement
+    ) -> "Unwritable | None":
+        return None
+
+    def authorising(self, replacement: Replacement) -> Replacement:
+        return replacement.over_nothing()
+
+
+@dataclass(frozen=True)
+class AnArtefactStandsThere:
+    """What a build finds under a name something readable stands at:
+    the bytes themselves, which are what the answer records the digest
+    of when the Owner authorised replacing them."""
+
+    content: bytes
+
+    def why_it_may_not_be_replaced(
+        self, rule: "AuthorityRule", name: AskedBy, replacement: Replacement
+    ) -> "Unwritable | None":
+        if replacement.authorised:
+            return None
+        return rule.refusing(
+            OUTPUT_FILE_EXISTS,
+            f"an artefact is already standing under the name "
+            f"{name.written!r}, and an artefact the Owner has is replaced "
+            "only when the request says so",
+            "Send 'replace' as true to authorise the replacement, which "
+            "makes the answer record the digest of what it replaced, or "
+            f"send a {name.field!r} nothing stands at",
+        )
+
+    def authorising(self, replacement: Replacement) -> Replacement:
+        return replacement.over(self.content)
+
+
+@dataclass(frozen=True)
+class SomethingUnreadableStandsThere:
+    """What a build finds under a name it cannot read: something is
+    there -- a file no one may read, a directory, a name the filesystem
+    refuses -- and this build can say nothing about what it is.
+
+    It is never replaced. The answer of an authorised replacement
+    records the digest of what it replaced, and a digest this tool
+    could not compute would be a digest of something else: a build that
+    cannot say what it would destroy destroys nothing.
+    """
+
+    why: str
+
+    def why_it_may_not_be_replaced(
+        self, rule: "AuthorityRule", name: AskedBy, replacement: Replacement
+    ) -> "Unwritable | None":
+        if replacement.authorised:
+            return rule.refusing(
+                OUTPUT_FILE_EXISTS,
+                f"something is already standing under the name "
+                f"{name.written!r} and this tool could not read it: the "
+                f"operating system answered {self.why!r}. The answer of an "
+                "authorised replacement records the digest of the bytes it "
+                "replaced, and those bytes could not be read, so this build "
+                "would have to destroy what it cannot name",
+                f"Make what stands there readable, or send a {name.field!r} "
+                "nothing stands at",
+            )
+        return rule.refusing(
+            OUTPUT_FILE_EXISTS,
+            f"something is already standing under the name {name.written!r} "
+            f"and this tool could not read it: the operating system answered "
+            f"{self.why!r}. An artefact the Owner has is replaced only when "
+            "the request says so",
+            f"Send a {name.field!r} nothing stands at, or make what stands "
+            "there readable and send 'replace' as true",
+        )
+
+
+def _what_stands_at(
+    path: pathlib.Path,
+) -> "NothingStandsThere | AnArtefactStandsThere | SomethingUnreadableStandsThere":
+    """What stands under a name, as one of the three things it can be.
+
+    The three are kept apart because they are answered differently: a
+    free name is written, readable bytes may be replaced and have a
+    digest, and something unreadable is neither replaced nor given a
+    digest of its own.
     """
     try:
-        return path.read_bytes()
+        return AnArtefactStandsThere(path.read_bytes())
     except FileNotFoundError:
-        return None
-    except OSError:
-        return b""
+        return NothingStandsThere()
+    except OSError as failure:
+        return SomethingUnreadableStandsThere(failure.strerror or str(failure))
 
 
 def _what_is_there(directory: pathlib.Path) -> str:

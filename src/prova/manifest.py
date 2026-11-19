@@ -123,7 +123,12 @@ OUTPUT_FILE = Field.may_be_sent(
     "text",
     "the whole path to write the artefact to, as builds named it before a "
     "destination could be authorised: the directory of that path is then the "
-    "authorised destination and the last part of it is the name inside it. "
+    "authorised destination and the last part of it is the name inside it. A "
+    "path carrying '..' anywhere in it is refused: it names one place as it "
+    "is written and another once the filesystem has resolved it. A directory "
+    "component that is a link is read as the filesystem reads it, so the "
+    "authority is the directory the request names once that link is "
+    "followed. "
     "Send this field, or 'output_directory' with 'output_name', or both "
     "naming one and the same place; a request naming two different places, or "
     "none, is refused and nothing is written",
@@ -132,7 +137,8 @@ OUTPUT_DIRECTORY = Field.may_be_sent(
     building.OUTPUT_DIRECTORY_FIELD,
     "text",
     "the directory the build is authorised to write into, as one absolute "
-    "path of a directory that already exists. Nothing a request names can "
+    "path of a directory that already exists, carrying no '..' anywhere in "
+    "it; a link standing for a directory is read as the filesystem reads it. Nothing a request names can "
     "carry a build out of it: the artefact stands directly inside it, under "
     "the plain name 'output_name' chooses. A name carrying a separator or "
     "'..', and a link standing at that name, are refused and nothing is "
@@ -790,7 +796,12 @@ THE_OPERATIONS = Catalogue(
                         "result",
                         "object",
                         "what this build published, under 'artefact': the "
-                        "'path' it was written to, the 'entry' it invokes, "
+                        "'path' it was written to, as the request named it, "
+                        "'replaced', which is true exactly where an artefact "
+                        "already standing under that name was replaced under "
+                        "an authorised 'replace', and then 'replaced_digest', "
+                        "the SHA-256 of the bytes that were replaced, so the "
+                        "Owner can tell what is gone; the 'entry' it invokes, "
                         "the 'source_revision' the artefact stands for "
                         "-- the SHA-256 of the exact characters that were "
                         "verified, "

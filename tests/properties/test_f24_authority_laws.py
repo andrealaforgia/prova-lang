@@ -49,6 +49,9 @@ NAMES = st.one_of(
             "clock.py/",
             "clo\x00ck.py",
             "x" * 300,
+            "x" * 256,
+            "x" * 255,
+            "x" * 200,
         ]
     ),
     st.text(
@@ -101,7 +104,7 @@ def test_a_build_writes_inside_the_authorised_directory_or_not_at_all(
         and "/" not in name
         and "\x00" not in name
         and name not in (".", "..")
-        and len(name.encode("utf-8")) < 200
+        and len(name.encode("utf-8")) <= 255
     )
     if plain:
         assert answer.get("status") == "completed", (

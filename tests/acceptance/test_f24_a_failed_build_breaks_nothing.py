@@ -268,6 +268,66 @@ def test_a_directory_that_cannot_be_written_is_refused_not_broken(tmp_path):
     )
 
 
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="a superuser reads a file that allows nobody to read it",
+)
+def test_an_artefact_that_cannot_be_read_is_not_replaced(tmp_path):
+    """Given a file of 18 bytes standing under the chosen name that
+    allows nobody to read it, in a directory that may be written, when
+    the Owner authorises the replacement and asks for a build, then the
+    answer refuses, says that what stands there could not be read and
+    that its digest cannot be recorded, and the file is byte for byte
+    what it was.
+
+    still passes if: the tool had refused every replacement -- the
+    first test of this file replaces a readable artefact and is
+    answered.
+    """
+    authorised = tmp_path / "authorised"
+    authorised.mkdir()
+    standing = authorised / "clock.py"
+    standing.write_bytes(b"ORIGINAL ARTEFACT\n")
+    os.chmod(standing, 0o000)
+    try:
+        answer = build_into(authorised, "clock.py", replace=True)
+        left = entries_under(authorised)
+        os.chmod(standing, 0o600)
+        after = standing.read_bytes()
+    finally:
+        os.chmod(standing, 0o600)
+
+    assert answer.get("status") == REFUSED, (
+        f"WHAT: a replacement of a file this tool cannot read was answered "
+        f"{answer.get('status')!r}. "
+        "WHY: the answer of a replacement records the digest of what it "
+        "replaced; what cannot be read has no digest to record, so there is "
+        "nothing to answer with and the file must survive. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert not answer.get("result"), f"the refusal carried a result: {answer}"
+    reasons = reasons_of(answer).lower()
+    assert "read" in reasons and "digest" in reasons, (
+        f"WHAT: the refusal does not say that what stands there could not "
+        f"be read and that its digest cannot be recorded: "
+        f"{reasons_of(answer)!r}. "
+        "WHY: the Owner must know why the replacement they authorised did "
+        "not happen. "
+        f"HOW: say both in the reason."
+    )
+    assert after == b"ORIGINAL ARTEFACT\n", (
+        f"WHAT: the file that could not be read now reads {after!r}. "
+        "WHY: a build that cannot record what it would destroy destroys "
+        "nothing. "
+        "HOW: refuse before the name is given away."
+    )
+    assert left == ["clock.py"], (
+        f"WHAT: the directory holds {left}. "
+        "WHY: a refused build leaves no working file. "
+        "HOW: remove it on every path out."
+    )
+
+
 def test_two_builds_asked_at_once_leave_exactly_one_whole_artefact(tmp_path):
     """Given two builds of the same program started at the same time,
     both authorised to replace, into one authorised directory under one

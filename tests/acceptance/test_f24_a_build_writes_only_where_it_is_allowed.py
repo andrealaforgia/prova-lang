@@ -251,6 +251,158 @@ def test_a_link_pointing_inside_the_directory_is_refused_too(tmp_path):
     )
 
 
+def test_a_name_longer_than_a_file_name_may_be_is_refused_by_the_rule(tmp_path):
+    """Given the Owner authorises one directory, when they ask for a
+    name of 256 bytes and then for one of 255 bytes, then the first is
+    refused as a name the authority cannot cover, naming the limit, and
+    the second is answered.
+
+    still passes if: the tool had refused the long name because it
+    could not write it -- the refusal is required to carry the category
+    of the authority rule and the number 255.
+    """
+    authorised, _ = _authorised_and_outside(tmp_path)
+    authority = os.path.realpath(authorised)
+
+    too_long = build_into(authorised, "c" * 256)
+
+    assert too_long.get("status") == REFUSED, (
+        f"WHAT: a name of 256 bytes was answered "
+        f"{too_long.get('status')!r}. "
+        "WHY: no file name may be longer than 255 bytes, and a rule that "
+        "refuses it says so before the filesystem is asked. "
+        f"HOW: inspect the answer: {too_long}"
+    )
+    assert OUTSIDE_AUTHORITY in categories_of(too_long), (
+        f"WHAT: it was refused as {sorted(categories_of(too_long))}. "
+        "WHY: a name the authorised directory cannot carry is a fact about "
+        "the destination rule, not about a file standing in the way. "
+        f"HOW: inspect the answer: {too_long}"
+    )
+    assert "255" in reasons_of(too_long), (
+        f"WHAT: the refusal names no limit: {reasons_of(too_long)!r}. "
+        "WHY: the Owner shortens the name to the number the rule names. "
+        "HOW: name 255 in the reason."
+    )
+    assert says_the_authority_rule(too_long, authority) is None, (
+        f"WHAT: the refusal does not name the authority rule: "
+        f"{reasons_of(too_long)!r}. "
+        "WHY: every refusal about a destination names it. "
+        "HOW: write the rule into the reason."
+    )
+
+    longest = build_into(authorised, "c" * 251 + ".py")
+    assert longest.get("status") == "completed", (
+        f"WHAT: a name of exactly 255 bytes was answered "
+        f"{longest.get('status')!r}. "
+        "WHY: 255 bytes is the longest name a file may have, and the rule "
+        "refuses what is longer, not what reaches the limit. "
+        f"HOW: inspect the answer: {longest}"
+    )
+    assert entries_under(authorised) == ["c" * 251 + ".py"], (
+        f"WHAT: the directory holds {entries_under(authorised)}. "
+        "WHY: the 255-byte name is the one artefact published here. "
+        f"HOW: inspect the answer: {longest}"
+    )
+
+
+def test_a_path_that_climbs_through_a_directory_of_its_own_is_refused(tmp_path):
+    """Given a request naming the whole path in one field, when that
+    path carries '..' anywhere in it, then it is refused naming the
+    authority rule and nothing is written, even where the path would
+    have landed inside a directory that exists.
+
+    still passes if: the tool had refused every path written in one
+    field -- another test builds an artefact that way and reads it back.
+    """
+    authorised, outside = _authorised_and_outside(tmp_path)
+    climbing = str(authorised / ".." / "outside" / "escape.py")
+
+    answer = ask(
+        {
+            "operation": "build",
+            "source": hour_clock(),
+            "entry": "step",
+            "output_file": climbing,
+        }
+    )
+
+    assert answer.get("status") == REFUSED, (
+        f"WHAT: the path {climbing!r} was answered "
+        f"{answer.get('status')!r}. "
+        "WHY: a path that climbs through '..' names one place before it is "
+        "resolved and another after, and a build writes only where the "
+        "request plainly named. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert OUTSIDE_AUTHORITY in categories_of(answer), (
+        f"WHAT: it was refused as {sorted(categories_of(answer))}. "
+        f"WHY: this is the word for a destination the authority does not "
+        "cover. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert "'..'" in reasons_of(answer) or ".." in reasons_of(answer), (
+        f"WHAT: the refusal does not say what in the path refused it: "
+        f"{reasons_of(answer)!r}. "
+        "WHY: the Owner removes the part the rule names. "
+        "HOW: name '..' in the reason."
+    )
+    assert entries_under(outside) == ["target.py"], (
+        f"WHAT: the directory beside the authorised one holds "
+        f"{entries_under(outside)}. "
+        "WHY: nothing is written by a refused build. "
+        f"HOW: inspect the answer: {answer}"
+    )
+
+
+def test_a_directory_reached_through_a_link_is_the_one_the_request_named(tmp_path):
+    """Given a link standing for a directory, when the Owner names a
+    path through that link, then the build writes into the directory
+    the link resolves to and the answer records the path as it was
+    asked for: the authority is the directory the request names, as the
+    filesystem reads it.
+
+    still passes if: the tool had refused the link -- the artefact is
+    read back from the directory behind it.
+    """
+    authorised, _ = _authorised_and_outside(tmp_path)
+    real = tmp_path / "real"
+    real.mkdir()
+    os.symlink(str(real), str(tmp_path / "through"))
+    named = str(tmp_path / "through" / "clock.py")
+
+    answer = ask(
+        {
+            "operation": "build",
+            "source": hour_clock(),
+            "entry": "step",
+            "output_file": named,
+        }
+    )
+
+    assert answer.get("status") == "completed", (
+        f"WHAT: a path through a link to a directory was answered "
+        f"{answer.get('status')!r}. "
+        "WHY: the authority a request names is the directory it names, as "
+        "the filesystem reads it; a link standing for a directory is one "
+        "way of naming it. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert entries_under(real) == ["clock.py"], (
+        f"WHAT: the directory behind the link holds {entries_under(real)}. "
+        "WHY: the artefact stands in the directory the named one resolves "
+        "to. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    published = (answer.get("result") or {}).get("artefact") or {}
+    assert published.get("path") == named, (
+        f"WHAT: the answer records {published.get('path')!r} and the request "
+        f"named {named!r}. "
+        "WHY: the Owner goes back to the path they sent. "
+        f"HOW: inspect the answer: {answer}"
+    )
+
+
 def test_a_file_that_is_there_is_refused_unless_a_replacement_is_authorised(tmp_path):
     """Given an artefact already standing under the chosen name, when
     the Owner asks for a build without authorising a replacement, then
@@ -544,6 +696,16 @@ def test_the_tool_publishes_the_three_fields_of_an_authorised_destination():
             "WHY: a client reads when a field must be sent and what it is "
             "for. "
             "HOW: publish both."
+        )
+    answered = (build.get("response") or {}).get("fields") or {}
+    for word in ("replaced", "replaced_digest"):
+        assert word in str(answered.get("result")), (
+            f"WHAT: the answer shape of build says nothing about {word!r}: "
+            f"{answered.get('result')}. "
+            "WHY: a completed build records whether it replaced something "
+            "and the digest of what it replaced, and a client reads a field "
+            "it can look up. "
+            f"HOW: name it in the result description: {answered.get('result')}"
         )
     assert "replace" in str(request_fields.get("replace")), (
         "WHAT: the 'replace' field says nothing about itself. "
