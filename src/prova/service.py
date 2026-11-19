@@ -6,6 +6,7 @@ The only place that knows operation names.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 
 from prova import (
@@ -169,6 +170,10 @@ def handle(submitted: object, budgets: Budgets | None = None) -> dict:
     if unwritable is not None:
         return unwritable.response_for(None)
 
+    no_number = _a_number_json_cannot_write_in(submitted)
+    if no_number is not None:
+        return no_number.response_for(None)
+
     run = (budgets if budgets is not None else Budgets.declared()).start()
     try:
         return _answer(request, run)
@@ -287,7 +292,16 @@ def printable_answer(answer: dict) -> str:
     """
     found = _half_a_character_anywhere_in(answer)
     if found is None:
-        return json.dumps(answer)
+        try:
+            # Written with `allow_nan=False`, so a number JSON has none
+            # for is refused here rather than printed as a word no
+            # reader of JSON reads. The reader of a request already
+            # refuses every such number a request carries; this stands
+            # behind it, so that a number this tool computed itself can
+            # never leave it either.
+            return json.dumps(answer, allow_nan=False)
+        except ValueError:
+            return json.dumps(_no_number_to_answer_with().response_for(None))
     _, half_a_character = found
     return json.dumps(
         MalformedRequest.about(
@@ -329,6 +343,87 @@ def _half_a_character_anywhere_in(
     if isinstance(value, list):
         for held in value:
             found = _half_a_character_anywhere_in(held)
+            if found is not None:
+                return found
+    return None
+
+
+def _no_number_to_answer_with() -> "MalformedRequest":
+    """The answer that replaces one holding a number JSON cannot write.
+
+    The number is not repeated: it is a number no reader of the answer
+    could read, and the answer that says so must be readable by every
+    one of them. Every number a request carries is already refused by
+    the rule that reads the request, so reaching here says this tool
+    computed one itself.
+    """
+    return MalformedRequest.about(
+        "request",
+        "this tool was about to answer with a number JSON has no number "
+        "for -- infinity, or a number that is no number -- and an answer "
+        "carrying one could not be read by a reader holding to JSON. The "
+        "number is not repeated here. Every number a request carries is "
+        "refused by the rule that reads the request, so send the request "
+        "again, and report this answer if the request you send carries none",
+    )
+
+
+def _a_number_json_cannot_write_in(submitted: object) -> "MalformedRequest | None":
+    """The refusal to answer a request carrying infinity or a number
+    that is no number, or `None`.
+
+    JSON writes no such number: `Infinity`, `-Infinity` and `NaN` are
+    words Python's own reader accepts and a reader holding to JSON
+    refuses, and `1e999` is an ordinary JSON number every reader turns
+    into infinity. A request holding one used to be answered by echoing
+    it back, so a caller that sent one readable request got text no
+    strict reader anywhere could read, and the outcome in it was lost.
+
+    Read once over the whole request, before any field of it is read on
+    its own: such a number is unanswerable wherever it stands, and a
+    field this tool has no name for carries it as readily as one it
+    does.
+    """
+    found = _a_number_json_cannot_write_anywhere_in(submitted, "request")
+    if found is None:
+        return None
+    where, number = found
+    return MalformedRequest.about(
+        where,
+        f"the {where!r} field of the request holds {number}, which JSON has "
+        "no number for: a JSON reader turns 'Infinity', '-Infinity', 'NaN' "
+        "and a number past what a float holds, such as 1e999, into one of "
+        "those three, and no answer carrying one back could be read by a "
+        "reader holding to JSON. Nothing was read. Send every number of the "
+        "request as a finite JSON number, and send a number a program "
+        "computes inside the 'source' field, as the text of a program",
+    )
+
+
+def _a_number_json_cannot_write_anywhere_in(
+    value: object, where: str
+) -> "tuple[str, str] | None":
+    """The first number anywhere inside a value that JSON cannot write,
+    with the path it stands at, or `None`.
+
+    The one walk over the numbers a request or an answer carries, beside
+    the walk over its texts: the fields of an object, the entries of a
+    list and the values inside both alike.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return (where, repr(value))
+    if isinstance(value, dict):
+        for key, held in value.items():
+            inside = key if isinstance(key, str) and where == "request" else where
+            found = _a_number_json_cannot_write_anywhere_in(held, inside)
+            if found is not None:
+                return found
+        return None
+    if isinstance(value, (list, tuple)):
+        for held in value:
+            found = _a_number_json_cannot_write_anywhere_in(held, where)
             if found is not None:
                 return found
     return None
