@@ -27,10 +27,20 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 THE_PROGRAM_BEGINS = "# --- the program, translated ---"
 
 # What the artefact's own exit status says. 0 is an answer; the others
-# are refusals, and none of them is a traceback.
+# are refusals of their own kind, each with a category word opening the
+# first line of its message, and none of them is a traceback. One table
+# for the tests of the build, read from here by _f23_fixtures too.
 ANSWERED = 0
-REFUSED_THE_INPUT = 2
+MALFORMED = 2
 ASSURANCE_FAILURE = 3
+A_FAILURE_OF_THE_FILE = 4
+ILL_TYPED = 5
+PRECONDITION_UNMET = 6
+RESOURCE_EXHAUSTED = 7
+
+# The name the tests of F22 read 2 by, kept while they are moved to the
+# kind each of their cases is about.
+REFUSED_THE_INPUT = MALFORMED
 
 
 def hour_clock() -> str:

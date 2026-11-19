@@ -18,7 +18,7 @@ import pathlib
 import tempfile
 
 from _f22_fixtures import (
-    ASSURANCE_FAILURE,
+    PRECONDITION_UNMET,
     REFUSED_THE_INPUT,
     answered,
     artefact_of,
@@ -207,6 +207,11 @@ def test_c2_the_artefact_refuses_what_it_cannot_answer_without_a_traceback():
     then each run refuses in words with its own exit status and none of
     them ends in a traceback.
 
+    The hour of 99 is a well-formed value of the declared type that the
+    entry's precondition refuses, which now carries the status of its
+    own kind rather than the one that says a contract of a verified
+    program did not hold.
+
     still passes if: the artefact had answered an input its precondition
     refuses -- the refusal of (Clock 99) is required, and its status is
     required to differ from the refusal of input it could not read.
@@ -227,7 +232,7 @@ def test_c2_the_artefact_refuses_what_it_cannot_answer_without_a_traceback():
             (
                 "an hour its own precondition refuses",
                 ["(Clock 99)", "(Tick)"],
-                ASSURANCE_FAILURE,
+                PRECONDITION_UNMET,
                 "valid-state",
             ),
         ]
