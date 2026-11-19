@@ -35,7 +35,7 @@ import os
 import pathlib
 import pprint
 import stat
-import tempfile
+import uuid
 from dataclasses import dataclass
 
 from prova import formatter, provenance, reader, syntax, values, verdict
@@ -217,6 +217,156 @@ class NotShownWhole:
         return Unwritable(NOT_SHOWN_WHOLE, self.reason)
 
 
+# What this tool asks of the operating system to write against a
+# directory it holds open rather than against the characters that name
+# it, and the prefix of the one file nobody asked for.
+# `os.stat` with `follow_symlinks=False` is how a name is asked about
+# without following a link inside a directory held open: `os.lstat`
+# itself takes no directory to look in on every build of Python.
+_AGAINST_AN_OPEN_DIRECTORY = (os.open, os.stat, os.link, os.unlink, os.rename)
+WORKING_PREFIX = ".prova-build-"
+
+
+class OpenDirectory:
+    """The authorised directory itself, held open from the moment a
+    destination is resolved until its build has written or refused.
+
+    A build is authorised over a directory, not over the characters that
+    name it. Every step used to open those characters again -- what
+    stands under the chosen name, the working file, the one step that
+    gives the name away -- so renaming the authorised directory while a
+    build ran and putting a link up under its old name redirected all of
+    them, and the artefact landed outside the directory the request
+    authorised. The descriptor held here names the directory itself,
+    which no later rename or link can change.
+
+    It is closed when the build that opened it has published or
+    refused, and again when nothing holds it any more, so a build that
+    never reaches its publishing step leaves no descriptor behind.
+    """
+
+    def __init__(self, descriptor: int) -> None:
+        self._descriptor = descriptor
+
+    @classmethod
+    def at(cls, directory: str) -> "OpenDirectory | OSError":
+        """The directory `directory` names now, held open, or why it
+        could not be opened.
+
+        Opened without following a link at the path itself: a build
+        writes into the directory its request named and not into
+        whatever a link there was made to point at.
+        """
+        try:
+            return cls(
+                os.open(
+                    directory,
+                    os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                )
+            )
+        except OSError as failure:
+            return failure
+
+    @staticmethod
+    def why_this_platform_cannot() -> "str | None":
+        """Why this installation cannot write against an open directory,
+        or `None`.
+
+        Every operation a build does against one is named here, so a
+        platform missing any of them is refused before a build reaches
+        the step that would silently fall back to a pathname."""
+        missing = [
+            operation.__name__
+            for operation in _AGAINST_AN_OPEN_DIRECTORY
+            if operation not in os.supports_dir_fd
+        ]
+        if not hasattr(os, "O_DIRECTORY"):
+            missing.append("open a directory")
+        if not missing:
+            return None
+        return (
+            "this installation cannot do "
+            + ", ".join(sorted(missing))
+            + " against a directory it holds open, and a build writes its "
+            "working file, gives the name away and takes the working file "
+            "back against the directory it was authorised over, so that a "
+            "rename of that directory while the build runs cannot carry the "
+            "artefact out of it"
+        )
+
+    def what_stands_at(self, name: str) -> os.stat_result:
+        """What the filesystem says about `name` inside this directory,
+        without following a link standing there."""
+        return os.stat(name, dir_fd=self._descriptor, follow_symlinks=False)
+
+    def read(self, name: str) -> bytes:
+        """The bytes of `name` inside this directory, read without
+        following a link."""
+        handle = os.open(
+            name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=self._descriptor
+        )
+        with os.fdopen(handle, "rb") as reading:
+            return reading.read()
+
+    def new_file(self, suffix: str) -> "tuple[int, str]":
+        """A file nobody else holds, created inside this directory under
+        a name no artefact uses, with the handle it was created with.
+
+        Created with a name of its own rather than with a name a caller
+        chose: two builds into one directory must not meet, and the
+        creation itself refuses a name that is already taken, so the
+        name a build ends up with is one nothing else had.
+        """
+        while True:
+            name = f"{WORKING_PREFIX}{uuid.uuid4().hex}{suffix}"
+            try:
+                handle = os.open(
+                    name,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW,
+                    0o600,
+                    dir_fd=self._descriptor,
+                )
+            except FileExistsError:
+                continue
+            return handle, name
+
+    def link(self, name: str, to: str) -> None:
+        os.link(
+            name,
+            to,
+            src_dir_fd=self._descriptor,
+            dst_dir_fd=self._descriptor,
+            follow_symlinks=False,
+        )
+
+    def replace(self, name: str, with_the_name_of: str) -> None:
+        os.replace(
+            name,
+            with_the_name_of,
+            src_dir_fd=self._descriptor,
+            dst_dir_fd=self._descriptor,
+        )
+
+    def remove(self, name: str) -> None:
+        try:
+            os.unlink(name, dir_fd=self._descriptor)
+        except FileNotFoundError:
+            return
+
+    def closed(self) -> None:
+        """Let go of this directory. Asking twice is no error: a build
+        that refused and a build that published both end here."""
+        descriptor, self._descriptor = self._descriptor, None
+        if descriptor is not None:
+            os.close(descriptor)
+
+    def __del__(self) -> None:
+        try:
+            self.closed()
+        except OSError:
+            return
+
+
 class WorkingFile:
     """The file a build writes its text into before anything of it is
     published, standing in the directory the artefact will stand in.
@@ -226,14 +376,15 @@ class WorkingFile:
     no artefact uses, and it is removed by this unit on every path out
     of a build. The name it was written under is given to the artefact
     in one step, which either happens or does not.
+
+    Every one of those steps is done against the open directory, so a
+    pathname made to name another directory after the destination was
+    resolved reaches none of them.
     """
 
-    def __init__(self, directory: pathlib.Path) -> None:
-        handle, name = tempfile.mkstemp(
-            dir=str(directory), prefix=".prova-build-", suffix=".py"
-        )
-        self._handle = handle
-        self._name = name
+    def __init__(self, directory: OpenDirectory) -> None:
+        self._directory = directory
+        self._handle, self._name = directory.new_file(".py")
 
     def holding(self, text: str) -> "WorkingFile":
         """This file with `text` written into it and closed."""
@@ -241,25 +392,22 @@ class WorkingFile:
             writing.write(text)
         return self
 
-    def gives_its_name_to(self, path: pathlib.Path) -> None:
-        """Make `path` a second name for this file, which fails where a
+    def gives_its_name_to(self, name: str) -> None:
+        """Make `name` a second name for this file, which fails where a
         name is already there: a file that appeared while this build ran
         is never written over."""
-        os.link(self._name, str(path))
+        self._directory.link(self._name, name)
 
-    def replaces(self, path: pathlib.Path) -> None:
-        """Move the name `path` onto this file, which is one step of the
+    def replaces(self, name: str) -> None:
+        """Move `name` onto this file, which is one step of the
         operating system: a reader of that name holds either the whole
         of what stood there or the whole of this file, never half of
         either."""
-        os.replace(self._name, str(path))
+        self._directory.replace(self._name, name)
 
     def removed(self) -> None:
         """Take this file away, whatever happened to the build."""
-        try:
-            os.unlink(self._name)
-        except FileNotFoundError:
-            return
+        self._directory.remove(self._name)
 
 
 @dataclass(frozen=True)
@@ -336,9 +484,10 @@ class Replacement:
     def names_what_it_replaces(self) -> bool:
         return self.digest is not None
 
-    def gives_the_name(self, working: "WorkingFile", path: pathlib.Path) -> None:
-        """Give `path` to the file `working` wrote, in the one step that
-        either happens or does not.
+    def gives_the_name(self, working: "WorkingFile", name: str) -> None:
+        """Give `name`, inside the directory the build holds open, to
+        the file `working` wrote, in the one step that either happens or
+        does not.
 
         Where nothing is replaced the name is added to the file, which
         fails if anything got there first. Where a replacement was
@@ -347,9 +496,9 @@ class Replacement:
         half of.
         """
         if self.digest is None:
-            working.gives_its_name_to(path)
+            working.gives_its_name_to(name)
             return
-        working.replaces(path)
+        working.replaces(name)
 
     def published(self) -> dict:
         """What the answer records about it."""
@@ -405,19 +554,27 @@ class AuthorityRule:
                 "authorised directory",
             )
         if not os.path.isdir(self.directory):
+            return self._no_directory_there()
+        cannot = OpenDirectory.why_this_platform_cannot()
+        if cannot is not None:
             return Unwritable(
-                OUTPUT_DIRECTORY_ABSENT,
-                f"this tool writes an artefact into a directory that already "
-                f"exists and the authorised directory {self.directory!r}, "
-                f"named by the {self.asked.field!r} field of the request, is "
-                f"not one: {_what_is_there(pathlib.Path(self.directory))}. The "
-                "artefact is written as a working file inside that directory "
-                "and then given its name, so there is nowhere to write it. "
-                "Nothing was written. Create that directory, or authorise one "
-                "that exists, and ask for the build again",
+                OUTPUT_NOT_WRITABLE,
+                f"{cannot}. The authorised destination {self.directory!r}, "
+                f"named by the {self.asked.field!r} field of the request, was "
+                "not written into and nothing standing there was changed. "
+                "Build on an installation whose operating system does those "
+                "things, and ask for the build again",
             )
-        path = pathlib.Path(self.directory) / name.written
-        if os.path.islink(str(path)):
+        opened = OpenDirectory.at(self.directory)
+        if isinstance(opened, OSError):
+            return self._could_not_open(opened)
+        # Everything below is decided against the directory this
+        # descriptor holds, and so is the writing that follows it: the
+        # pathname may be made to name another directory from here on
+        # and reach none of them.
+        standing = _what_stands_at(opened, name.written)
+        if isinstance(standing, ALinkStandsThere):
+            opened.closed()
             return self.refusing(
                 OUTPUT_NAME_IS_A_LINK,
                 f"the name {name.written!r} of the {name.field!r} field is a "
@@ -426,12 +583,40 @@ class AuthorityRule:
                 "Remove the link or choose another name inside the authorised "
                 "directory",
             )
-        standing = _what_stands_at(path)
         refused = standing.why_it_may_not_be_replaced(self, name, replacement)
         if refused is not None:
+            opened.closed()
             return refused
         return AuthorisedDestination(
-            self, name.written, standing.authorising(replacement)
+            self, name.written, standing.authorising(replacement), opened
+        )
+
+    def _could_not_open(self, failure: OSError) -> Unwritable:
+        """Why the authorised directory could not be opened at all.
+
+        A directory that was there when this rule read it and is gone,
+        or is no longer a directory, by the time it is opened is the
+        same fact a request naming no directory carries, and is answered
+        with the same words; anything else is a destination this tool
+        may not write into.
+        """
+        if isinstance(failure, (FileNotFoundError, NotADirectoryError)):
+            return self._no_directory_there()
+        return self.not_writable(failure)
+
+    def _no_directory_there(self) -> Unwritable:
+        """Why there is nowhere to write: the authorised path is not a
+        directory that already exists."""
+        return Unwritable(
+            OUTPUT_DIRECTORY_ABSENT,
+            f"this tool writes an artefact into a directory that already "
+            f"exists and the authorised directory {self.directory!r}, "
+            f"named by the {self.asked.field!r} field of the request, is "
+            f"not one: {_what_is_there(pathlib.Path(self.directory))}. The "
+            "artefact is written as a working file inside that directory "
+            "and then given its name, so there is nowhere to write it. "
+            "Nothing was written. Create that directory, or authorise one "
+            "that exists, and ask for the build again",
         )
 
     def refusing(self, category: str, what: str, how: str) -> Unwritable:
@@ -604,10 +789,17 @@ class AuthorisedDestination:
     rule: AuthorityRule
     name: str
     replacement: Replacement
+    directory: "OpenDirectory | None" = None
 
     @property
     def path(self) -> pathlib.Path:
-        """The one path this destination stands at."""
+        """The one path this destination stands at, as it was named when
+        this destination was resolved.
+
+        What the answer and a refusal say. Where a build writes is
+        decided against the directory held open beside it, which this
+        path no longer names if the pathname was swapped since.
+        """
         return pathlib.Path(self.rule.directory) / self.name
 
     @classmethod
@@ -689,12 +881,21 @@ class AuthorisedDestination:
         happens, so a destination that holds nothing after a refusal
         holds nothing at all.
         """
+        if self.directory is None:
+            return self.rule.refusing(
+                OUTPUT_NOT_WRITABLE,
+                "this destination holds no open directory to write against, "
+                "so nothing was written",
+                "Resolve a destination through the authority rule, which "
+                "opens the directory it authorises",
+            )
         try:
-            working = WorkingFile(self.path.parent)
+            working = WorkingFile(self.directory)
         except OSError as failure:
+            self.directory.closed()
             return self.rule.not_writable(failure)
         try:
-            self.replacement.gives_the_name(working.holding(text), self.path)
+            self.replacement.gives_the_name(working.holding(text), self.name)
         except FileExistsError:
             return Unwritable(
                 OUTPUT_FILE_EXISTS,
@@ -708,6 +909,7 @@ class AuthorisedDestination:
             return self.rule.not_writable(failure)
         finally:
             working.removed()
+            self.directory.closed()
         return None
 
 
@@ -750,6 +952,17 @@ class AnArtefactStandsThere:
 
     def authorising(self, replacement: Replacement) -> Replacement:
         return replacement.over(self.content)
+
+
+@dataclass(frozen=True)
+class ALinkStandsThere:
+    """What a build finds under a name a link stands at.
+
+    It is never written through and never replaced: a link points
+    wherever it was made to point, which no authority covers. The rule
+    answers it with a refusal of its own, so nothing here has to decide
+    what a link may become.
+    """
 
 
 @dataclass(frozen=True)
@@ -799,14 +1012,19 @@ class SomethingUnreadableStandsThere:
 
 
 def _what_stands_at(
-    path: pathlib.Path,
-) -> "NothingStandsThere | AnArtefactStandsThere | SomethingUnreadableStandsThere":
-    """What stands under a name, as one of the three things it can be.
+    directory: OpenDirectory, name: str
+) -> "NothingStandsThere | ALinkStandsThere | AnArtefactStandsThere | SomethingUnreadableStandsThere":
+    """What stands under a name inside the directory a build holds open,
+    as one of the four things it can be.
 
-    The three are kept apart because they are answered differently: a
-    free name is written, readable bytes may be replaced and have a
-    digest, and something unreadable is neither replaced nor given a
-    digest of its own.
+    The four are kept apart because they are answered differently: a
+    free name is written, a link is never written through, readable
+    bytes may be replaced and have a digest, and something unreadable is
+    neither replaced nor given a digest of its own.
+
+    Asked of the open directory, so that what is refused or replaced is
+    what stands inside the directory this build was authorised over, and
+    not whatever its pathname names by then.
 
     What stands there is asked for its kind before anything is opened.
     An artefact is a regular file, and opening a name that is not one
@@ -817,7 +1035,7 @@ def _what_stands_at(
     is an artefact this tool may replace, so its kind alone settles it.
     """
     try:
-        standing = os.lstat(path)
+        standing = directory.what_stands_at(name)
     except FileNotFoundError:
         return NothingStandsThere()
     except OSError as failure:
@@ -825,6 +1043,8 @@ def _what_stands_at(
             f"the operating system answered {failure.strerror or str(failure)!r} "
             "when this tool asked what stands there"
         )
+    if stat.S_ISLNK(standing.st_mode):
+        return ALinkStandsThere()
     if not stat.S_ISREG(standing.st_mode):
         return SomethingUnreadableStandsThere(
             f"what stands there is {_the_kind_of(standing.st_mode)}, and an "
@@ -834,7 +1054,7 @@ def _what_stands_at(
             "Take what stands there away",
         )
     try:
-        return AnArtefactStandsThere(path.read_bytes())
+        return AnArtefactStandsThere(directory.read(name))
     except OSError as failure:
         return SomethingUnreadableStandsThere(
             f"the operating system answered {failure.strerror or str(failure)!r} "
