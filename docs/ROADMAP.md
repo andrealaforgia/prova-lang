@@ -1255,3 +1255,40 @@ there.
   digits) is only safe while the interpreter's own limit is at least that; read the
   limit actually in force and refuse a literal above it with the same `syntax`
   refusal. Pre-existing; raised by the R3 review.
+
+## 9. Delivered so far
+
+Each row is a delivered feature, with the commit that closed its record. The
+per-delivery step notes and generated briefs that used to sit under
+`docs/feature/` and `docs/<name>/` were removed; `git log` and `git show
+<commit>^:docs/<name>/DECISIONS.md` still reach them. The tests are the
+durable statement of each behaviour.
+
+| Feature | Closing commit | What it does | Known limits |
+|---|---|---|---|
+| F1 shipped examples guarded | 3b7ded7 | The suite runs the shipped examples, so a change that breaks one fails. | Covers only the shipped examples. |
+| F2 cyclic calls | 67c4fc7 | A program whose calls form a cycle is refused (`cyclic_dependency`), naming the functions. | No source position: a cycle spans declarations. |
+| F2fix | 5a41451 | Order of the names in a cycle refusal is fixed, pinned by example and by property. | The generator draws at most 3 functions; 4-function shapes are pinned by examples. |
+| F3 duplicate declarations | e6b79be | A name declared twice is refused (`duplicate_declaration`); both places named in the reason. Redeclaring `Int`, `Bool`, `Unit` counts. | One location field, so the second place is only in the reason text. |
+| F4 recursive types | ac6f43a | Data that leads back to itself is refused (`recursive_type`), with the cycle's type list. | Function checks do not run once a type cycle is found: they are defined on acyclic types only. |
+| F5 binding scope | e765700 | A binding that hides a visible name is refused (`shadowed_binding`); `result` is reserved (`reserved_name`). Parameters are bindings too (Owner choice). | "builtin" read as the builtin operator names; builtin type names live in another namespace. |
+| F6 names and markers | 6183193 | Seven spelling rules for names and markers, reported as `syntax` with a location. An empty source is refused everywhere a program is read. | Field names and type references in signatures are not spelling-checked. |
+| F7 operator arity | f8ae4a4 | An operator given the wrong number of arguments is refused with `arity_mismatch`, in contracts too; a wrong count and a wrong type are both reported. | Operator table is the one source of arities. |
+| F8 function examples | 8e4a32f | An example must call its own function; otherwise `unrelated_example` (wrong count stays `arity_mismatch`). | None recorded. |
+| F9 out of profile | 56faab9 | Out-of-profile source answers `unsupported` / `unsupported_construct`; manifest publishes a statuses map. | A trailing form counts as an expression only if its head looks like one; a misspelled declaration word stays a syntax error. |
+| F10 diagnostic fields | 6a8635c | Every diagnostic carries `source_revision` (SHA-256 of the UTF-8 bytes), symbol, expected and actual. Non-text source is refused. | The tree keeps no place for types in signatures or fields, so such refusals point at the declared name; the manifest publishes the granularity per category. |
+| F11 manifest | 7070f08 | `discover` publishes categories, shapes and the language beside the operation list; published fields equal emitted fields. | Shapes only for available operations; `source` published as optional. |
+| F12 published tree | 16175eb | `parse` returns the typed tree as JSON nodes (`kind`, `position`), kinds listed in the manifest; comments published verbatim. | A comment attaches to the first node after it, else to the program node. |
+| F13 contract report | 7eceb90 | `check` reports each contract block as omitted, trivial or stated. | `(requires)` with no clause cannot be told from an absent block. |
+| F14 budgets | 023dad4 | Four budgets (input, time, memory, output) with own refusal categories; lowered per run through `PROVA_BUDGET_*` variables. Numbers are Owner decision D5. | Published as declared, not measured on other machines; time and memory observed at stage boundaries only; a refusal is always delivered even if over budget. |
+| F15 canonical format | 1c994a6 | `format` returns one canonical layout and keeps comments (own line, column 1, above the next declaration). | A comment written inside a declaration is moved to stand above the next declaration. |
+| F16 obligation inventory | 6c12e91 | `verify` lists every obligation, ids `kind:function:site` (structural path, never a line), all `not_attempted`. | Every call to a declared function counts, even with no precondition. The parse-and-check preamble in `service.py` is repeated, not extracted. |
+| F16fix | e9163f4 | A call position that loses its obligation is noticed; a function's own `requires` seeds what its body owes. | None recorded. |
+| F17 provenance | 02b275a | Answers name what they stand on (versions, dependency digest); `result` and `execution_status` kept apart; `tool_failure` is its own status. | Solver fields were "not applicable" until F18. |
+| F18 solver discharge | 8301497 | Obligations in the core fragment go to pinned Z3: quantifier-free Booleans, linear integers (unbounded), non-recursive records and unions, acyclic call expansion; the rest is `unknown` with a reason. Trusted, not re-checked. Translation is documented in `docs/translation-to-the-solver.md`. | Multiplication only with a literal operand; no division. Mutation probe: 507 mutants; of 36 survivors examined 15 killed, 18 equivalent, 3 real gaps (closed). Z3 wheel on Linux CI was not yet seen. |
+| R1 robustness | 49e3c43 | A constructor value with the wrong field count is refused (`arity_mismatch`); text past the nesting limit gives `resource_exhausted` / `nesting_limit_exceeded`. | Limits are chosen numbers, see R3. |
+| R2 two crashes | 96195ed | A 1000-digit integer limit; one UTF-8 rule in the request reader for every text field (lone surrogates are `malformed_request`). | None recorded. |
+| R3 robustness | 984a349 | 4000-digit limit on written integers (below the interpreter's 4300), request nesting limit 64. | Refused rather than written by this tool's own routine. |
+
+Standing process facts: the full suite takes about 4.5 minutes; a delivery
+that touches an existing test's expected result stops and asks the Owner.
