@@ -9,6 +9,10 @@ never from the answer under observation.
 
 from __future__ import annotations
 
+import os
+import pathlib
+import tempfile
+
 import json
 import subprocess
 
@@ -219,3 +223,43 @@ def wrong_kind_for(kind: str) -> object:
     where a text is named, and a text where a list of texts is named.
     """
     return "not a list" if "list" in kind else 7
+
+# The values a request built from a published shape carries. A text
+# field takes "3" unless the shape names a field that must be a name of
+# the program or a place in the filesystem: `build` invokes the function
+# its 'entry' names and writes to the file its 'output_file' names, so a
+# request built from its shape with "3" in both would be refused for
+# reasons that say nothing about the shape. The destination stands in
+# one directory per test session and is a path nothing is at.
+THE_FUNCTION_THE_PROGRAM_DECLARES = "twice"
+_DESTINATIONS = [0]
+
+
+def a_destination() -> str:
+    """A path in an existing directory that holds nothing yet, for a
+    request built from the published shape of `build`."""
+    _DESTINATIONS[0] += 1
+    directory = pathlib.Path(tempfile.gettempdir()) / "prova-published-shape"
+    directory.mkdir(exist_ok=True)
+    return str(directory / f"artefact-{os.getpid()}-{_DESTINATIONS[0]}.py")
+
+
+def a_value_matching(operation: str, field: str, described: dict) -> object:
+    """The value a request built only from a published shape carries for
+    one field of it.
+
+    One place answers it for every operation, so an operation added with
+    a field of its own is filled here and not in each test that reads a
+    published shape.
+    """
+    if field == "source":
+        return a_program_for(operation)
+    if field == "descriptor":
+        return A_MACHINE_DESCRIPTOR
+    if field in ("function", "entry"):
+        return THE_FUNCTION_THE_PROGRAM_DECLARES
+    if field == "output_file":
+        return a_destination()
+    if "list" in described["kind"]:
+        return ["3"]
+    return "3"

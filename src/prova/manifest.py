@@ -112,6 +112,19 @@ DESCRIPTOR = Field.must_be_sent(
     "functions of a machine and the assumptions its runtime makes. Its "
     "shape is published under 'machine_descriptor_schema'",
 )
+ENTRY = Field.must_be_sent(
+    "entry",
+    "text",
+    "the name the submitted program declares for the function the artefact "
+    "invokes when it is run",
+)
+OUTPUT_FILE = Field.must_be_sent(
+    "output_file",
+    "text",
+    "the file to write the artefact to: the directory of that path must "
+    "already exist and nothing may stand at the path itself, or the request "
+    "is refused and nothing is written",
+)
 ARGUMENTS = Field.may_be_sent(
     "arguments",
     "list of texts",
@@ -163,6 +176,23 @@ STANDS_ON = Field.when_completed(
     "revision under 'source_digest', and on nothing else",
 )
 EVERY_ANSWER = (OPERATION_ANSWERED, STATUS, DIAGNOSTICS)
+
+
+# What an answer resting on a solver's word discloses. One definition,
+# read by every operation that may rest on one: the obligations of a
+# program are settled in one place, so what trusting that settlement
+# means is said in one place too.
+TRUST = Field.when(
+    "trust",
+    "object",
+    "when a solver was asked about at least one obligation",
+    "what the word 'proved' rests on: under 'trusted_from' what was "
+    "trusted, under 'solver' and 'encoding' the solver asked and the "
+    "translation written for it, and under 'rechecked_by_this_tool' whether "
+    "this tool checked that result again, which is false. SPEC.md lines "
+    "302-305 allow this tool to trust a solver's validity result only while "
+    "it discloses that trust",
+)
 
 
 @dataclass(frozen=True)
@@ -459,19 +489,7 @@ THE_OPERATIONS = Catalogue(
                         "is still there to read, and a failure of this tool "
                         "is never a statement about the program",
                     ),
-                    Field.when(
-                        "trust",
-                        "object",
-                        "when a solver was asked about at least one obligation",
-                        "what the word 'proved' rests on: under "
-                        "'trusted_from' what was trusted, under 'solver' and "
-                        "'encoding' the solver asked and the translation "
-                        "written for it, and under 'rechecked_by_this_tool' "
-                        "whether this tool checked that result again, which "
-                        "is false. SPEC.md lines 302-305 allow this tool to "
-                        "trust a solver's validity result only while it "
-                        "discloses that trust",
-                    ),
+                    TRUST,
                 ),
             ),
         ),
@@ -604,7 +622,36 @@ THE_OPERATIONS = Catalogue(
                 ),
             ),
         ),
-        Operation("build", InACategory("building"), NotAnsweredYet()),
+        Operation(
+            "build",
+            InACategory("building"),
+            answering(
+                (SOURCE, ENTRY, OUTPUT_FILE),
+                AN_ANSWER_OF_THE_PROFILE
+                + (
+                    Field.when_completed(
+                        "result",
+                        "object",
+                        "what this build published, under 'artefact': the "
+                        "'path' it was written to, the 'entry' it invokes, "
+                        "the 'source_revision' the artefact stands for "
+                        "-- the SHA-256 of the exact characters that were "
+                        "verified, "
+                        "which the artefact records too and answers about "
+                        "through its own 'certifies' -- the 'configuration' "
+                        "it was verified under, being the profile, the solver "
+                        "pinned behind the evidence and the four budgets, and "
+                        "the 'evidence_digest', the digest over the aggregate "
+                        "and the inventory that certified it. An artefact is "
+                        "published only for a program whose aggregate says "
+                        "verified; anything else is refused with "
+                        f"'{checker.NOT_SHOWN_WHOLE}', names what stopped it, "
+                        "and writes nothing at all",
+                    ),
+                    TRUST,
+                ),
+            ),
+        ),
     )
 )
 

@@ -13,7 +13,7 @@ too.
 from __future__ import annotations
 
 from _f11_manifest_fixtures import (
-    A_MACHINE_DESCRIPTOR,
+    a_value_matching,
     A_PROGRAM,
     a_program_for,
     ask,
@@ -28,16 +28,7 @@ THE_CATEGORY_A_MISREAD_FIELD_CARRIES = "malformed_request"
 def _matching_request(operation: str, shape: dict) -> dict:
     request = {"operation": operation}
     for field, described in shape["request"]["fields"].items():
-        if field == "source":
-            request[field] = a_program_for(operation)
-        elif field == "descriptor":
-            request[field] = A_MACHINE_DESCRIPTOR
-        elif field == "function":
-            request[field] = "twice"
-        elif "list" in described["kind"]:
-            request[field] = ["3"]
-        else:
-            request[field] = "3"
+        request[field] = a_value_matching(operation, field, described)
     return request
 
 

@@ -243,6 +243,14 @@ EVALUATION_DEPTH_EXCEEDED = "evaluation_depth_exceeded"
 # multiplies large numbers breaks no rule, and an integer under the
 # limit is still kept and written exactly however large it is.
 WRITTEN_DIGITS_EXCEEDED = "written_integer_digits_exceeded"
+
+# What a build refuses with: a destination this tool does not write to,
+# and a program the whole of which was not shown. The words are written
+# here, where every category of every refusal is written, and the build
+# reads them from here.
+OUTPUT_DIRECTORY_ABSENT = "output_directory_absent"
+OUTPUT_FILE_EXISTS = "output_file_exists"
+NOT_SHOWN_WHOLE = "not_shown_whole"
 # A budget of the whole run passed: the source was larger than this tool
 # reads, the run had no time left, it had taken more memory than it is
 # given, or its answer was larger than it may print. Budgets too, and
@@ -511,6 +519,19 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
     ),
     ROLE_PRECONDITION_RESTRICTED: DiagnosticKind(
         AboutARole, granularity=("declaration",)
+    ),
+    # What a build refuses with. Each stands at no place in any text --
+    # the destination is a field of the request and the evidence is about
+    # the whole program -- and each carries the revision of the source the
+    # request submitted, so a reader knows which text the refusal is about.
+    OUTPUT_DIRECTORY_ABSENT: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
+    ),
+    OUTPUT_FILE_EXISTS: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
+    ),
+    NOT_SHOWN_WHOLE: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
     ),
     "operation_unavailable": DiagnosticKind(
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=(), revision=NEVER

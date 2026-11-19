@@ -361,6 +361,17 @@ def _example(example: syntax.Example) -> Form:
     )
 
 
+def expression_text(expr: object) -> str:
+    """One expression written as core-0 writes it, on one line.
+
+    The one place an expression becomes text, asked by the canonical
+    text of a program and by the artefact a build generates, whose
+    refusal quotes the contract that did not hold the way the source
+    writes it.
+    """
+    return _expression(expr).flat()
+
+
 def _expression(expr: object) -> object:
     return _EXPRESSIONS[type(expr)](expr)
 

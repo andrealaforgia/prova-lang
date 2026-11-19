@@ -9,6 +9,7 @@ import json
 from dataclasses import dataclass
 
 from prova import (
+    building,
     checker,
     discharge,
     encoding,
@@ -52,6 +53,7 @@ AVAILABLE_OPERATIONS = (
     "parse",
     "format",
     "machine",
+    "build",
 )
 
 # The operations that read a program from the `source` field of the
@@ -65,8 +67,12 @@ SOURCE_READING_OPERATIONS = (
     "parse",
     "format",
     "machine",
+    "build",
 )
-UNAVAILABLE_OPERATIONS = frozenset({"build"})
+# No operation of this tool is refused for not being answered yet. The
+# answer below and the category it carries stay where they are, so an
+# operation added without one keeps a refusal that says exactly that.
+UNAVAILABLE_OPERATIONS = frozenset()
 
 # The profile this tool answers for, written once: the manifest publishes
 # it, and the digest of what an answer stands on is taken over it.
@@ -114,6 +120,14 @@ STATUSES = {
         "a budget this tool declares was passed while reading the request, so "
         "the tool stopped there; no rule of core-0 was read over what it had, "
         "and the limit that was passed is published among the resource limits"
+    ),
+    verdict.NOT_VERIFIED: (
+        "the source is a core-0 program and the whole of it was not shown: "
+        "an operation that publishes something only for a program that was "
+        "shown whole -- a build -- published nothing, and the refusal names "
+        "what stopped it. It says nothing against the program itself: no "
+        "rule of core-0 was broken, and the 'verify' operation answers the "
+        "whole inventory for the same source"
     ),
     "unavailable": "the operation is not one this tool answers yet",
 }
@@ -182,6 +196,11 @@ def _answer(request: "Request", run: Run) -> dict:
             if isinstance(descriptor, MalformedRequest):
                 return descriptor.response_for(operation)
             return _run_machine(source, descriptor, run)
+        if operation == "build":
+            asked = request.build_asked()
+            if isinstance(asked, MalformedRequest):
+                return asked.response_for(operation)
+            return _run_build(source, asked, run)
         asked = request.evaluation_asked()
         if isinstance(asked, MalformedRequest):
             return asked.response_for(operation)
@@ -574,6 +593,64 @@ class ArgumentTexts:
 
 
 @dataclass(frozen=True)
+class RequiredText:
+    """One field of a request that must carry a text, and what that text
+    is read as.
+
+    The field is named once, in the manifest, and the refusal sends a
+    caller to that name: the reader and the published shape cannot drift
+    apart. The sentence that says what the text is for belongs to the
+    field, so one object answers both what a caller must send and why.
+    """
+
+    field: object
+    read_as: str
+    what_to_send: str
+
+    def read(self, written: object) -> "SubmittedText | MalformedRequest":
+        """The text of this field, or the refusal naming it.
+
+        It is handed the value the one reader of a submitted request
+        pulled out for it: a field of a request is read in one place,
+        and this says only what that field must be.
+        """
+        if isinstance(written, str):
+            return SubmittedText.read(self.field.name, written)
+        return MalformedRequest.about(
+            self.field.name,
+            f"the {self.field.name!r} field of the request carries "
+            f"{type(written).__name__} and not {self.read_as}: "
+            f"{self.what_to_send}",
+        )
+
+
+ENTRY_ASKED = RequiredText(
+    manifest.ENTRY,
+    "the text of a name",
+    "this tool invokes the function the submitted program declares under "
+    "that name, and a value of another kind names nothing to invoke; send "
+    "the entry as one JSON string, and read the names a program declares by "
+    "sending it to the 'check' operation first",
+)
+OUTPUT_FILE_ASKED = RequiredText(
+    manifest.OUTPUT_FILE,
+    "the text of a path",
+    "this tool writes one artefact to the characters of that field, and a "
+    "value of another kind has no characters to open; send the path as one "
+    "JSON string naming a file inside a directory that already exists",
+)
+
+
+@dataclass(frozen=True)
+class BuildAsked:
+    """What a request asks a build to do: which function the artefact
+    invokes, and which file to write it to."""
+
+    entry: SubmittedText
+    output_file: SubmittedText
+
+
+@dataclass(frozen=True)
 class EvaluationAsked:
     """What a request asks an evaluation to do: which function, and with
     which argument texts."""
@@ -671,6 +748,24 @@ class Request:
         if isinstance(read, machine.DescriptorDefects):
             return MalformedRequest(read.defects)
         return read
+    def build_asked(self) -> "BuildAsked | MalformedRequest":
+        """Which function the artefact is to invoke and which file to
+        write it to, or every field of the two that could not be read.
+
+        Both are read in one pass, as an evaluation's two fields are: a
+        client that wrote both wrongly is told about both at once.
+        """
+        entry = ENTRY_ASKED.read(self.submitted.get(manifest.ENTRY.name))
+        output_file = OUTPUT_FILE_ASKED.read(
+            self.submitted.get(manifest.OUTPUT_FILE.name)
+        )
+        if isinstance(entry, MalformedRequest):
+            if isinstance(output_file, MalformedRequest):
+                return entry.and_also(output_file)
+            return entry
+        if isinstance(output_file, MalformedRequest):
+            return output_file
+        return BuildAsked(entry, output_file)
 
     def evaluation_asked(self) -> "EvaluationAsked | MalformedRequest":
         """Which function the request asks to call and with which
@@ -1371,30 +1466,176 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("verify")
-    program = checked.program
-
-    owed = obligations.inventory_for(program)
-    settled = discharge.Discharge(program, solving.PinnedZ3(), run).settle(owed)
-    ran = examples.run_declared(program, run)
+    shown = _what_was_shown(checked, run)
 
     answer = {
         "operation": "verify",
         "status": "completed",
         "claim": {"kind": "obligation_inventory", "scope": "this input"},
         "source_digest": _source_digest(source),
-        "stands_on": _stands_on(settled.standing),
+        "stands_on": _stands_on(shown.standing),
         "diagnostics": [],
-        "result": {"inventory": settled.inventory_of(owed)},
+        "result": shown.inventory,
     }
-    disclosed = settled.disclosure()
-    if disclosed is not None:
-        answer["trust"] = disclosed
-    answer["aggregate"] = verdict.Verdict.over(
-        settled.findings,
-        _how_the_examples_ran(ran),
-        verdict.StaticChecksPassed.of(checked.diagnostics),
-    ).published()
+    if shown.disclosure is not None:
+        answer["trust"] = shown.disclosure
+    answer["aggregate"] = shown.over.published()
     return answer
+
+
+@dataclass(frozen=True)
+class WhatWasShown:
+    """Everything one verification of a program found: the inventory of
+    its obligations, what stood behind the attempt, and the word over
+    the whole of it.
+
+    One owner, asked by the operation that reports it and by the
+    operation that publishes an artefact only when the word is
+    `verified`. Two paths that each ran the verification their own way
+    could disagree about one program, and then the artefact and the
+    answer the Owner read before it would stand on different evidence.
+    """
+
+    inventory: dict
+    standing: object
+    disclosure: object
+    over: verdict.Verdict
+
+
+def _what_was_shown(checked: "Checked", run: Run) -> WhatWasShown:
+    owed = obligations.inventory_for(checked.program)
+    settled = discharge.Discharge(checked.program, solving.PinnedZ3(), run).settle(
+        owed
+    )
+    ran = examples.run_declared(checked.program, run)
+    return WhatWasShown(
+        {"inventory": settled.inventory_of(owed)},
+        settled.standing,
+        settled.disclosure(),
+        verdict.Verdict.over(
+            settled.findings,
+            _how_the_examples_ran(ran),
+            verdict.StaticChecksPassed.of(checked.diagnostics),
+        ),
+    )
+
+
+def _the_configuration() -> dict:
+    """The configuration a verification of this tool stands inside, as
+    an artefact records it: the profile it is for, the solver pinned
+    behind the word `proved`, and the four budgets of a build.
+
+    Read from the three owners that publish them, so what an artefact
+    records and what the manifest states are the same numbers.
+    """
+    return {
+        "profile": dict(THE_PROFILE),
+        "solver": provenance.the_solver_it_requires(),
+        "budgets": Budgets.declared().published_for(("build",), RESOURCE_EXHAUSTED)[
+            "build"
+        ],
+    }
+
+
+def _run_build(source: SubmittedText, asked: BuildAsked, run: Run) -> dict:
+    """The one artefact of a program that was shown whole, written to
+    the file the request names -- or the refusal, which writes nothing.
+
+    The two things that can stand in the way are read together: the
+    destination, and whether the whole of the program was shown. A
+    request that is wrong in both ways is told about both at once, and
+    nothing is written until both are accepted. SPEC.md line 290: a
+    build fails closed while verification is incomplete.
+    """
+    checked = _checked_program(source, run)
+    if isinstance(checked, Refusal):
+        return checked.response_for("build")
+    program = checked.program
+    revision = SourceRevision.of(source)
+
+    refused: list[checker.Diagnostic] = []
+    entry = building.Entry.of(asked.entry.characters, program)
+    if entry is None:
+        refused.append(
+            checker.Diagnostic(
+                "unknown_function",
+                f"this program declares no function named "
+                f"{asked.entry.characters!r}, and the 'entry' field of the "
+                "request names it as the one an artefact of it would invoke: "
+                "it declares "
+                f"{', '.join(repr(name) for name in sorted(program.functions))}. "
+                "Nothing was written. Send an 'entry' naming one of those, "
+                "which the 'check' operation also lists for the same source",
+                about=checker.AboutASymbol(asked.entry.characters),
+            )
+        )
+    destination = building.Destination.at(asked.output_file.characters)
+    if isinstance(destination, building.Unwritable):
+        refused.append(
+            checker.Diagnostic(destination.category, destination.reason)
+        )
+
+    shown = _what_was_shown(checked, run)
+    certified = building.Certified.shown(
+        shown.over, program, source.characters, revision.rendered(), shown.inventory
+    )
+    if isinstance(certified, building.NotShownWhole):
+        withheld = certified.refusal()
+        refused.append(checker.Diagnostic(withheld.category, withheld.reason))
+
+    if refused:
+        return _build_refused(refused, revision, shown)
+
+    artefact = building.Artefact.of(certified, entry, _the_configuration())
+    unwritten = destination.publish(artefact.text)
+    if unwritten is not None:
+        return _build_refused(
+            [checker.Diagnostic(unwritten.category, unwritten.reason)],
+            revision,
+            shown,
+        )
+
+    answer = {
+        "operation": "build",
+        "status": "completed",
+        "claim": {"kind": "artefact", "scope": "this input"},
+        "source_digest": revision.rendered(),
+        "stands_on": _stands_on(shown.standing),
+        "diagnostics": [],
+        "result": {"artefact": artefact.published(destination)},
+    }
+    if shown.disclosure is not None:
+        answer["trust"] = shown.disclosure
+    return answer
+
+
+def _build_refused(
+    refused: list, revision: SourceRevision, shown: WhatWasShown
+) -> dict:
+    """The one refusal a build answers with, carrying every reason it
+    found and no artefact.
+
+    The status says which kind of refusal it is: a program the whole of
+    which was not shown is `not_verified`, and anything else is a field
+    of the request this tool could not use, which is `invalid_input`. A
+    request that is wrong in both ways is the first: the evidence is the
+    thing that would still stop the build once the request is repaired.
+    """
+    status = (
+        verdict.NOT_VERIFIED
+        if any(
+            diagnostic.category == checker.NOT_SHOWN_WHOLE
+            for diagnostic in refused
+        )
+        else "invalid_input"
+    )
+    return {
+        "operation": "build",
+        "status": status,
+        "diagnostics": [
+            _diagnostic_dict(diagnostic, revision) for diagnostic in refused
+        ],
+    }
 
 
 def _how_the_examples_ran(ran: examples.DeclaredExamples) -> verdict.ExamplesRun:

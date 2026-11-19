@@ -27,6 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "acceptance
 from _f22_fixtures import (  # noqa: E402
     ASSURANCE_FAILURE,
     answered,
+    artefact_of,
     build,
     digest_of,
     evaluate,
