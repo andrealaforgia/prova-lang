@@ -32,6 +32,7 @@ def test_discover_reports_each_operation_availability():
         "verify": "available",
         "parse": "available",
         "format": "available",
+        "machine": "available",
         "build": "unavailable",
     }
 
