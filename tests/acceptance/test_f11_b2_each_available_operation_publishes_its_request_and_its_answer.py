@@ -14,7 +14,9 @@ an answered field that was never published, both fail.
 from __future__ import annotations
 
 from _f11_manifest_fixtures import (
+    A_MACHINE_DESCRIPTOR,
     A_PROGRAM,
+    a_program_for,
     ask,
     manifest,
     availability_of_each_operation,
@@ -45,13 +47,18 @@ def _a_request_matching(operation: str, shape: dict) -> dict:
     shape: each field the shape names, carrying a value of the kind it
     names, and nothing else.
 
-    The values are the ones the program in the fixtures takes: it
-    declares one function, `twice`, of one whole-number argument.
+    The values are the ones the program the request carries takes: the
+    program in the fixtures, which declares one function `twice` of one
+    whole-number argument, or -- for the operation whose other field
+    names what its program declares -- the machine program and the
+    descriptor that names its eight parts.
     """
     request = {"operation": operation}
     for field, described in shape["request"]["fields"].items():
         if field == "source":
-            request[field] = A_PROGRAM
+            request[field] = a_program_for(operation)
+        elif field == "descriptor":
+            request[field] = A_MACHINE_DESCRIPTOR
         elif field == "function":
             request[field] = "twice"
         elif "list" in described["kind"]:

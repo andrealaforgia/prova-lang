@@ -13,7 +13,9 @@ too.
 from __future__ import annotations
 
 from _f11_manifest_fixtures import (
+    A_MACHINE_DESCRIPTOR,
     A_PROGRAM,
+    a_program_for,
     ask,
     published_operation_shapes,
     wrong_kind_for,
@@ -27,7 +29,9 @@ def _matching_request(operation: str, shape: dict) -> dict:
     request = {"operation": operation}
     for field, described in shape["request"]["fields"].items():
         if field == "source":
-            request[field] = A_PROGRAM
+            request[field] = a_program_for(operation)
+        elif field == "descriptor":
+            request[field] = A_MACHINE_DESCRIPTOR
         elif field == "function":
             request[field] = "twice"
         elif "list" in described["kind"]:

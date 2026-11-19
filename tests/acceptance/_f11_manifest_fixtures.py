@@ -68,6 +68,64 @@ A_PROGRAM = """\
 """
 
 
+# The smallest machine a request can be about: a counter that counts up
+# and accepts every count, and the descriptor naming its eight parts.
+# Written here by hand, like the program above, because the `machine`
+# operation takes two fields that must agree with each other -- a
+# descriptor names what its program declares -- so a request built from
+# the published shape needs both.
+A_MACHINE_PROGRAM = """\
+(deftype Counter (record (held Int)))
+(deftype Event (union (Count)))
+(deftype Outcome (record (state Counter) (accepted Bool)))
+
+(defn sound
+  (sig ((current Counter)) -> Bool ! pure)
+  (examples (example (sound (Counter 0)) => true))
+  (>= (.held current) 0))
+
+(defn empty-counter
+  (sig () -> Counter ! pure)
+  (examples (example (empty-counter) => (Counter 0)))
+  (Counter 0))
+
+(defn count-one
+  (sig ((current Counter) (event Event)) -> Outcome ! pure)
+  (examples (example (count-one (Counter 0) (Count)) => (Outcome (Counter 1) true)))
+  (match event ((Count) (Outcome (Counter (+ (.held current) 1)) true))))
+
+(defn counted-state
+  (sig ((produced Outcome)) -> Counter ! pure)
+  (examples (example (counted-state (Outcome (Counter 1) true)) => (Counter 1)))
+  (.state produced))
+
+(defn any-count
+  (sig ((current Counter) (event Event)) -> Bool ! pure)
+  (examples (example (any-count (Counter 0) (Count)) => true))
+  true)
+"""
+A_MACHINE_DESCRIPTOR = {
+    "schema": "machine-descriptor/1",
+    "types": {"state": "Counter", "event": "Event", "outcome": "Outcome"},
+    "roles": {
+        "init": "empty-counter",
+        "step": "count-one",
+        "state-of": "counted-state",
+        "admissible": "any-count",
+        "invariant": "sound",
+    },
+    "assumptions": ["One count at a time, over one authoritative counter."],
+}
+
+# The program a request for `operation` is about: the machine for the one
+# operation whose other field names what its program declares, and the
+# program above for every other.
+def a_program_for(operation: str) -> str:
+    if operation == "machine":
+        return A_MACHINE_PROGRAM
+    return A_PROGRAM
+
+
 def ask(request: dict, timeout: float = 20.0) -> dict:
     """The answer the `prova` command gives to one request."""
     proc = subprocess.run(
