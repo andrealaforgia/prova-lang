@@ -251,6 +251,12 @@ WRITTEN_DIGITS_EXCEEDED = "written_integer_digits_exceeded"
 OUTPUT_DIRECTORY_ABSENT = "output_directory_absent"
 OUTPUT_FILE_EXISTS = "output_file_exists"
 NOT_SHOWN_WHOLE = "not_shown_whole"
+
+# What a build refuses with when the module it would write cannot be
+# read by the interpreter it is written for: a program may nest its
+# conditions deeper than any Python compiler reads blocks, and a file
+# that cannot be read is not an artefact.
+GENERATED_NESTING_EXCEEDED = "generated_nesting_exceeded"
 # A budget of the whole run passed: the source was larger than this tool
 # reads, the run had no time left, it had taken more memory than it is
 # given, or its answer was larger than it may print. Budgets too, and
@@ -531,6 +537,9 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
     ),
     NOT_SHOWN_WHOLE: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
+    ),
+    GENERATED_NESTING_EXCEEDED: DiagnosticKind(
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
     ),
     "operation_unavailable": DiagnosticKind(

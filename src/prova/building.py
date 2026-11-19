@@ -36,13 +36,14 @@ import pprint
 import tempfile
 from dataclasses import dataclass
 
-from prova import formatter, provenance, syntax, verdict
+from prova import formatter, provenance, reader, syntax, values, verdict
 
 # The categories a build refuses the destination with. Each is declared
 # in checker.DIAGNOSTIC_KINDS, where a client reads what it carries.
 OUTPUT_DIRECTORY_ABSENT = "output_directory_absent"
 OUTPUT_FILE_EXISTS = "output_file_exists"
 NOT_SHOWN_WHOLE = "not_shown_whole"
+GENERATED_NESTING_EXCEEDED = "generated_nesting_exceeded"
 
 # The line between what this build recorded about one source and the
 # program it translated. Everything after it is the same text for two
@@ -91,6 +92,46 @@ class Destination:
     """
 
     path: pathlib.Path
+
+    @staticmethod
+    def unusable_text(written: str) -> "str | None":
+        """Why the text of the 'output_file' field is not a path this
+        tool can write to at all, or `None`.
+
+        Asked by the reader of the request, before any path is built:
+        text with no characters, text carrying a character no file name
+        can carry, and a path that is not absolute are all answers about
+        the request and not about a program. A relative path would be
+        read against whatever directory this process happens to stand
+        in, which is not something the caller named.
+        """
+        if not written:
+            return (
+                "the 'output_file' field of the request carries no "
+                "characters, and an artefact is written to one named file: "
+                "send the absolute path of a file to write, inside a "
+                "directory that already exists"
+            )
+        if "\x00" in written:
+            return (
+                "the 'output_file' field of the request carries a character "
+                f"at position {written.index(chr(0))} that no file name can "
+                "carry (the zero byte): this tool opens the characters of "
+                "that field as a path, and the operating system reads a path "
+                "up to the first zero byte. Nothing was written. Send the "
+                "path as text without a zero byte in it"
+            )
+        if not pathlib.PurePath(written).is_absolute():
+            return (
+                f"the 'output_file' field of the request carries "
+                f"{written!r}, which is not an absolute path: a path that is "
+                "not absolute is read against the directory this process "
+                f"happens to stand in, which is {str(pathlib.Path.cwd())!r} "
+                "for this run and is not something the request named. "
+                "Nothing was written. Send the absolute path of the file to "
+                "write"
+            )
+        return None
 
     @classmethod
     def at(cls, written: str) -> "Destination | Unwritable":
@@ -319,6 +360,14 @@ class Lines:
     def write(self, depth: int, text: str) -> None:
         self._written.append(("    " * depth) + text)
 
+    def anything_written(self) -> bool:
+        """Whether writing an expression needed statements of its own.
+
+        Asked of a scratch run, which is how the translation finds out
+        whether a part of a program can be written as one expression.
+        """
+        return bool(self._written)
+
     def blank(self) -> None:
         self._written.append("")
 
@@ -351,7 +400,7 @@ class Translation:
 
     def text(self) -> str:
         lines = Lines()
-        lines.write(0, f"_FIELDS = {_fields_of(self.program)!r}")
+        lines.write(0, f"_CONSTRUCTORS = {_constructors_of(self.program)!r}")
         lines.blank()
         for declared in self.program.in_source_order():
             if isinstance(declared, syntax.Function):
@@ -435,6 +484,12 @@ class Translation:
                 lines.write(depth, f"{identifier} = {value}")
             return self._expression(expr.body, inner, lines, depth)
         if isinstance(expr, syntax.If):
+            parts = [
+                self._as_one_expression(part, scope)
+                for part in (expr.condition, expr.then_branch, expr.else_branch)
+            ]
+            if all(part is not None for part in parts):
+                return f"({parts[1]} if {parts[0]} else {parts[2]})"
             answer = lines.temporary()
             condition = self._expression(expr.condition, scope, lines, depth)
             lines.write(depth, f"if {condition}:")
@@ -471,11 +526,29 @@ class Translation:
             "HOW: write that node in prova.building.Translation._expression."
         )
 
+    def _as_one_expression(self, expr: object, scope: Scope) -> "str | None":
+        """`expr` as one Python expression, or `None` when writing it
+        needs statements of its own.
+
+        An `if` and a conjunction are written as one expression wherever
+        their parts are expressions, because Python's own conditional
+        and its `and` stop at the part that settles the answer, exactly
+        as the evaluator does. It is not only shorter: a program that
+        nests a thousand conditions inside one another would otherwise
+        nest a thousand blocks, which no Python compiler reads.
+        """
+        scratch = Lines()
+        written = self._expression(expr, scope, scratch, 0)
+        return None if scratch.anything_written() else written
+
     def _operator(
         self, expr: syntax.OperatorCall, scope: Scope, lines: Lines, depth: int
     ) -> str:
         operator = expr.operator
         if operator in ("and", "or"):
+            written = self._as_one_expression_of_two(expr, scope)
+            if written is not None:
+                return written
             left = self._expression(expr.args[0], scope, lines, depth)
             answer = lines.temporary()
             # The right operand is computed only when the left one does
@@ -497,6 +570,21 @@ class Translation:
         if operator == "=":
             return f"_equal({written[0]}, {written[1]})"
         return f"({written[0]} {operator} {written[1]})"
+
+    def _as_one_expression_of_two(
+        self, expr: syntax.OperatorCall, scope: Scope
+    ) -> "str | None":
+        """A conjunction or a disjunction as one Python expression, or
+        `None` when either operand needs statements.
+
+        Python's `and` and `or` do not compute the right operand when
+        the left one settles the answer, which is what the evaluator
+        does, so this form keeps the meaning and the nesting flat.
+        """
+        parts = [self._as_one_expression(side, scope) for side in expr.args]
+        if any(part is None for part in parts):
+            return None
+        return f"({parts[0]} {expr.operator} {parts[1]})"
 
     def _match(
         self, expr: syntax.Match, scope: Scope, lines: Lines, depth: int
@@ -570,17 +658,24 @@ def _pattern(
     )
 
 
-def _fields_of(program: syntax.Program) -> dict:
-    """The field names of every constructor the program declares, read
-    the way the evaluator reads them: by the name of the constructor a
-    value carries."""
+def _constructors_of(program: syntax.Program) -> dict:
+    """Every constructor the program declares: the type that owns it and
+    the name and declared type of each of its fields.
+
+    Read the way the evaluator reads them, by the name of the
+    constructor a value carries, so the artefact refuses exactly the
+    values `prova.evaluator.check_value_type` refuses: a constructor
+    nothing declares, a constructor given the wrong number of fields, a
+    value of another type where one type is declared, and the same
+    through every field at any depth.
+    """
     named: dict = {}
     for declared in program.types.values():
         if isinstance(declared, syntax.RecordType):
-            named[declared.name] = tuple(name for name, _ in declared.fields)
+            named[declared.name] = (declared.name, tuple(declared.fields))
         elif isinstance(declared, syntax.UnionType):
             for variant in declared.variants:
-                named[variant.name] = tuple(name for name, _ in variant.fields)
+                named[variant.name] = (declared.name, tuple(variant.fields))
     return named
 
 
@@ -589,6 +684,18 @@ def _fields_of(program: syntax.Program) -> dict:
 # one text because it is one thing -- what the artefact is made of --
 # and because a reader of a generated file must be able to read it.
 THE_RUNTIME = '''
+# The field names of every constructor, read from the one table above so
+# that what a field is called and what it must hold cannot disagree.
+_FIELDS = {
+    name: tuple(field for field, _ in fields)
+    for name, (_owner, fields) in _CONSTRUCTORS.items()
+}
+
+# The three types core-0 has of its own, beside the ones the program
+# declares.
+_BUILTIN = ("Unit", "Bool", "Int")
+
+
 class _Unit:
     """The sole value of type Unit, written ()."""
 
@@ -721,12 +828,58 @@ def _is_unit(value):
     return isinstance(value, _Unit)
 
 
+def _digits_written():
+    """How many digits this artefact writes as one integer: the number
+    the compiler declares, unless the interpreter running this file
+    writes fewer because its caller lowered PYTHONINTMAXSTRDIGITS."""
+    interpreter = sys.get_int_max_str_digits()
+    if interpreter == 0 or interpreter >= _DECLARED_DIGITS:
+        return _DECLARED_DIGITS
+    return interpreter
+
+
+def _too_many_digits(value):
+    """Whether `value` writes more digits than this artefact writes,
+    answered without writing it: a value of few enough bits cannot reach
+    the limit whatever its digits are."""
+    limit = _digits_written()
+    if value.bit_length() <= int(limit * 3.321928094887362):
+        return False
+    return abs(value) >= 10 ** limit
+
+
+def _how_many_digits(value):
+    """How many digits `value` writes, counted from its bits, because
+    the interpreter refuses to write the ones this asks about."""
+    size = abs(value)
+    counted = max(1, int(size.bit_length() * 0.30102999566398114))
+    while 10 ** counted <= size:
+        counted += 1
+    while counted > 1 and 10 ** (counted - 1) > size:
+        counted -= 1
+    return counted
+
+
 def _write_value(value):
     """One value as the text a program writes it with, which is the text
     the compiler writes it with too."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
+        if _too_many_digits(value):
+            raise _Refused(
+                "WHAT: this program computed an integer of "
+                + str(_how_many_digits(value)) + " digits and this artefact "
+                "writes an integer of at most " + str(_digits_written())
+                + " digits, which is the limit the compiler publishes and "
+                "enforces for the same program. "
+                "WHY: turning a number into characters costs time that grows "
+                "with the square of its length, and the number itself is not "
+                "in this answer because writing it is the one thing that "
+                "could not be done. "
+                "HOW: run the entry over an input whose answer writes at most "
+                + str(_digits_written()) + " digits."
+            )
         return str(value)
     if isinstance(value, _Unit):
         return "()"
@@ -762,8 +915,18 @@ def _read_value(text, about):
 
 
 def _skipped(at, text):
-    while at < len(text) and text[at].isspace():
-        at += 1
+    """Past the characters that carry no value: the spaces, and a
+    comment from its ';' to the end of its line, which is what the
+    reader of the compiler steps over too."""
+    while at < len(text):
+        if text[at].isspace():
+            at += 1
+            continue
+        if text[at] == ";":
+            while at < len(text) and text[at] != "\\n":
+                at += 1
+            continue
+        return at
     return at
 
 
@@ -821,21 +984,48 @@ def _read_form(text, at, about):
         return True, at
     if word == "false":
         return False, at
-    try:
-        return int(word), at
-    except ValueError:
+    return _read_integer(word, about), at
+
+
+def _read_integer(word, about):
+    """The number `word` writes, read by the grammar the compiler reads
+    an integer literal with: an optional sign and then digits, nothing
+    else, and at most the digits it reads as one literal.
+
+    Python reads more than that -- it accepts the underscores of
+    1_000 -- and a value the compiler refuses must not be a value this
+    artefact answers.
+    """
+    digits = word[1:] if word[:1] in ("+", "-") else word
+    if not digits or not all(character in "0123456789" for character in digits):
         raise _Refused(
             "WHAT: " + about + " writes " + repr(word) + ", which is not a "
             "value of core-0. "
-            "WHY: a value is a whole number, true, false, () or a "
-            "constructor of this program with its fields. "
+            "WHY: a value is a whole number written as an optional sign and "
+            "then digits, true, false, () or a constructor of this program "
+            "with its fields; the compiler reads the same grammar and "
+            "refuses this text too. "
             "HOW: send one of those."
-        ) from None
+        )
+    if len(digits) > _LITERAL_DIGITS:
+        raise _Refused(
+            "WHAT: " + about + " writes an integer literal of "
+            + str(len(digits)) + " digits and this artefact reads at most "
+            + str(_LITERAL_DIGITS) + ", as the compiler does. "
+            "WHY: turning a run of digits into a number costs time that "
+            "grows with the square of its length. "
+            "HOW: write the number with at most " + str(_LITERAL_DIGITS)
+            + " digits."
+        )
+    return int(digits) * (-1 if word[:1] == "-" else 1)
 
 
 def _read_word(text, at, about):
+    """The characters of one name or number: everything up to a space, a
+    bracket or a ';', which is where the reader of the compiler ends an
+    atom too."""
     start = at
-    while at < len(text) and not text[at].isspace() and text[at] not in "()":
+    while at < len(text) and not text[at].isspace() and text[at] not in "();":
         at += 1
     if at == start:
         raise _Refused(
@@ -846,6 +1036,74 @@ def _read_word(text, at, about):
             "HOW: write the value as \\"(Clock 12)\\"."
         )
     return text[start:at], at
+
+
+def _check_declared(value, declared, where):
+    """Refuse `value` unless the declared type `declared` holds it,
+    through every field at any depth.
+
+    The same refusals the compiler gives for the same value: a
+    constructor nothing declares or one given the wrong number of
+    fields is malformed, and a value of another type where this one is
+    declared is ill typed. The entry of a verified program promises
+    nothing about a value outside its declared types, so no such value
+    reaches it.
+    """
+    if declared == "Unit":
+        if not isinstance(value, _Unit):
+            raise _ill_typed(where, declared, value)
+        return
+    if declared == "Bool":
+        if not isinstance(value, bool):
+            raise _ill_typed(where, declared, value)
+        return
+    if declared == "Int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise _ill_typed(where, declared, value)
+        return
+    if not isinstance(value, _Constructed):
+        raise _ill_typed(where, declared, value)
+    if value.constructor not in _CONSTRUCTORS:
+        raise _Refused(
+            "WHAT: " + where + " carries the constructor "
+            + repr(value.constructor) + ", which this program does not "
+            "declare; it declares " + repr(tuple(sorted(_CONSTRUCTORS))) + ". "
+            "WHY: a value of this program is built by one of its own "
+            "constructors. "
+            "HOW: send a value of the declared type " + repr(declared) + "."
+        )
+    owner, fields = _CONSTRUCTORS[value.constructor]
+    if len(fields) != len(value.fields):
+        raise _Refused(
+            "WHAT: " + where + " gives the constructor "
+            + repr(value.constructor) + " " + str(len(value.fields))
+            + " field(s) and it takes " + str(len(fields)) + " "
+            + repr(tuple(field for field, _ in fields)) + ". "
+            "WHY: a value carries every field its declaration names. "
+            "HOW: write one value per field, in the declared order."
+        )
+    if owner != declared:
+        raise _Refused(
+            "WHAT: " + where + " is declared " + repr(declared) + " and "
+            "carries " + _write_value(value) + ", which is a value of "
+            + repr(owner) + ". "
+            "WHY: this artefact answers for the types the entry declares, "
+            "and the program promises nothing about a value of another type. "
+            "HOW: send a value of " + repr(declared) + "."
+        )
+    for (field, field_type), held in zip(fields, value.fields):
+        _check_declared(held, field_type, where + " field " + repr(field))
+
+
+def _ill_typed(where, declared, value):
+    return _Refused(
+        "WHAT: " + where + " is declared " + repr(declared) + " and carries "
+        + _write_value(value) + ". "
+        "WHY: this artefact answers for the types the entry declares, and "
+        "the program promises nothing about a value of another type -- "
+        "running it over one would answer where the compiler refuses. "
+        "HOW: send a value of " + repr(declared) + "."
+    )
 
 
 def certifies(source_text):
@@ -901,14 +1159,14 @@ def main(argv):
             )
         values = []
         for place, written in enumerate(argv):
-            values.append(
-                _read_value(
-                    written,
-                    "argument " + str(place + 1) + " ("
-                    + PARAMETERS[place][0] + " " + PARAMETERS[place][1] + ")",
-                )
+            where = (
+                "argument " + str(place + 1) + " (" + PARAMETERS[place][0]
+                + " " + PARAMETERS[place][1] + ")"
             )
-        answered = _ENTRY(*values)
+            read = _read_value(written, where)
+            _check_declared(read, PARAMETERS[place][1], where)
+            values.append(read)
+        answered = _write_value(_ENTRY(*values))
     except _Refused as refusal:
         sys.stderr.write(str(refusal) + "\\n")
         return 2
@@ -936,7 +1194,7 @@ def main(argv):
             "HOW: report it with the source revision this artefact records.\\n"
         )
         return 4
-    sys.stdout.write(_write_value(answered) + "\\n")
+    sys.stdout.write(answered + "\\n")
     return 0
 
 
@@ -961,7 +1219,7 @@ class Artefact:
     @classmethod
     def of(
         cls, certified: Certified, entry: Entry, configuration: dict
-    ) -> "Artefact":
+    ) -> "Artefact | Unwritable":
         recorded = {
             "artefact_format": ARTEFACT_FORMAT,
             "source_revision": certified.revision,
@@ -1003,6 +1261,16 @@ class Artefact:
             "import hashlib",
             "import sys",
             "",
+            "# The two limits of this artefact, written from the compiler "
+            "that made it:",
+            "# the digits it reads as one integer literal and the digits it "
+            "writes as one",
+            "# integer, which are the numbers the compiler reads and writes "
+            "for the same",
+            "# program.",
+            f"_LITERAL_DIGITS = {reader.LITERAL_DIGITS.maximum!r}",
+            f"_DECLARED_DIGITS = {values.WRITTEN_DIGITS.declared!r}",
+            "",
             "ARTEFACT = "
             + pprint.pformat(recorded, indent=1, width=74, sort_dicts=True),
             "",
@@ -1017,7 +1285,49 @@ class Artefact:
             THE_RUNTIME.strip("\n"),
             "",
         ]
-        return cls("\n".join(written), recorded)
+        return cls._read_back("\n".join(written), recorded)
+
+    @classmethod
+    def _read_back(cls, text: str, recorded: dict) -> "Artefact | Unwritable":
+        """The artefact, once the interpreter it is written for has read
+        it as a module -- or the refusal to publish a file that is not
+        one.
+
+        A program of core-0 can nest its conditions deeper than any
+        Python compiler reads blocks, and a file that cannot be read is
+        not an artefact: it would be published, kept, and fail the first
+        time the Owner ran it. So the generated text is compiled here,
+        before anything is written, and a text that cannot be compiled
+        is refused with the depth it reached.
+        """
+        try:
+            compile(text, "<artefact>", "exec")
+        except SyntaxError as refused:
+            return Unwritable(
+                GENERATED_NESTING_EXCEEDED,
+                "this program was translated into a Python module that the "
+                f"interpreter cannot read: {type(refused).__name__}: "
+                f"{refused.msg}. The translation of a program nests one "
+                "block inside another where the program nests a match "
+                "inside a match, and the deepest part of this one stands "
+                f"{cls._deepest_block(text)} blocks in, which is past what "
+                "the interpreter compiles. Nothing was written. Write the "
+                "inner expressions as separate functions, or as 'let' "
+                "bindings, so that fewer of them stand inside one another, "
+                "and ask for the build again",
+            )
+        return cls(text, recorded)
+
+    @staticmethod
+    def _deepest_block(text: str) -> int:
+        """How many blocks the deepest line of the generated module
+        stands inside, counted from the indentation the generator
+        writes: four spaces per block."""
+        return max(
+            (len(line) - len(line.lstrip(" "))) // 4
+            for line in text.splitlines()
+            if line.strip()
+        )
 
     def published(self, destination: Destination) -> dict:
         """What the answer records about the artefact that was written:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -45,14 +46,19 @@ def digest_of(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def ask(request: dict, timeout: float = 60.0) -> dict:
-    """The one answer the installed command gives to `request`."""
+def ask(request: dict, timeout: float = 60.0, lowered: dict | None = None) -> dict:
+    """The one answer the installed command gives to `request`, under the
+    budgets the caller lowered in `lowered` and otherwise under the ones
+    this tool declares."""
+    environment = dict(os.environ)
+    environment.update(lowered or {})
     proc = subprocess.run(
         ["prova"],
         input=json.dumps(request),
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=environment,
     )
     assert proc.returncode == 0, (
         f"WHAT: the command exited {proc.returncode} for "
@@ -72,14 +78,16 @@ def ask(request: dict, timeout: float = 60.0) -> dict:
         )
 
 
-def build(source: str, entry: str, output_file, **extra) -> dict:
+def build(
+    source: str, entry: str, output_file, lowered: dict | None = None, **extra
+) -> dict:
     """What the Owner is told when they ask for one artefact of a
     program, naming the function to invoke and the file to write."""
     request = {"operation": "build", "source": source, "entry": entry}
     if output_file is not None:
         request["output_file"] = str(output_file)
     request.update(extra)
-    return ask(request)
+    return ask(request, lowered=lowered)
 
 
 def evaluate(source: str, function: str, arguments: list) -> dict:

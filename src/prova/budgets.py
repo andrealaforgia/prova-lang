@@ -54,6 +54,10 @@ LOWERED_WITH = "PROVA_BUDGET_"
 # tool measured. Read by a caller deciding how much to trust it.
 DECLARED = "declared"
 
+# What a budget says it rests on when the caller of this process lowered
+# it below the number this tool declares.
+LOWERED = "lowered"
+
 
 @dataclass(frozen=True)
 class PeakMemory:
@@ -532,6 +536,31 @@ class Budgets:
                 budget.name: budget.published(status) for budget in declared.budgets
             }
             for operation in operations
+        }
+
+    def in_force(self, status: str) -> dict:
+        """What the four budgets of THIS run are, each saying whether it
+        is the number this tool declares or one the caller lowered.
+
+        The manifest states the declared numbers, because a caller
+        reading it has not sent its work yet. An answer that records the
+        configuration a program was verified under states these: a
+        program shown inside a budget the caller chose was shown inside
+        that number and not inside the one this tool would have used.
+        """
+        declared = {
+            type(budget): budget.maximum for budget in Budgets.declared().budgets
+        }
+        return {
+            budget.name: {
+                **budget.published(status),
+                "basis": (
+                    DECLARED
+                    if budget.maximum == declared[type(budget)]
+                    else LOWERED
+                ),
+            }
+            for budget in self.budgets
         }
 
     def source_exhausted_by(self, source: str) -> "Exhaustion | None":

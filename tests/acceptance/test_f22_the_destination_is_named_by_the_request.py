@@ -158,3 +158,54 @@ def test_a_refusal_says_whether_the_directory_is_absent_or_is_a_file():
         "WHY: a refused build writes nothing and changes nothing. "
         "HOW: decide the refusal before anything is written."
     )
+
+
+def test_a_path_this_tool_cannot_write_to_is_refused_by_name():
+    """Given a build request whose `output_file` is a relative path, one
+    whose path carries a zero byte, and one carrying no characters at
+    all, when each is sent, then each is refused as invalid input naming
+    the field, and nothing is written anywhere.
+
+    A relative path would be read against whatever directory this
+    process happens to stand in, which is not something the request
+    named; a zero byte is a character no file name carries, and reaching
+    the filesystem with one used to be answered as a failure of the tool
+    rather than as the request it is.
+
+    still passes if: the tool had refused every path -- the tests above
+    write to absolute paths and require an artefact.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        destination = pathlib.Path(tmp_dir)
+        cases = {
+            "a relative path": "clock.py",
+            "a path carrying a zero byte": str(destination / "clo\x00ck.py"),
+            "a path with no characters": "",
+        }
+        answers = {
+            about: build(hour_clock(), "step", written)
+            for about, written in cases.items()
+        }
+        written_files = files_under(destination)
+
+    assert written_files == {}, f"a refused build wrote {sorted(written_files)}"
+    for about, answer in answers.items():
+        assert answer.get("status") == "invalid_input", (
+            f"WHAT: {about} was answered {answer.get('status')!r}. "
+            "WHY: a field of the request this tool cannot use is refused by "
+            "name, and a failure of the tool is never the answer to one. "
+            f"HOW: inspect the answer: {answer}"
+        )
+        said = [d.get("symbol") for d in answer.get("diagnostics") or []]
+        assert said == ["output_file"], (
+            f"WHAT: the refusal of {about} names {said}. "
+            "WHY: the Owner repairs the field the answer sends them to. "
+            f"HOW: read the field through the request reader: {answer}"
+        )
+        reason = " ".join(d.get("reason", "") for d in answer["diagnostics"])
+        assert "absolute" in reason or "zero byte" in reason or "no characters" in reason, (
+            f"WHAT: the refusal of {about} does not say what is wrong with "
+            f"the path: {reason!r}. "
+            "WHY: three different things are wrong in these three requests. "
+            "HOW: say which one it is."
+        )

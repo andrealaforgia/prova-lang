@@ -25,7 +25,9 @@ from hypothesis import strategies as st
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "acceptance"))
 
 from _f22_fixtures import (  # noqa: E402
+    ANSWERED,
     ASSURANCE_FAILURE,
+    REFUSED_THE_INPUT,
     answered,
     artefact_of,
     build,
@@ -212,3 +214,217 @@ def test_the_artefact_answers_as_the_evaluator_does(
             "HOW: check the precondition in the artefact and refuse by name."
         )
         assert "Traceback" not in ran.stderr, ran.stderr[-400:]
+
+
+# Three programs that read the rest of what this slice translates: a
+# match whose clauses overlap, so the order they are tried in decides
+# the answer; equality over values built by a constructor; and a record
+# read through its field. Each one promises nothing, so every obligation
+# it owes is settled by a rule of core-0.
+OVERLAPPING_CLAUSES = f"""(defn classify
+  (sig ((n Int)) -> Int ! pure)
+  (examples
+    (example (classify 1) {A} 10)
+    (example (classify 7) {A} 20))
+  (match n (1 10) (_ 20)))
+"""
+
+EQUALITY_OVER_CONSTRUCTED_VALUES = f"""(deftype Point (record (x Int) (y Int)))
+
+(defn same
+  (sig ((a Point) (b Point)) -> Bool ! pure)
+  (examples
+    (example (same (Point 1 2) (Point 1 2)) {A} true)
+    (example (same (Point 1 2) (Point 2 1)) {A} false))
+  (= a b))
+"""
+
+A_RECORD_AND_A_BIG_NUMBER = f"""(deftype Holder (record (held Int) (flagged Bool)))
+
+(defn held-twice
+  (sig ((h Holder)) -> Int ! pure)
+  (examples (example (held-twice (Holder 3 true)) {A} 6))
+  (* 2 (.held h)))
+"""
+
+# The texts an argument may be written with that a reader settles one
+# way and a careless one another: Python reads the underscores and the
+# other bases, this language reads an optional sign and digits, and a
+# comment runs from its ';' to the end of its line.
+THIRTY_ODD_LITERALS = (
+    "7", "-7", "+7", "0", "-0", "007", "1_0", "1__0", "_1", "1_", "0x10",
+    "0b11", "0o17", "1e3", "1.0", ".5", "7.", "1j", "  7  ", "7;a comment",
+    ";only a comment", "7 ;trailing", "nan", "inf", "true7", "7true", "--7",
+    "+-7", "7+", str(10**30),
+)
+
+
+def _one_artefact(tmp_path_factory, source: str, entry: str):
+    destination = tmp_path_factory.mktemp("agreeing")
+    target = destination / f"{entry.replace('-', '_')}.py"
+    artefact_of(build(source, entry, target), f"the program built for {entry}")
+    return target
+
+
+@pytest.fixture(scope="module")
+def artefacts_of_the_three_programs(tmp_path_factory):
+    """One artefact per entry the law below is read over, built once."""
+    return {
+        "classify": (
+            OVERLAPPING_CLAUSES,
+            _one_artefact(tmp_path_factory, OVERLAPPING_CLAUSES, "classify"),
+        ),
+        "same": (
+            EQUALITY_OVER_CONSTRUCTED_VALUES,
+            _one_artefact(
+                tmp_path_factory, EQUALITY_OVER_CONSTRUCTED_VALUES, "same"
+            ),
+        ),
+        "held-twice": (
+            A_RECORD_AND_A_BIG_NUMBER,
+            _one_artefact(tmp_path_factory, A_RECORD_AND_A_BIG_NUMBER, "held-twice"),
+        ),
+    }
+
+
+@settings(derandomize=True, max_examples=20, deadline=None)
+@given(number=st.integers(min_value=-3, max_value=9))
+def test_the_artefact_answers_as_the_evaluator_does_over_the_rest_of_core_0(
+    artefacts_of_the_three_programs, number
+):
+    """LAW2, read over the rest of what this slice translates: a match
+    whose clauses overlap, equality over values a constructor built, a
+    record read through its field, and a number far past 64 bits.
+
+    The order of the clauses decides the answer of `classify`: 1 is
+    answered 10 by the first clause and every other number is answered
+    20 by the second, so a translation that tried them the other way
+    round would answer 20 for 1. Equality over two constructed values is
+    the program's own equality, not the identity of two objects.
+
+    still passes if: both sides were wrong in the same way -- the
+    examples each program declares are run by the compiler before a
+    build is allowed, and the hand-computed answers of the hour clock
+    are asserted in tests/acceptance/test_f22_c2 and test_f22_c5.
+    """
+    source, target = artefacts_of_the_three_programs["classify"]
+    written = str(number)
+    by_the_compiler = (
+        evaluate(source, "classify", [written]).get("result") or {}
+    ).get("value")
+    assert answered(run_artefact(target, [written]), written) == by_the_compiler, (
+        f"WHAT: for {written!r} the artefact of `classify` and the compiler "
+        f"answer differently; the compiler answers {by_the_compiler!r}. "
+        "WHY: the clauses of a match are tried in the order the source "
+        "writes them, and these two overlap: 1 is answered by the first and "
+        "every other number by the second. "
+        f"HOW: read the artefact at {target}"
+    )
+
+    source, target = artefacts_of_the_three_programs["same"]
+    for left, right in ((number, number), (number, number + 1)):
+        arguments = [f"(Point {left} {left})", f"(Point {right} {right})"]
+        by_the_compiler = (
+            evaluate(source, "same", arguments).get("result") or {}
+        ).get("value")
+        assert answered(
+            run_artefact(target, arguments), " ".join(arguments)
+        ) == by_the_compiler, (
+            f"WHAT: for {arguments} the artefact of `same` and the compiler "
+            f"answer differently; the compiler answers {by_the_compiler!r}. "
+            "WHY: two values of a record are the same value when their "
+            "constructor and every field agree -- not when they are the same "
+            "object, which is what a translation by the identity of two "
+            "objects would answer. "
+            f"HOW: read the artefact at {target}"
+        )
+
+    source, target = artefacts_of_the_three_programs["held-twice"]
+    big = 10 ** 40 + number
+    arguments = [f"(Holder {big} true)"]
+    by_the_compiler = (
+        evaluate(source, "held-twice", arguments).get("result") or {}
+    ).get("value")
+    assert answered(run_artefact(target, arguments), str(arguments)) == (
+        by_the_compiler
+    ), (
+        f"WHAT: for {arguments} the artefact of `held-twice` and the compiler "
+        f"answer differently; the compiler answers {by_the_compiler!r}. "
+        "WHY: a record is read through the field its declaration names, and "
+        "an integer far past 64 bits is answered exactly. "
+        f"HOW: read the artefact at {target}"
+    )
+
+
+@settings(derandomize=True, max_examples=30, deadline=None)
+@given(place=st.integers(min_value=0, max_value=len(THIRTY_ODD_LITERALS) - 1))
+def test_the_artefact_reads_an_argument_as_the_compiler_reads_one(
+    artefacts_of_the_three_programs, place
+):
+    """LAW2 over the reader: for each of 30 texts an argument may be
+    written with, the artefact answers exactly what the compiler answers,
+    and refuses exactly where the compiler refuses.
+
+    Python's own reader accepts `1_0`, `0x10` and `1e3`; this language
+    accepts an optional sign and digits, and a comment from its ';' to
+    the end of its line. A value the compiler refuses must never be a
+    value the artefact answers.
+    """
+    source, target = artefacts_of_the_three_programs["classify"]
+    written = THIRTY_ODD_LITERALS[place]
+
+    by_the_compiler = evaluate(source, "classify", [written])
+    value = (by_the_compiler.get("result") or {}).get("value")
+    ran = run_artefact(target, [written])
+
+    if value is not None:
+        assert ran.returncode == ANSWERED and ran.stdout.strip() == value, (
+            f"WHAT: the compiler reads {written!r} and answers {value!r}; the "
+            f"artefact exited {ran.returncode} answering "
+            f"{ran.stdout.strip()!r}. "
+            "WHY: one grammar for the values of this language, wherever they "
+            "are read. "
+            f"HOW: read the artefact's reader: {ran.stderr[-300:]!r}"
+        )
+        return
+    assert ran.returncode == REFUSED_THE_INPUT, (
+        f"WHAT: the compiler refuses {written!r} "
+        f"({by_the_compiler.get('status')!r}) and the artefact exited "
+        f"{ran.returncode} answering {ran.stdout.strip()!r}. "
+        "WHY: a text that is not a value of this language is not a value the "
+        "artefact answers either. "
+        f"HOW: read the artefact's reader: {ran.stderr[-300:]!r}"
+    )
+    assert "Traceback" not in ran.stderr, ran.stderr[-300:]
+
+
+def test_a_contract_that_is_not_a_flag_never_reaches_an_artefact():
+    """Given a program whose precondition is a number rather than a
+    flag, when the Owner asks the compiler about it, then it is refused
+    before any build -- which is why an artefact that read a contract's
+    value as Python reads the truth of a number, instead of as the one
+    value `true`, cannot be told apart from one that does not.
+
+    Recorded here rather than left unsaid: a mutation of that reading
+    survives every test, and this is the rule that excludes the input
+    which would show it.
+    """
+    a_number_for_a_contract = f"""(defn odd-contract
+  (sig ((n Int)) -> Int ! pure)
+  (requires n)
+  (examples (example (odd-contract 1) {A} 1))
+  n)
+"""
+    answer = evaluate(a_number_for_a_contract, "odd-contract", ["1"])
+    assert answer.get("status") == "invalid_program", (
+        f"WHAT: a precondition that is a number was answered "
+        f"{answer.get('status')!r}. "
+        "WHY: the argument that a contract's value is always the flag true "
+        "or the flag false rests on this refusal; if the checker accepts "
+        "such a program, the artefact must read the truth of a contract the "
+        "way the evaluator does and a test must show it. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert "type_mismatch" in {
+        d.get("category") for d in answer.get("diagnostics") or []
+    }, answer

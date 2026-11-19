@@ -759,6 +759,12 @@ class Request:
         output_file = OUTPUT_FILE_ASKED.read(
             self.submitted.get(manifest.OUTPUT_FILE.name)
         )
+        if not isinstance(output_file, MalformedRequest):
+            unusable = building.Destination.unusable_text(output_file.characters)
+            if unusable is not None:
+                output_file = MalformedRequest.about(
+                    manifest.OUTPUT_FILE.name, unusable
+                )
         if isinstance(entry, MalformedRequest):
             if isinstance(output_file, MalformedRequest):
                 return entry.and_also(output_file)
@@ -1520,20 +1526,21 @@ def _what_was_shown(checked: "Checked", run: Run) -> WhatWasShown:
     )
 
 
-def _the_configuration() -> dict:
-    """The configuration a verification of this tool stands inside, as
-    an artefact records it: the profile it is for, the solver pinned
-    behind the word `proved`, and the four budgets of a build.
+def _the_configuration(run: Run) -> dict:
+    """The configuration a verification of this tool stood inside, as an
+    artefact records it: the profile it is for, the solver pinned behind
+    the word `proved`, and the four budgets of this run.
 
     Read from the three owners that publish them, so what an artefact
-    records and what the manifest states are the same numbers.
+    records and what the manifest states are the same numbers -- and
+    read from the budgets of the run rather than from the numbers this
+    tool declares, because a caller that lowered one verified the
+    program inside the number it chose and the artefact must say so.
     """
     return {
         "profile": dict(THE_PROFILE),
         "solver": provenance.the_solver_it_requires(),
-        "budgets": Budgets.declared().published_for(("build",), RESOURCE_EXHAUSTED)[
-            "build"
-        ],
+        "budgets": run.budgets.in_force(RESOURCE_EXHAUSTED),
     }
 
 
@@ -1586,11 +1593,10 @@ def _run_build(source: SubmittedText, asked: BuildAsked, run: Run) -> dict:
     if refused:
         return _build_refused(refused, revision, shown)
 
-    artefact = building.Artefact.of(certified, entry, _the_configuration())
-    unwritten = destination.publish(artefact.text)
-    if unwritten is not None:
+    artefact = building.Artefact.of(certified, entry, _the_configuration(run))
+    if isinstance(artefact, building.Unwritable):
         return _build_refused(
-            [checker.Diagnostic(unwritten.category, unwritten.reason)],
+            [checker.Diagnostic(artefact.category, artefact.reason)],
             revision,
             shown,
         )
@@ -1606,6 +1612,24 @@ def _run_build(source: SubmittedText, asked: BuildAsked, run: Run) -> dict:
     }
     if shown.disclosure is not None:
         answer["trust"] = shown.disclosure
+
+    # The whole answer is written out and measured against the budget of
+    # this run before anything is published. An answer too large is
+    # replaced whole by the refusal that says so, and an artefact
+    # published beside that refusal would be a file the Owner was never
+    # told about: complete, runnable, and standing at a path no answer
+    # of this tool ever named.
+    too_large = run.budgets.answer_exhausted_by(printable_answer(answer))
+    if too_large is not None:
+        return budget_response("build", too_large)
+
+    unwritten = destination.publish(artefact.text)
+    if unwritten is not None:
+        return _build_refused(
+            [checker.Diagnostic(unwritten.category, unwritten.reason)],
+            revision,
+            shown,
+        )
     return answer
 
 
@@ -1616,19 +1640,21 @@ def _build_refused(
     found and no artefact.
 
     The status says which kind of refusal it is: a program the whole of
-    which was not shown is `not_verified`, and anything else is a field
-    of the request this tool could not use, which is `invalid_input`. A
-    request that is wrong in both ways is the first: the evidence is the
-    thing that would still stop the build once the request is repaired.
+    which was not shown is `not_verified`, a program this tool cannot
+    write as a module the interpreter reads is `resource_exhausted`, as
+    every other limit of this tool is, and anything else is a field of
+    the request this tool could not use, which is `invalid_input`. A
+    request that is wrong in several ways takes the first of those: the
+    evidence is the thing that would still stop the build once the
+    request is repaired.
     """
-    status = (
-        verdict.NOT_VERIFIED
-        if any(
-            diagnostic.category == checker.NOT_SHOWN_WHOLE
-            for diagnostic in refused
-        )
-        else "invalid_input"
-    )
+    categories = {diagnostic.category for diagnostic in refused}
+    if checker.NOT_SHOWN_WHOLE in categories:
+        status = verdict.NOT_VERIFIED
+    elif checker.GENERATED_NESTING_EXCEEDED in categories:
+        status = RESOURCE_EXHAUSTED
+    else:
+        status = "invalid_input"
     return {
         "operation": "build",
         "status": status,

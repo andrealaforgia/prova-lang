@@ -1167,6 +1167,16 @@ there.
 
 ### Follow-ups raised during delivery
 
+- **Decide what a build does with a symbolic link and with `..` in
+  `output_file`.** F22 refuses a relative path, a path carrying a zero byte and a
+  path whose file already exists, and writes through a temporary file in the
+  destination directory that it then links to the target; it reads nothing about
+  where a link points or where `..` leads. F24 owns where a build may write.
+  Raised during F22 by an independent review.
+- **A build killed between writing its temporary file and naming it leaves that
+  temporary file behind** (`.prova-build-*.py` in the destination directory),
+  never a half-written or replaced artefact. The premise cannot be timed from
+  outside, so it is an unproven limit rather than a tested one. Raised during F22.
 - **Extract the shared parse-and-check preamble in `src/prova/service.py`.** The
   handlers for `check`, `examples`, `evaluate` and (with F16) `verify` each repeat
   about 15 lines. Do it as one behaviour-preserving commit with no test changes,
