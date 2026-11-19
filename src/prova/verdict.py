@@ -96,6 +96,29 @@ class ExamplesRun:
     stopped_with: str | None = None
     stopped_because: str | None = None
 
+    def __post_init__(self) -> None:
+        """A run that saw fewer outcomes than the program declares, and
+        names no limit that stopped it, cannot be built at all.
+
+        The two constructors below are the two kinds of run there are.
+        This refuses the third thing the raw constructor of a dataclass
+        would otherwise make: a run with nothing against it that never
+        saw the examples it is about.
+        """
+        if len(self.outcomes) != self.declared and self.stopped_with is None:
+            raise ValueError(
+                f"WHAT: a run of the declared examples holds "
+                f"{len(self.outcomes)} outcomes for the {self.declared} "
+                "examples the program declares and names nothing that "
+                "stopped it. "
+                "WHY: the word 'verified' rests on every declared example "
+                "having been run and passed; a run like this would be read "
+                "as having nothing against it while the examples it is about "
+                "were never run. "
+                "HOW: build a complete run with 'of', or a run a limit "
+                "stopped with 'stopped_at', which carries that limit."
+            )
+
     @classmethod
     def of(cls, entries, declared: int) -> "ExamplesRun":
         seen = cls._read(entries)
@@ -270,6 +293,23 @@ class Attempts:
         return COMPLETED
 
 
+def _what_withholds(owed: "Obligations", examples: "ExamplesRun") -> tuple:
+    """Everything that stands against the word, in the order a reader
+    reads it: the obligations first, then the declared examples.
+
+    One place answers this question, so the rule that decides the word
+    and the refusal to build a value around that rule cannot disagree.
+    """
+    return tuple(
+        said
+        for said in (
+            owed.why_the_word_is_withheld(),
+            examples.why_the_word_is_withheld(),
+        )
+        if said is not None
+    )
+
+
 @dataclass(frozen=True)
 class Verdict:
     """Where a whole program stands, and what happened to the attempt.
@@ -292,6 +332,29 @@ class Verdict:
     obligations: Obligations
     examples: ExamplesRun
     static_checks: StaticChecksPassed
+
+    def __post_init__(self) -> None:
+        """The word must be the one the evidence beside it gives.
+
+        `over` is where the word is decided, and this is what makes that
+        the only place: a value built with the word already in it is
+        refused unless the evidence it carries withholds nothing, and a
+        value built without it is refused unless something does. A
+        caller cannot reach the word by going around the rule.
+        """
+        withheld = _what_withholds(self.obligations, self.examples)
+        if (self.result == VERIFIED) == (not withheld):
+            return
+        raise ValueError(
+            f"WHAT: a verdict was built as {self.result!r} while the "
+            f"evidence beside it says {list(withheld) or 'nothing against it'}. "
+            "WHY: the word is decided in one place, from the obligations, the "
+            "declared examples and the static checks; a value built with "
+            "another word in it would make that place advisory and a wrong "
+            "'verified' is the worst thing this tool can say. "
+            "HOW: build it with prova.verdict.Verdict.over, which decides the "
+            "word from exactly that evidence."
+        )
 
     @classmethod
     def over(
@@ -316,14 +379,7 @@ class Verdict:
             )
         owed = Obligations.of(findings)
         attempts = Attempts(owed.what_happened() + (examples.what_happened(),))
-        withheld = [
-            said
-            for said in (
-                owed.why_the_word_is_withheld(),
-                examples.why_the_word_is_withheld(),
-            )
-            if said is not None
-        ]
+        withheld = _what_withholds(owed, examples)
         if not withheld:
             return cls(
                 VERIFIED,

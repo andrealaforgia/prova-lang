@@ -146,3 +146,57 @@ def test_the_reason_and_the_counts_agree_about_the_examples_never_run():
         "HOW: read the number in the sentence from the same place the count "
         "is read from."
     )
+
+
+def test_a_run_built_without_its_own_constructor_cannot_hide_what_it_never_saw():
+    """Given a run of the declared examples built through the raw
+    constructor, reporting no outcome at all for 8 declared examples and
+    naming no limit that stopped it, when it is built, then it refuses.
+
+    The two constructors of that value are the two kinds of run there
+    are. A value built around them would say that a program whose
+    examples were never run has nothing against it, and the word rests
+    on those examples.
+    """
+    with pytest.raises(ValueError) as refusal:
+        _verdict().ExamplesRun((), 8)
+
+    said = str(refusal.value)
+    assert "0" in said and "8" in said, (
+        f"WHAT: the refusal says {said!r}. "
+        "WHY: the reader is the author of the caller, who needs how many "
+        "outcomes the run holds and how many the program declares. "
+        "HOW: name both numbers in the refusal."
+    )
+
+
+def test_the_word_cannot_be_built_around_the_rule_that_decides_it():
+    """Given an inventory with 1 obligation left unknown, when a verdict
+    carrying the word is built through the raw constructor, then it
+    refuses.
+
+    The word is decided in one place. A value that could be built with
+    the word already in it would make that place advisory.
+    """
+    verdict = _verdict()
+    owed = verdict.Obligations.of(
+        _findings((("proved", "completed"), ("unknown", "unsupported")))
+    )
+
+    with pytest.raises(ValueError) as refusal:
+        verdict.Verdict(
+            verdict.VERIFIED,
+            "completed",
+            None,
+            owed,
+            _all_eight_passed(),
+            verdict.StaticChecksPassed.of(()),
+        )
+
+    said = str(refusal.value)
+    assert "verified" in said, (
+        f"WHAT: the refusal says {said!r}. "
+        "WHY: the author of the caller must be told that the word is not "
+        "theirs to set and what the evidence beside it says. "
+        "HOW: name the word and what withholds it in the refusal."
+    )

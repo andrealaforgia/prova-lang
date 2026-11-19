@@ -958,6 +958,12 @@ _DEFTYPE_REPAIR = (
 
 
 def _parse_type_decl(form: SList) -> RecordType | UnionType:
+    _no_more_members_than_core_0_fixes(
+        form,
+        THE_MEMBERS_A_FORM_FIXES["deftype"],
+        "a 'deftype' form",
+        _DEFTYPE_REPAIR,
+    )
     name = TypeName.read(
         "type name",
         _required_at(form, 1, "the type name of a 'deftype' form", _DEFTYPE_REPAIR),
@@ -1048,6 +1054,46 @@ def _stands_there(node: object) -> str:
 def _member_count(node: object) -> str:
     count = len(node.items) if isinstance(node, SList) else 0
     return f"{count} member(s)"
+
+
+# How many members core-0 fixes for each form that fixes its own: the
+# name of the form counted together with its operands. A field selector
+# fixes two, and is read from its leading dot rather than from this table.
+#
+# A form carrying another member is not the form it names. Reading the
+# members this tool knows and dropping the rest would answer about a
+# program the source does not write: `(if true n n (missing n))` was read
+# as a well-formed conditional and every obligation of the function
+# holding it was discharged, while the operand nobody read called a
+# function nobody declared.
+THE_MEMBERS_A_FORM_FIXES = {
+    "let": 3,
+    "if": 4,
+    "deftype": 3,
+}
+THE_MEMBERS_A_SELECTOR_FIXES = 2
+
+
+def _no_more_members_than_core_0_fixes(
+    form: object, members: int, what: str, repair: str
+) -> None:
+    """Refuse `form` where it stands when it carries more than core-0
+    fixes for it.
+
+    A missing member is refused by the reader of that position, which
+    says which position is empty; this says how many stand where a fixed
+    number is allowed. Both are refusals of shape, placed at the form.
+    """
+    if not isinstance(form, SList) or len(form.items) <= members:
+        return
+    raise SyntaxError_(
+        f"{what} takes {members - 1} operand(s) and {len(form.items) - 1} "
+        "stand(s) here: core-0 fixes what this form carries, so a form with "
+        "another operand is not the form it names, and reading the operands "
+        "this tool knows while dropping the rest would answer about a "
+        f"program this source does not write; {repair}",
+        *_position(form),
+    )
 
 
 def _required_at(form: object, index: int, what: str, repair: str) -> object:
@@ -1225,6 +1271,9 @@ def parse_expr(node: object) -> Expr:
 
     if name == "let":
         repair = "write it as (let ((name expr) ...) expr)"
+        _no_more_members_than_core_0_fixes(
+            node, THE_MEMBERS_A_FORM_FIXES["let"], "a 'let' form", repair
+        )
         bindings_node = _required_list_at(node, 1, "the bindings of a 'let'", repair)
         bindings = tuple(_parse_binding(b) for b in bindings_node.items)
         body = parse_expr(_required_at(node, 2, "the body of a 'let'", repair))
@@ -1232,6 +1281,9 @@ def parse_expr(node: object) -> Expr:
 
     if name == "if":
         repair = "write it as (if condition then-expr else-expr)"
+        _no_more_members_than_core_0_fixes(
+            node, THE_MEMBERS_A_FORM_FIXES["if"], "an 'if' form", repair
+        )
         return If(
             parse_expr(_required_at(node, 1, "the condition of an 'if'", repair)),
             parse_expr(_required_at(node, 2, "the then-branch of an 'if'", repair)),
@@ -1254,12 +1306,19 @@ def parse_expr(node: object) -> Expr:
         return Match(scrutinee, clauses, line, column)
 
     if name.startswith("."):
+        selector_repair = "write it as (.field-name expr)"
+        _no_more_members_than_core_0_fixes(
+            node,
+            THE_MEMBERS_A_SELECTOR_FIXES,
+            f"the selector {name!r}",
+            selector_repair,
+        )
         target = parse_expr(
             _required_at(
                 node,
                 1,
                 f"the value the selector {name!r} reads",
-                "write it as (.field-name expr)",
+                selector_repair,
             )
         )
         return FieldAccess(name[1:], target, line, column)

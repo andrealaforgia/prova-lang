@@ -304,6 +304,23 @@ def test_the_manifest_describes_the_word_before_a_request_is_sent():
         "HOW: describe the field in manifest.py beside the others."
     )
     described = str(published["aggregate"]).lower()
+    assert "empty" in described, (
+        f"WHAT: what the manifest publishes about the aggregate does not say "
+        f"that the inventory must not be empty: {described}. "
+        "WHY: the word stands for a complete inventory, all discharged; a "
+        "reader told only that every obligation is proved could read a "
+        "program that owes nothing at all as one that was shown. "
+        "HOW: say that the inventory must not be empty in the description."
+    )
+    inventory_described = str(published["result"]).lower()
+    assert "replayed_within" in inventory_described, (
+        f"WHAT: an entry of the inventory carries 'replayed_within' beside a "
+        f"counterexample and the manifest does not name it: "
+        f"{inventory_described}. "
+        "WHY: an answer may carry no field the manifest does not describe, or "
+        "a reader meets a field it cannot look up. "
+        "HOW: name the field in the description of the inventory."
+    )
     for owed in ("discharged", "examples", "static"):
         assert owed in described, (
             f"WHAT: what the manifest publishes about the aggregate does not "
@@ -353,3 +370,114 @@ def test_the_aggregate_counts_rules_apart_from_solver_answers():
     assert sum(aggregate["obligations"]["by"].values()) == (
         aggregate["obligations"]["discharged"]
     ), aggregate
+
+
+# A program whose only example breaks the precondition of the function it
+# is about. Running it is refused by the precondition, so the example does
+# not pass -- and the word may not be said over a program whose own
+# examples this tool refuses.
+AN_EXAMPLE_THAT_BREAKS_ITS_OWN_PRECONDITION = f"""(defn doubled
+  (sig ((n Int)) -> Int ! pure)
+  (requires (>= n 0))
+  (ensures (>= result 0))
+  (examples (example (doubled -1) {A} -2))
+  (* 2 n))
+"""
+
+# A chain of 40 functions, each nesting four expressions around the call
+# to the one before it, every one of them declaring an example. Running
+# those examples reaches the depth this tool runs to, so the run stops
+# part way: the examples it never reached are not examples that passed.
+_HOW_MANY = 40
+_HOW_DEEP = 4
+
+
+def _a_chain_too_deep_to_run_its_examples() -> str:
+    written = [
+        f"(defn f0\n  (sig ((n Int)) -> Int ! pure)\n"
+        f"  (examples (example (f0 1) {A} 1))\n  n)"
+    ]
+    for step in range(1, _HOW_MANY):
+        body = f"(f{step - 1} n)"
+        for _ in range(_HOW_DEEP):
+            body = f"(+ {body} 0)"
+        written.append(
+            f"(defn f{step}\n  (sig ((n Int)) -> Int ! pure)\n"
+            f"  (examples (example (f{step} 1) {A} 1))\n  {body})"
+        )
+    return "\n\n".join(written) + "\n"
+
+
+def test_an_example_its_own_precondition_refuses_does_not_pass():
+    """Given a function whose only declared example calls it with an
+    argument its precondition refuses, when the Owner verifies it, then
+    the aggregate reports 0 of 1 examples passing, names that example
+    among the failed, and does not say the word.
+
+    still passes if: the tool counted an example it could not run as
+    passing -- the passing count is required to be 0 and the example is
+    required by name among the failed.
+    """
+    about = "a program whose only example breaks its own precondition"
+    answer = completed(verify(AN_EXAMPLE_THAT_BREAKS_ITS_OWN_PRECONDITION), about)
+    aggregate = _aggregate(answer, about)
+
+    assert aggregate["examples"] == {
+        "of": 1,
+        "passed": 0,
+        "failed": [{"function": "doubled", "ordinal": 0}],
+        "not_run": 0,
+    }, (
+        f"WHAT: the aggregate reports {aggregate['examples']} over a program "
+        "declaring 1 example, which its own precondition refuses. "
+        "WHY: an example this tool refuses to run is an example that does "
+        "not pass; counting it as passing would say the program answers "
+        "something it refuses to answer. "
+        f"HOW: inspect the answer: {answer}"
+    )
+    assert aggregate["result"] == "not_verified", (
+        f"WHAT: the aggregate is {aggregate['result']!r}. "
+        "WHY: the word rests on the declared examples passing. "
+        f"HOW: inspect the aggregate: {aggregate}"
+    )
+
+
+def test_examples_a_run_never_reached_are_not_examples_that_passed():
+    """Given 40 functions whose examples nest deeper than this tool runs,
+    when the Owner verifies them, then the answer still carries the
+    inventory, the aggregate says the run was stopped with the examples
+    it never reached counted apart, and the word is withheld.
+
+    still passes if: the tool had refused the whole request -- the
+    inventory is required to be in the answer, because the Owner asked
+    what the program owes and that is still there to give.
+    """
+    about = "a chain of 40 functions too deep to run its own examples"
+    answer = completed(verify(_a_chain_too_deep_to_run_its_examples()), about)
+    aggregate = _aggregate(answer, about)
+    entries = obligations_of(answer, about)
+
+    assert len(entries) > 100, (
+        f"WHAT: the answer lists {len(entries)} obligations for 40 functions. "
+        "WHY: the inventory must survive a run of the examples this tool "
+        "could not finish; that is what makes this answer worth giving. "
+        f"HOW: inspect the answer: {aggregate}"
+    )
+    examples = aggregate["examples"]
+    assert examples["not_run"] > 0 and examples["passed"] < examples["of"], (
+        f"WHAT: the aggregate reports {examples} for a run that could not "
+        "reach every example. "
+        "WHY: an example never run is not an example that passed. "
+        f"HOW: inspect the aggregate: {aggregate}"
+    )
+    assert examples["passed"] + len(examples["failed"]) + examples["not_run"] == (
+        examples["of"]
+    ), examples
+    assert aggregate["execution_status"] == "resource_exhausted", (
+        f"WHAT: the aggregate says the attempt ended "
+        f"{aggregate['execution_status']!r}. "
+        "WHY: the reader must be able to tell a program that was not shown "
+        "from a run this tool could not finish inside its own budget. "
+        f"HOW: inspect the aggregate: {aggregate}"
+    )
+    assert aggregate["result"] == "not_verified", aggregate

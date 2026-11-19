@@ -418,7 +418,12 @@ THE_OPERATIONS = Catalogue(
                         "it; an entry left unsettled carries 'reason'; an "
                         "entry disproved carries 'counterexample', an input "
                         "of the declared types that breaks it and that this "
-                        "tool refuses when it runs the program over it",
+                        "tool refuses when it runs the program over it. A "
+                        "counterexample carries 'replayed_within', the "
+                        "declared budget the run that confirmed it stood "
+                        "inside: the limit it names and the maximum that "
+                        "limit allows are the ones published under "
+                        "resource_limits",
                     ),
                     Field.when_completed(
                         "aggregate",
@@ -426,8 +431,9 @@ THE_OPERATIONS = Catalogue(
                         "where the program as a whole stands. Under 'result' "
                         "the word 'verified' or the word 'not_verified', and "
                         "under 'execution_status' what happened to the "
-                        "attempt. 'verified' is said when, and only when, "
-                        "every obligation of the inventory is 'proved', every "
+                        "attempt. 'verified' is said when, and only when, the "
+                        "inventory is not empty and every obligation of it is "
+                        "'proved', every "
                         "example the program declares was run and passed, and "
                         "the static checks passed; anything else is "
                         "'not_verified' with a 'reason' naming the "
