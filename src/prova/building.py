@@ -13,7 +13,7 @@ Three things live here and nowhere else:
 * `Certified`, which cannot be built for a program whose aggregate does
   not say verified, so no caller can reach an artefact without the
   evidence behind it;
-* `Destination`, the one thing in this tool that opens a file for
+* `AuthorisedDestination`, the one thing in this tool that opens a file for
   writing, and only where nothing stands yet;
 * `Translation`, which turns a checked core-0 program into the text of a
   module. It reads the same tree the evaluator runs and writes the same
@@ -198,8 +198,46 @@ class NotShownWhole:
         return Unwritable(NOT_SHOWN_WHOLE, self.reason)
 
 
+class WorkingFile:
+    """The file a build writes its text into before anything of it is
+    published, standing in the directory the artefact will stand in.
+
+    It owns the one file nobody asked for: a reader of the directory
+    must never meet it, so it carries a name of its own under a prefix
+    no artefact uses, and it is removed by this unit on every path out
+    of a build. The name it was written under is given to the artefact
+    in one step, which either happens or does not.
+    """
+
+    def __init__(self, directory: pathlib.Path) -> None:
+        handle, name = tempfile.mkstemp(
+            dir=str(directory), prefix=".prova-build-", suffix=".py"
+        )
+        self._handle = handle
+        self._name = name
+
+    def holding(self, text: str) -> "WorkingFile":
+        """This file with `text` written into it and closed."""
+        with os.fdopen(self._handle, "w", encoding="utf-8") as writing:
+            writing.write(text)
+        return self
+
+    def gives_its_name_to(self, path: pathlib.Path) -> None:
+        """Make `path` a second name for this file, which fails where a
+        name is already there: a file that appeared while this build ran
+        is never written over."""
+        os.link(self._name, str(path))
+
+    def removed(self) -> None:
+        """Take this file away, whatever happened to the build."""
+        try:
+            os.unlink(self._name)
+        except FileNotFoundError:
+            return
+
+
 @dataclass(frozen=True)
-class Destination:
+class AuthorisedDestination:
     """The one file a build may write, known to stand in a directory
     that exists and to hold nothing yet.
 
@@ -252,7 +290,7 @@ class Destination:
         return None
 
     @classmethod
-    def at(cls, written: str) -> "Destination | Unwritable":
+    def at(cls, written: str) -> "AuthorisedDestination | Unwritable":
         path = pathlib.Path(written)
         directory = path.parent
         if not directory.is_dir():
@@ -291,25 +329,20 @@ class Destination:
         removed whatever happens, so a destination that holds nothing
         after a refusal holds nothing at all.
         """
-        handle, temporary = tempfile.mkstemp(
-            dir=str(self.path.parent), prefix=".prova-build-", suffix=".py"
-        )
+        working = WorkingFile(self.path.parent)
         try:
-            with os.fdopen(handle, "w", encoding="utf-8") as writing:
-                writing.write(text)
-            try:
-                os.link(temporary, str(self.path))
-            except FileExistsError:
-                return Unwritable(
-                    OUTPUT_FILE_EXISTS,
-                    f"a file appeared at {str(self.path)!r} while this build "
-                    "was running, and this tool never writes over one. The "
-                    "artefact was not published and nothing at that path was "
-                    "changed. Send an 'output_file' naming a path that holds "
-                    "nothing and ask for the build again",
-                )
+            working.holding(text).gives_its_name_to(self.path)
+        except FileExistsError:
+            return Unwritable(
+                OUTPUT_FILE_EXISTS,
+                f"a file appeared at {str(self.path)!r} while this build "
+                "was running, and this tool never writes over one. The "
+                "artefact was not published and nothing at that path was "
+                "changed. Send an 'output_file' naming a path that holds "
+                "nothing and ask for the build again",
+            )
         finally:
-            os.unlink(temporary)
+            working.removed()
         return None
 
 
@@ -1707,7 +1740,7 @@ class Artefact:
             if line.strip()
         )
 
-    def published(self, destination: Destination) -> dict:
+    def published(self, destination: "AuthorisedDestination") -> dict:
         """What the answer records about the artefact that was written:
         the same record the artefact carries, beside the path it is at.
         One place writes both, so the two cannot disagree."""

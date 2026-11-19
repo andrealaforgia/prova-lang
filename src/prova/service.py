@@ -881,7 +881,7 @@ class Request:
             self.submitted.get(manifest.OUTPUT_FILE.name)
         )
         if not isinstance(output_file, MalformedRequest):
-            unusable = building.Destination.unusable_text(output_file.characters)
+            unusable = building.AuthorisedDestination.unusable_text(output_file.characters)
             if unusable is not None:
                 output_file = MalformedRequest.about(
                     manifest.OUTPUT_FILE.name, unusable
@@ -1817,7 +1817,7 @@ def _run_build(source: SubmittedText, asked: BuildAsked, run: Run) -> dict:
                 about=checker.AboutASymbol(asked.entry.characters),
             )
         )
-    destination = building.Destination.at(asked.output_file.characters)
+    destination = building.AuthorisedDestination.at(asked.output_file.characters)
     if isinstance(destination, building.Unwritable):
         refused.append(
             checker.Diagnostic(destination.category, destination.reason)
