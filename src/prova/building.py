@@ -57,6 +57,124 @@ ARTEFACT_FORMAT = "prova-core-0-python-1"
 
 
 @dataclass(frozen=True)
+class Refusal:
+    """One kind of answer a run of a built artefact can end without a
+    value with: the category word a reader sorts by, the status the run
+    exits with, and what the two mean.
+
+    A value object of the boundary: it is the one place a word and a
+    number stand together, so nothing can write a word with another
+    number beside it. The word opens the first line of the message, so
+    a caller reading a log sorts refusals before reading any prose.
+    """
+
+    word: str
+    status: int
+    meaning: str
+
+    @property
+    def identifier(self) -> str:
+        """The name the generated module reaches this kind by."""
+        return "_" + self.word.replace("-", "_")
+
+    def declaration(self) -> str:
+        """The line of the generated module that declares it."""
+        return f"{self.identifier} = ({self.word!r}, {self.status!r})"
+
+    def documented(self) -> str:
+        """The line of the artefact's header that explains it to a
+        reader who has not run it."""
+        return f"  {self.status}  {self.word}: {self.meaning}"
+
+    def published(self) -> dict:
+        """What a client reads about it before it holds an artefact."""
+        return {"exit_status": self.status, "meaning": self.meaning}
+
+
+class Refusals:
+    """Every kind of refusal a built artefact can give, and nothing
+    else.
+
+    One collection writes all three places the kinds appear -- the
+    constants the generated module raises with, the header a reader
+    opens the file to, and the table this tool publishes -- so none of
+    the three can disagree with another about a word or a number.
+    """
+
+    def __init__(self, kinds: tuple):
+        self._kinds = tuple(kinds)
+
+    def declarations(self) -> str:
+        return "\n".join(kind.declaration() for kind in self._kinds)
+
+    def documented(self) -> list:
+        return [kind.documented() for kind in self._kinds]
+
+    def published(self) -> dict:
+        return {kind.word: kind.published() for kind in self._kinds}
+
+    def as_data(self) -> dict:
+        """The table the artefact itself carries, so the Owner reads
+        what a status means where neither this tool nor the manifest is
+        installed."""
+        return {kind.word: kind.status for kind in self._kinds}
+
+
+# The six kinds, and their numbers. 0 is an answer and is not one of
+# them. SPEC.md line 496 asks for four of these to be apart: text that
+# cannot be read as a value, a value of a type the entry does not
+# declare, a state the entry's precondition refuses, and a contract of
+# the program that did not hold, which is an assurance failure and
+# never an ordinary rejection. The other two are not about any input: a
+# failure of the generated file itself, and a limit of the file reached
+# while reading or writing a number.
+THE_REFUSALS = Refusals(
+    (
+        Refusal(
+            "MALFORMED",
+            2,
+            "the text sent for an argument cannot be read as a value of this "
+            "language at all, or the run was given a number of arguments the "
+            "entry does not take",
+        ),
+        Refusal(
+            "ASSURANCE",
+            3,
+            "a contract of the program did not hold during the run: an "
+            "assurance failure of a program that was verified, never an "
+            "ordinary rejection of an input and never an answer",
+        ),
+        Refusal(
+            "ARTEFACT",
+            4,
+            "the generated file failed inside itself, which says nothing "
+            "about the input it was run over",
+        ),
+        Refusal(
+            "ILL-TYPED",
+            5,
+            "the text sent for an argument reads as a value, and that value "
+            "is of a type the entry does not declare",
+        ),
+        Refusal(
+            "PRECONDITION",
+            6,
+            "every argument is a value of its declared type and the entry's "
+            "own precondition refuses them, so none of the program was run "
+            "and there is no result value",
+        ),
+        Refusal(
+            "RESOURCE",
+            7,
+            "a limit this artefact copies from the compiler was reached while "
+            "reading or writing an integer, which is a limit of the file and "
+            "not a statement about the program",
+        ),
+    )
+)
+
+
+@dataclass(frozen=True)
 class Unwritable:
     """Why a build may not write where it was asked to.
 
@@ -440,6 +558,46 @@ class Translation:
         lines.write(1, "return _result")
         lines.blank()
 
+    def entry_preconditions(self, entry: "Entry") -> str:
+        """One predicate per clause of the entry's precondition, over the
+        values the boundary decoded, beside the condition as the source
+        writes it.
+
+        The translation writes the same clauses inside the compiled
+        function as well. They are written again here because the
+        boundary has to decide them before that function is called:
+        SPEC.md line 496 asks an external input to satisfy the entry
+        preconditions before compiled code is called, and gives a
+        rejection no result value. A clause that refused from inside the
+        function would already have run part of the program, and would
+        be reported as a contract of a verified program that did not
+        hold, which is a different thing entirely.
+        """
+        lines = Lines()
+        named = []
+        for place, clause in enumerate(entry.function.requires):
+            scope = Scope()
+            parameters = []
+            for parameter in entry.function.signature.params:
+                scope, identifier = scope.binding(parameter.name)
+                parameters.append(identifier)
+            name = f"_entry_precondition{place}"
+            lines.write(0, f"def {name}({', '.join(parameters)}):")
+            lines.write(
+                1,
+                f'"""Clause {place} of the precondition of '
+                f'{entry.name}."""',
+            )
+            held = self._expression(clause, scope, lines, 1)
+            lines.write(1, f"return {held}")
+            lines.blank()
+            named.append((formatter.expression_text(clause), name))
+        lines.write(0, "_ENTRY_PRECONDITIONS = (")
+        for written, name in named:
+            lines.write(1, f"({written!r}, {name}),")
+        lines.write(0, ")")
+        return lines.text()
+
     def _contract(
         self,
         function: syntax.Function,
@@ -722,15 +880,53 @@ class _Constructed:
         self.fields = fields
 
 
-class _Refused(Exception):
-    """The input this artefact was run over is not input it can answer."""
+class _Stopped(Exception):
+    """Why this run answered nothing: the category word a reader sorts
+    by, the status the run exits with, and the words that say what
+    failed, why it matters and how to repair it.
+
+    One parent for every reason, so that the run itself never decides a
+    status: each reason names its category and the category carries the
+    number. The words and the numbers are the table above, which the
+    compiler also publishes.
+    """
+
+    def __init__(self, category, message):
+        super().__init__(message)
+        self.word, self.status = category
 
 
-class _ContractFailed(Exception):
+class _Refused(_Stopped):
+    """The input this artefact was run over is not input it can answer,
+    or a limit of this file was reached reading or writing a number."""
+
+
+class _PreconditionUnmet(_Stopped):
+    """Every argument is a value of its declared type and the entry's
+    own precondition refuses them, so none of the program was run."""
+
+    def __init__(self, entry, condition):
+        super().__init__(
+            _PRECONDITION,
+            "WHAT: the precondition " + condition + " of " + repr(entry)
+            + " does not hold for this input. "
+            "WHY: the program promises nothing where its precondition does "
+            "not hold, so an input outside it is refused before any of the "
+            "program is run and has no result value at all; this is a "
+            "rejection of the input and not a contract of a verified program "
+            "that did not hold. "
+            "HOW: run the entry over input its precondition admits, or ask "
+            "the compiler about the same call with the 'evaluate' operation "
+            "to read the same refusal."
+        )
+
+
+class _ContractFailed(_Stopped):
     """A contract of the program did not hold for this run."""
 
     def __init__(self, function, kind, condition):
         super().__init__(
+            _ASSURANCE,
             "WHAT: the " + kind + " of " + repr(function) + " did not hold "
             "for this input: " + condition + ". "
             "WHY: the program promises nothing where its " + kind + " does "
@@ -743,13 +939,14 @@ class _ContractFailed(Exception):
         )
 
 
-class _NoClauseCovered(Exception):
+class _NoClauseCovered(_Stopped):
     """No clause of a match covered the value: the checker refuses a
     match that leaves a case out, so this says the artefact was handed a
     value of a shape the program cannot have."""
 
     def __init__(self, value):
         super().__init__(
+            _ASSURANCE,
             "WHAT: no clause of a match in this program covered the value "
             + _write_value(value) + ". "
             "WHY: the compiler refuses a match that leaves a case out, so "
@@ -790,6 +987,7 @@ def _equal(left, right):
 def _field(value, name):
     if not isinstance(value, _Constructed) or value.constructor not in _FIELDS:
         raise _Refused(
+            _ILL_TYPED,
             "WHAT: the field " + repr(name) + " was read from "
             + _write_value(value) + ", which is not a value of a type this "
             "program declares. "
@@ -800,6 +998,7 @@ def _field(value, name):
     declared = _FIELDS[value.constructor]
     if name not in declared:
         raise _Refused(
+            _ILL_TYPED,
             "WHAT: the constructor " + repr(value.constructor) + " has no "
             "field " + repr(name) + "; it has " + repr(declared) + ". "
             "WHY: a field is read by the name its declaration gives it. "
@@ -868,6 +1067,7 @@ def _write_value(value):
     if isinstance(value, int):
         if _too_many_digits(value):
             raise _Refused(
+                _RESOURCE,
                 "WHAT: this program computed an integer of "
                 + str(_how_many_digits(value)) + " digits and this artefact "
                 "writes an integer of at most " + str(_digits_written())
@@ -906,6 +1106,7 @@ def _read_value(text, about):
     forms, rest = _read_form(text, 0, about)
     if _skipped(rest, text) != len(text):
         raise _Refused(
+            _MALFORMED,
             "WHAT: " + about + " carries more than one value: " + repr(text)
             + ". "
             "WHY: one argument of the entry is one value. "
@@ -934,6 +1135,7 @@ def _read_form(text, at, about):
     at = _skipped(at, text)
     if at >= len(text):
         raise _Refused(
+            _MALFORMED,
             "WHAT: " + about + " carries no value at all: " + repr(text) + ". "
             "WHY: the entry of this program takes one value per argument. "
             "HOW: send the value the way a program writes it, as "
@@ -952,6 +1154,7 @@ def _read_form(text, at, about):
                 break
             if at >= len(text):
                 raise _Refused(
+                    _MALFORMED,
                     "WHAT: " + about + " stops before the value is closed: "
                     + repr(text) + ". "
                     "WHY: a constructed value is written inside one pair of "
@@ -962,6 +1165,7 @@ def _read_form(text, at, about):
             fields.append(field)
         if name not in _FIELDS:
             raise _Refused(
+                _MALFORMED,
                 "WHAT: " + about + " names the constructor " + repr(name)
                 + ", which this program does not declare; it declares "
                 + repr(tuple(sorted(_FIELDS))) + ". "
@@ -971,6 +1175,7 @@ def _read_form(text, at, about):
             )
         if len(fields) != len(_FIELDS[name]):
             raise _Refused(
+                _MALFORMED,
                 "WHAT: " + about + " gives the constructor " + repr(name) + " "
                 + str(len(fields)) + " field(s) and it takes "
                 + str(len(_FIELDS[name])) + " "
@@ -999,6 +1204,7 @@ def _read_integer(word, about):
     digits = word[1:] if word[:1] in ("+", "-") else word
     if not digits or not all(character in "0123456789" for character in digits):
         raise _Refused(
+            _MALFORMED,
             "WHAT: " + about + " writes " + repr(word) + ", which is not a "
             "value of core-0. "
             "WHY: a value is a whole number written as an optional sign and "
@@ -1009,6 +1215,7 @@ def _read_integer(word, about):
         )
     if len(digits) > _LITERAL_DIGITS:
         raise _Refused(
+            _RESOURCE,
             "WHAT: " + about + " writes an integer literal of "
             + str(len(digits)) + " digits and this artefact reads at most "
             + str(_LITERAL_DIGITS) + ", as the compiler does. "
@@ -1029,6 +1236,7 @@ def _read_word(text, at, about):
         at += 1
     if at == start:
         raise _Refused(
+            _MALFORMED,
             "WHAT: " + about + " carries nothing where a name or a number "
             "was expected: " + repr(text) + ". "
             "WHY: a constructed value opens with the name of its "
@@ -1065,6 +1273,7 @@ def _check_declared(value, declared, where):
         raise _ill_typed(where, declared, value)
     if value.constructor not in _CONSTRUCTORS:
         raise _Refused(
+            _MALFORMED,
             "WHAT: " + where + " carries the constructor "
             + repr(value.constructor) + ", which this program does not "
             "declare; it declares " + repr(tuple(sorted(_CONSTRUCTORS))) + ". "
@@ -1075,6 +1284,7 @@ def _check_declared(value, declared, where):
     owner, fields = _CONSTRUCTORS[value.constructor]
     if len(fields) != len(value.fields):
         raise _Refused(
+            _MALFORMED,
             "WHAT: " + where + " gives the constructor "
             + repr(value.constructor) + " " + str(len(value.fields))
             + " field(s) and it takes " + str(len(fields)) + " "
@@ -1084,6 +1294,7 @@ def _check_declared(value, declared, where):
         )
     if owner != declared:
         raise _Refused(
+            _ILL_TYPED,
             "WHAT: " + where + " is declared " + repr(declared) + " and "
             "carries " + _write_value(value) + ", which is a value of "
             + repr(owner) + ". "
@@ -1097,6 +1308,7 @@ def _check_declared(value, declared, where):
 
 def _ill_typed(where, declared, value):
     return _Refused(
+        _ILL_TYPED,
         "WHAT: " + where + " is declared " + repr(declared) + " and carries "
         + _write_value(value) + ". "
         "WHY: this artefact answers for the types the entry declares, and "
@@ -1127,6 +1339,7 @@ def _refuse_a_header_that_is_not_about_this_program():
     if certifies(SOURCE):
         return
     sys.stderr.write(
+        _ARTEFACT[0] + ": "
         "WHAT: this artefact records the source revision "
         + repr(ARTEFACT["source_revision"])
         + " and the source written in it has the revision "
@@ -1138,7 +1351,7 @@ def _refuse_a_header_that_is_not_about_this_program():
         "HOW: build the artefact again from the source you hold; do not "
         "edit a generated artefact by hand.\\n"
     )
-    raise SystemExit(4)
+    raise SystemExit(_ARTEFACT[1])
 
 
 def main(argv):
@@ -1149,6 +1362,7 @@ def main(argv):
     try:
         if len(argv) != len(PARAMETERS):
             raise _Refused(
+                _MALFORMED,
                 "WHAT: this artefact was run over " + str(len(argv))
                 + " argument(s) and its entry " + repr(ARTEFACT["entry"])
                 + " takes " + str(len(PARAMETERS)) + ": "
@@ -1166,26 +1380,30 @@ def main(argv):
             read = _read_value(written, where)
             _check_declared(read, PARAMETERS[place][1], where)
             values.append(read)
+        # Every argument is a value of its declared type here, so the
+        # entry's own precondition is the last thing between the input
+        # and the program. It is decided before the program is called:
+        # an input outside it runs none of the program and has no
+        # result value.
+        for condition, holds in _ENTRY_PRECONDITIONS:
+            if not _truth(holds(*values)):
+                raise _PreconditionUnmet(ARTEFACT["entry"], condition)
         answered = _write_value(_ENTRY(*values))
-    except _Refused as refusal:
-        sys.stderr.write(str(refusal) + "\\n")
-        return 2
-    except _ContractFailed as failure:
-        sys.stderr.write(str(failure) + "\\n")
-        return 3
-    except _NoClauseCovered as failure:
-        sys.stderr.write(str(failure) + "\\n")
-        return 3
+    except _Stopped as stopped:
+        sys.stderr.write(stopped.word + ": " + str(stopped) + "\\n")
+        return stopped.status
     except RecursionError:
         sys.stderr.write(
+            _ARTEFACT[0] + ": "
             "WHAT: this artefact ran out of stack answering that input. "
             "WHY: a chain of calls deeper than the interpreter takes cannot "
             "be answered, and an artefact never ends in a traceback. "
             "HOW: run it over a smaller input.\\n"
         )
-        return 4
+        return _ARTEFACT[1]
     except Exception as failure:  # the artefact, not the input
         sys.stderr.write(
+            _ARTEFACT[0] + ": "
             "WHAT: this artefact failed inside itself: "
             + type(failure).__name__ + ": " + str(failure) + ". "
             "WHY: this is a failure of the generated program, not a "
@@ -1193,7 +1411,7 @@ def main(argv):
             "traceback. "
             "HOW: report it with the source revision this artefact records.\\n"
         )
-        return 4
+        return _ARTEFACT[1]
     sys.stdout.write(answered + "\\n")
     return 0
 
@@ -1247,11 +1465,15 @@ class Artefact:
             "",
             "Run it with one argument per parameter of the entry, each the "
             "text of a value",
-            "the way a program writes it. It answers the text of one value, "
-            "or refuses in",
-            "words: 2 for input it cannot answer, 3 for a contract of the "
-            "program that did",
-            "not hold, 4 for a failure of this file itself. It imports "
+            "the way a program writes it. It answers the text of one value "
+            "and exits 0, or",
+            "it answers nothing and exits with the status of the kind of "
+            "refusal it gives,",
+            "whose word opens the first line of the message:",
+            "",
+            *THE_REFUSALS.documented(),
+            "",
+            "REFUSALS below carries the same table as data. It imports "
             "nothing but the",
             "standard library, so it answers where neither the compiler nor "
             "the solver is",
@@ -1271,6 +1493,19 @@ class Artefact:
             f"_LITERAL_DIGITS = {reader.LITERAL_DIGITS.maximum!r}",
             f"_DECLARED_DIGITS = {values.WRITTEN_DIGITS.declared!r}",
             "",
+            "# Every kind of refusal this artefact can give: the word its "
+            "first line",
+            "# opens with and the status it exits with. The same table the "
+            "compiler",
+            "# publishes for a built artefact, written here so that a reader "
+            "holding",
+            "# only this file reads it too.",
+            THE_REFUSALS.declarations(),
+            "",
+            "REFUSALS = "
+            + pprint.pformat(THE_REFUSALS.as_data(), indent=1, width=74,
+                             sort_dicts=True),
+            "",
             "ARTEFACT = "
             + pprint.pformat(recorded, indent=1, width=74, sort_dicts=True),
             "",
@@ -1282,6 +1517,8 @@ class Artefact:
             "",
             translation.text(),
             f"_ENTRY = _FUNCTIONS[{entry.name!r}]",
+            "",
+            translation.entry_preconditions(entry),
             THE_RUNTIME.strip("\n"),
             "",
         ]

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prova import checker, runtime
+from prova import building, checker, runtime
 
 # What a client is told about a field of a request: it must send it, or
 # it may leave it out.
@@ -778,7 +778,12 @@ THE_OPERATIONS = Catalogue(
                         "published only for a program whose aggregate says "
                         "verified; anything else is refused with "
                         f"'{checker.NOT_SHOWN_WHOLE}', names what stopped it, "
-                        "and writes nothing at all",
+                        "and writes nothing at all. What the artefact itself "
+                        "answers with is published under 'artefact_statuses': "
+                        "one entry per category word a run of it can end "
+                        "with, each carrying the exit status of that word and "
+                        "what it means, and the artefact carries the same "
+                        "table as data",
                     ),
                     TRUST,
                 ),
@@ -786,6 +791,19 @@ THE_OPERATIONS = Catalogue(
         ),
     )
 )
+
+
+def the_artefact_statuses_published() -> dict:
+    """Every status a run of a built artefact can exit with, and what
+    each one means.
+
+    Read from the one table prova.building writes into the artefact
+    itself, so the number a client branches on is the number the file
+    it holds exits with. A client reads this before it asks for a
+    build, which is the point: an exit status it cannot look up is a
+    number with no meaning.
+    """
+    return building.THE_REFUSALS.published()
 
 
 def the_language_published() -> dict:
@@ -812,4 +830,5 @@ def published_parts(
     return {
         **THE_OPERATIONS.published(available, unavailable),
         "language": the_language_published(),
+        "artefact_statuses": the_artefact_statuses_published(),
     }
