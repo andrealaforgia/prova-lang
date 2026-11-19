@@ -38,6 +38,30 @@ NOT_ATTEMPTED = obligations.NOT_ATTEMPTED
 BY_THE_SOLVER = "solver"
 BY_A_RULE_OF_THE_PROFILE = "structure"
 
+# What an attempt that finished says about itself, spelled as the word
+# over the whole program spells it.
+COMPLETED = "completed"
+
+# Why the word is withheld from a claim that is valid only because
+# nothing satisfies what it assumes, and from one whose domain could not
+# be shown inhabited at all.
+NOTHING_TO_RANGE_OVER = (
+    "this obligation is valid for want of anything to range over: the solver "
+    "answered that nothing at all satisfies what it assumes, so the statement "
+    "holds over an empty domain and says nothing about the program. SPEC.md "
+    "lines 406-407 forbid certifying a useful machine on an unsatisfiable "
+    "required domain, so the word is withheld. Nothing here says the program "
+    "is wrong: repair the conditions that leave the domain empty -- for a "
+    "machine, an invariant and an admissibility predicate no state and event "
+    "satisfy together -- and ask again"
+)
+COULD_NOT_TELL_WHETHER_IT_RANGES_OVER_ANYTHING = (
+    "this obligation was not proved because it could not be shown to range "
+    "over anything at all: a claim whose assumptions nothing satisfies is "
+    "valid over an empty domain, and that question was not settled here, so "
+    "the word is withheld (SPEC.md lines 406-407). What the attempt said:"
+)
+
 # What this tool says about the word it takes from the solver. One
 # sentence, in one place, carried by every answer that asked one.
 THE_TRUST_IT_DISCLOSES = (
@@ -216,7 +240,7 @@ class Discharge:
         self._asked_a_solver = True
         verdict = self._solver.asked(claim, self._run.milliseconds_left())
         if isinstance(verdict, solving.Unrefutable):
-            return Finding.proved_by_the_solver()
+            return self._if_it_ranges_over_anything(obligation)
         if isinstance(verdict, solving.SolverUnavailable):
             return Finding.unknown_because(verdict.reason, "tool_failure")
         if isinstance(verdict, solving.Undecided):
@@ -224,6 +248,37 @@ class Discharge:
                 verdict.reason, verdict.execution_status
             )
         return self._candidate(obligation, claim, verdict)
+
+    def _if_it_ranges_over_anything(self, obligation) -> Finding:
+        """Proved, where the obligation ranges over something; unsettled
+        with its reason, where nothing satisfies what it assumes or the
+        solver could not tell.
+
+        A claim whose assumptions are contradictory is valid for want of
+        anything to range over, and that is no statement about the
+        program. SPEC.md lines 406-407 forbid certifying a useful machine
+        on an unsatisfiable required domain, so the word is withheld
+        here rather than taken from an empty domain -- and withheld,
+        not turned into a disproof: nothing about the program was shown
+        to be wrong.
+        """
+        asked = obligation.nothing_satisfies_it_in(self._program)
+        if asked is None:
+            return Finding.proved_by_the_solver()
+        if isinstance(asked, encoding.OutsideTheFragment):
+            return Finding.unknown_because(
+                f"{COULD_NOT_TELL_WHETHER_IT_RANGES_OVER_ANYTHING} {asked.reason}",
+                "unsupported",
+            )
+        answer = self._solver.asked(asked, self._run.milliseconds_left())
+        if isinstance(answer, solving.Refuted):
+            return Finding.proved_by_the_solver()
+        if isinstance(answer, solving.Unrefutable):
+            return Finding.unknown_because(NOTHING_TO_RANGE_OVER, COMPLETED)
+        return Finding.unknown_because(
+            f"{COULD_NOT_TELL_WHETHER_IT_RANGES_OVER_ANYTHING} {answer.reason}",
+            getattr(answer, "execution_status", COMPLETED),
+        )
 
     def _candidate(self, obligation, claim, refuted: solving.Refuted) -> Finding:
         """A solution the solver found, which is a counterexample only if

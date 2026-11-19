@@ -530,9 +530,15 @@ OBLIGATIONS_BESIDE_THE_ROLES_SAY = (
     "obligations about events are stated over one value of the event type, "
     "whatever that type holds, so no event is listed and a type with no "
     "bound is read exactly as a type with two values (SPEC.md lines "
-    "384-386). Nothing of the program was run for them: what the declared "
-    "examples did when they were run here is reported beside the word over "
-    "the whole program"
+    "384-386), and neither is 'proved' where nothing satisfies the invariant "
+    "and the admissibility predicate together: a claim that holds over an "
+    "empty domain says nothing about the machine (SPEC.md lines 406-407). "
+    "Each of the three was established, where it was, by the solver this "
+    "answer names and not by running the program; where one of them carries "
+    "a counterexample instead, that one input was run through the reference "
+    "semantics of this tool, which is what makes it a counterexample and not "
+    "merely a solution. What the examples the program declares did when they "
+    "were run here is reported beside the word over the whole program"
 )
 
 

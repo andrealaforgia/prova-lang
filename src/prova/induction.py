@@ -191,6 +191,20 @@ class AnAdmittedTransition:
             )
         )
 
+    def nothing_satisfies_it(self) -> encoding.Claim:
+        """The claim that no state and event satisfy the invariant and
+        the admissibility predicate together.
+
+        It is the two assumptions with `false` to be shown, so a solver
+        that finds no solution for its denial is saying exactly that
+        nothing satisfies them: the machine then has no transition to
+        reason about, and the two obligations written over this pair hold
+        for an empty domain (SPEC.md lines 406-407). Asked through the
+        one port the obligations are asked through, so no second notion
+        of a solver lives here.
+        """
+        return self._claim(encoding.Term.falsity())
+
     def _claim(self, conclusion: encoding.Term) -> encoding.Claim:
         return encoding.Claim(
             encoding.Shapes.of(self._program),
@@ -226,6 +240,13 @@ class Initialisation(obligations.Obligation):
     so the state it answers is one value and the statement is about that
     value. An initial condition nothing satisfies is caught here and
     nowhere else, which is what SPEC.md lines 406-407 ask for.
+
+    That the word 'disproved' can never be reported for it is structural
+    and not a choice of this class: a claim with no variable has no
+    solution to read, so the replay gate has nothing to run and cannot
+    confirm a witness whatever this obligation declares. It assumes
+    nothing either, so it cannot hold over an empty domain and asks no
+    question about one.
     """
 
     roles: TheRolesOfAMachine
@@ -286,6 +307,9 @@ class StepEnabledness(obligations.Obligation):
     def _claim(self, program: syntax.Program):
         return AnAdmittedTransition(self.roles, program).the_step_is_defined()
 
+    def nothing_satisfies_it_in(self, program: syntax.Program):
+        return _nothing_admits_a_transition_in(self.roles, program)
+
 
 @dataclass(frozen=True)
 class Preservation(obligations.Obligation):
@@ -331,6 +355,9 @@ class Preservation(obligations.Obligation):
             self.roles, program
         ).the_invariant_holds_after_it()
 
+    def nothing_satisfies_it_in(self, program: syntax.Program):
+        return _nothing_admits_a_transition_in(self.roles, program)
+
 
 def the_obligations_of(
     resolved: machine.ResolvedMachine,
@@ -347,6 +374,22 @@ def the_obligations_of(
         Initialisation(roles.init, _site(INITIALISATION), roles),
         StepEnabledness(roles.step, _site(STEP_ENABLEDNESS), roles),
         Preservation(roles.step, _site(PRESERVATION), roles),
+    )
+
+
+def _nothing_admits_a_transition_in(
+    roles: TheRolesOfAMachine, program: syntax.Program
+):
+    """The claim that no state and event of this machine satisfy the
+    invariant and the admissibility predicate together, or the reason
+    this translation could not state it.
+
+    Both obligations written over an admitted transition answer this one
+    question, in the one place it is stated: they range over the same
+    pair, so a domain empty for one is empty for the other.
+    """
+    return encoding.attempted(
+        lambda: AnAdmittedTransition(roles, program).nothing_satisfies_it()
     )
 
 

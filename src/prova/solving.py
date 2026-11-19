@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from prova import encoding
+from prova.values import WRITTEN_DIGITS
 
 # What the solver is called and the package it is pinned as. One place,
 # read by the answer and by what the answer stands on.
@@ -167,7 +168,10 @@ class _Question:
         for assumption in self._claim.assumptions:
             solver.add(self._built(assumption))
         solver.add(z3.Not(self._built(self._claim.conclusion)))
-        return verdict_for(z3, solver.check(), solver, self._read)
+        try:
+            return verdict_for(z3, solver.check(), solver, self._read)
+        except _TooLargeToWrite as too_large:
+            return Undecided(too_large.reason, "completed")
 
     def _read(self, model) -> tuple[tuple[str, str], ...]:
         """The solution, as one text per variable written the way a
@@ -344,11 +348,32 @@ class _Sorts:
         return self._sorts[type_name].accessor(place, fields.index(field_name))
 
 
+class _TooLargeToWrite(Exception):
+    """A value of a solution this tool cannot write as characters.
+
+    Raised inside the walk below and turned into `Undecided` at the one
+    place the question is asked, so an obligation whose solution cannot
+    be written is left unsettled with that reason and the answer keeps
+    its inventory. It never leaves this module.
+    """
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 def _written(z3, value) -> str:
     """One value of a solution, written the way a program writes it, so
-    the Owner can hand it straight to a run."""
+    the Owner can hand it straight to a run.
+
+    An integer past the digits this tool writes is not written at all:
+    the limit is the one the whole tool writes answers under, asked of
+    the unit that owns it, and a solution carrying such a value is
+    reported as a question the tool could not settle rather than as a
+    witness no reader could run or a failure of the tool.
+    """
     if isinstance(value, z3.IntNumRef):
-        return str(value.as_long())
+        return _written_integer(value)
     if z3.is_true(value):
         return "true"
     if z3.is_false(value):
@@ -360,3 +385,28 @@ def _written(z3, value) -> str:
     if not fields:
         return f"({constructor})"
     return "(" + constructor + " " + " ".join(fields) + ")"
+
+
+def _written_integer(value) -> str:
+    """One whole number of a solution, as the characters a program writes
+    it with.
+
+    The solver writes the decimal itself and this reads its length: the
+    interpreter refuses to turn a number of more digits than its own
+    limit into characters at all, so counting the digits of the written
+    form is the one way to meet the limit this tool declares without
+    reaching that refusal first.
+    """
+    written = value.as_string()
+    digits = len(written.lstrip("-"))
+    if digits <= WRITTEN_DIGITS.maximum:
+        return written
+    raise _TooLargeToWrite(
+        f"the solver found a solution carrying a whole number of {digits} "
+        f"digits, and this tool writes an integer of at most "
+        f"{WRITTEN_DIGITS.maximum} ({WRITTEN_DIGITS.name}); "
+        "the solution could not be written as a value a reader can run, so "
+        "this obligation is left unsettled rather than answered with a "
+        "witness nobody can read. Nothing is claimed about the program "
+        "either way: the rest of the inventory stands"
+    )

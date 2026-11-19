@@ -188,7 +188,25 @@ function over it makes the reference semantics refuse, and neither an
 initialiser answering a state outside the invariant nor a step leaving it is
 a refusal. So an invariant that is not inductive on its own leaves
 preservation unsettled, never `proved`, and no weaker predicate is put in
-its place. Everything these three say is conditional on the model your
+its place. Two bounds apply to the other two obligations and are worth
+stating, because both were found by review rather than by reasoning. First,
+a claim is not proved on validity alone where it assumes something: the two
+written over an admitted transition are also asked whether *anything*
+satisfies the invariant and the admissibility predicate together, which is
+the same two assumptions with `false` to be shown, and a solver finding no
+solution for the denial of that is saying that nothing does. The obligations
+would then be valid for want of anything to range over -- an invariant
+admitting only one state and an admissibility predicate admitting only
+another, say -- so the word is withheld from both, each naming the empty
+domain, and the machine is not certified (SPEC.md lines 406-407). Where the
+question itself cannot be settled the word is withheld too: a proof over a
+domain that may be empty is not a proof of anything. Second, a solution this
+tool cannot write is not a counterexample: an integer of more digits than
+the limit every answer is written under (`written_integer_digits`) leaves
+that one obligation unsettled, naming the limit, with the rest of the
+inventory standing -- before this bound existed such a solution ended the
+whole request in a failure of the tool, which is the one thing an answer
+about a program must never be. Everything these three say is conditional on the model your
 descriptor states (SPEC.md line 416): the assumptions it lists are carried
 into the answer as stated and this tool checks none of them, and a proof
 about the step functions is not a statement about the runtime that calls

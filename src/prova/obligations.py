@@ -233,6 +233,19 @@ class Obligation:
     def _claim(self, program: syntax.Program):
         raise NotImplementedError("each kind of obligation states its own claim")
 
+    def nothing_satisfies_it_in(self, program: syntax.Program):
+        """The claim that nothing at all satisfies what this obligation
+        assumes, or `None` when it assumes nothing.
+
+        An obligation that assumes nothing ranges over every input of
+        its types and cannot hold for want of anything to range over, so
+        it has no such claim. One that does assume something is valid
+        whenever its assumptions are contradictory, which is no statement
+        about the program at all: whoever asks a solver about the
+        obligation asks this one too before taking the word.
+        """
+        return None
+
     def as_dict(self, finding) -> dict:
         entry = {
             "id": self.identity,
