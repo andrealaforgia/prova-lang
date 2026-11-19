@@ -1,44 +1,92 @@
-# Prova: compiler restart
+# Prova
 
-Prova is a functional programming language intended for LLMs to generate and change
-software. Its core combines immutable values, explicit claims, checkable evidence
-and state-transition semantics compatible with TLA+ principles.
-The goal is independently correct software within a measured token and compute
-budget. Whether a new language improves that outcome remains an open hypothesis.
+Prova is a functional programming language for LLMs to write and change software. Its
+core combines immutable values, explicit claims, checkable evidence and state-transition
+semantics compatible with TLA+ principles. The aim is software that is independently
+correct, inside a measured budget of tokens and compute.
 
-This working tree starts the compiler again from requirements. There is no compiler,
-test runner, build system, CI pipeline or active Relay engagement here yet. No old
-implementation, test result or iteration completion counts as delivery of the restart.
+A Prova program says what it promises (`requires`, `ensures`, worked `examples`) and the
+toolchain says, per claim, what it has checked and what it has not. Evidence for one kind
+of claim is never reported as evidence for another: a passing example is not a proof, a
+proof is about one revision of one source, and a refusal that a program is outside the
+supported profile is different from a refusal that it is wrong.
 
-Read these documents in order:
+The compiler in this repository is a JSON service: one request on standard input, one
+JSON answer on standard output, always, whatever the input.
 
-| Document | Purpose |
+## Status
+
+| Profile | What it covers | State |
+|---|---|---|
+| `core-0` | total pure first-order functions, records, unions, `match`, contracts, examples | implemented and checked |
+| `verify-0` | proof obligations discharged by a pinned Z3, each answer saying what rests on the solver and what on a rule of the language | linear integer arithmetic fragment implemented; the aggregate "verified" verdict is in progress |
+| `machine-0` | state machines and inductive invariants | not started |
+
+Operations: `discover`, `check`, `examples`, `evaluate`, `parse`, `format`, `verify`.
+`build` (an executable artefact for a fully verified program) is not available yet; the
+manifest says so, and no answer claims otherwise.
+
+## Quick start
+
+You need [uv](https://docs.astral.sh/uv/) and Python 3.12.
+
+```sh
+uv sync
+printf '%s' '{"operation":"discover"}' | uv run prova
+```
+
+Check and verify the hour clock from Lamport's *Specifying Systems*:
+
+```sh
+python3 - <<'EOF' | uv run prova
+import json
+print(json.dumps({"operation": "verify", "source": open("examples/hour-clock.prova").read()}))
+EOF
+```
+
+Every obligation of that program comes back `proved`, each marked as settled by the
+solver or by a written rule of the language. `discover` describes every operation, its
+request and response shape, the diagnostic categories, the resource budgets and the
+language's types and operators, so a client needs nothing else to use the tool.
+
+## What the tool promises
+
+- **One answer, always.** Malformed requests, unreadable programs, over-long or deeply
+  nested input and unwritable text are refused with a located diagnostic in a published
+  category. The command never ends in a traceback.
+- **Declared budgets.** Input size, time, memory and answer size are declared per
+  operation and enforced; exceeding one is a refusal that claims nothing about the
+  program.
+- **Honest verification.** `proved`, `disproved` and `unknown` are per obligation. A
+  disproof carries a witness that the evaluator really refuses; otherwise the answer is
+  `unknown`. The solver's word is disclosed as trusted, not re-checked.
+
+## Repository layout
+
+| Path | Contents |
 |---|---|
-| [SPEC.md](SPEC.md) | Restart draft 0.2: functional core, proof obligations, state-machine semantics and reference alignment |
-| [docs/EXPECTATIONS.md](docs/EXPECTATIONS.md) | Proposed first outcome, evidence questions and unresolved decisions |
-| [evidence/README.md](evidence/README.md) | Small historical counterexamples to turn into independently reviewed checks |
-| [docs/RELAY.md](docs/RELAY.md) | Handoff for Relay delivery protocol 2 |
-| [Design review](docs/spec-review-2026-09-27.md) | Assessment of the earlier baseline that motivated draft 0.2 |
+| `SPEC.md` | the language specification (restart draft 0.2), the authority for behaviour |
+| `src/prova/` | reader, syntax, checker, evaluator, obligations, solver encoding, service |
+| `tests/` | acceptance, property and unit tests; they drive the real command |
+| `examples/`, `conformance/`, `evidence/` | example programs, hand-written expected outputs, historical counterexamples |
+| `docs/ROADMAP.md` | the delivery roadmap and what has shipped |
+| `docs/translation-to-the-solver.md` | what each logical primitive means and why discharging an obligation establishes the source claim |
+| `tools/` | development tools (not part of the package) |
 
-The owner's restart instruction on 2026-09-27 was:
+## Development
 
-> Remove anything that is not strictly required to re-implement a compiler from scratch
+```sh
+uv sync
+uv run pytest -q tests      # about 4 minutes
+```
 
-The owner specified the second Relay protocol, based on expectations, evidence and
-questions to be validated. The documents here are a prepared starting brief, not an
-approved roadmap or fabricated execution evidence. Proposed scope and open decisions
-are labelled accordingly.
+Continuous integration runs the same command on every push. The tests read `SPEC.md` at a
+pinned revision, so CI checks out the full history.
 
-Draft 0.2 defines three incremental targets: `core-0` for total pure functions,
-`verify-0` for explicit verification, and `machine-0` for state invariants. It includes
-a reservation example with exact expected behaviour. Full temporal proof automation,
-concurrency and broad libraries remain later work. None of these targets is implemented.
+## Contributing
 
-The previous working tree was archived outside this repository, including its full
-v0.9.1 specification, reviews, samples, untracked files and local agent state. The
-original Git history remains available locally. Historical source revision:
-`093fb86443c057c1d3abb4f1c033d1a6bf601d38`.
+Behaviour is decided by `SPEC.md`. A change starts from a failing test that states the
+behaviour through the public JSON interface, and keeps the existing tests green. The
+roadmap in `docs/ROADMAP.md` lists what is planned and what is deliberately out of scope.
 
-Origin is `git@github.com:andrealaforgia/prova-lang.git`. Publishing this restart
-baseline does not approve a roadmap or establish compiler correctness. Begin the
-new engagement with analysis and independently reviewed expectations.
+The repository is `git@github.com:andrealaforgia/prova-lang.git`.
