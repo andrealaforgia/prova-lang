@@ -303,8 +303,8 @@ def _this_implementation() -> str:
     except OSError as failure:
         return (
             "not readable: the source of this tool could not be read "
-            f"({failure.strerror or failure}), so this digest does not "
-            "identify the code behind this answer"
+            f"({failure.strerror or failure}: {failure.filename}), so this "
+            "digest does not identify the code behind this answer"
         )
     return hashed.hexdigest()
 
