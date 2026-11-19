@@ -1264,13 +1264,17 @@ there.
   request whose JSON nests about 20000 arrays deep ends in `RecursionError` inside
   the JSON reader. Also decide whether `operation` holding a surrogate is echoed back
   unchanged (it is today). Each should answer one JSON response.
-- **A lowered interpreter digit limit still fails in the reader.** With
-  `PYTHONINTMAXSTRDIGITS=640` (or `-X int_max_str_digits`) and a 1000-digit integer
-  literal in a program, `reader.py` `int(self.text)` raises and the command answers
-  `tool_failure`, on every operation, before R3 and after it. R2's literal limit (1000
-  digits) is only safe while the interpreter's own limit is at least that; read the
-  limit actually in force and refuse a literal above it with the same `syntax`
-  refusal. Pre-existing; raised by the R3 review.
+- **The independent EXAMINE (source-blind) step was skipped for F22 and F26.**
+- **F18 and F24 had no Codex review**: the outside service's content filter blocked
+  the prompts. F18 can be retried with neutral wording.
+- **Mutation samples are small** and were not re-run after the repairs for F22, F26,
+  F27 and F28.
+- **nwstep records a command under a 300 s cap but the suite takes about 350 s**, so
+  the craft, refactor and probe records of several features are marked stale for that
+  reason alone.
+- **Review after repair is thin.** F22 was reviewed once more only by the coordinator
+  after its last repair; the F23 repair commit and the F26 repair had no independent
+  review after repair.
 
 ## 9. Delivered so far
 
@@ -1305,6 +1309,15 @@ durable statement of each behaviour.
 | R1 robustness | 49e3c43 | A constructor value with the wrong field count is refused (`arity_mismatch`); text past the nesting limit gives `resource_exhausted` / `nesting_limit_exceeded`. | Limits are chosen numbers, see R3. |
 | R2 two crashes | 96195ed | A 1000-digit integer limit; one UTF-8 rule in the request reader for every text field (lone surrogates are `malformed_request`). | None recorded. |
 | R3 robustness | 984a349 | 4000-digit limit on written integers (below the interpreter's 4300), request nesting limit 64. | Refused rather than written by this tool's own routine. |
+| R3b digit limit | 8ddf8d2 | One digit limit (4000, or the interpreter's if lower), enforced and published under every interpreter setting; a disabled interpreter limit refuses nothing. | The declared 4000 stays the ceiling even when the interpreter allows more. |
+| F21 verified aggregate | d666663 | `verify` says `verified` only when every obligation is proved, every declared example ran and passed, and the checker accepted; else `not_verified` naming what stopped it. A form given an extra operand (`if`, `let`, `deftype`, field selector) is refused. | Mutation sample was 20 of 54 changes; the 5 survivors (frozen flags) are equivalent. |
+| F25 machine descriptor | fc3fea7 | `machine` answers whether a descriptor's five roles resolve, with checked types; every text of the descriptor is read before the program. | A role that must hold for all inputs is accepted only with no `requires`, or `true`, here and in what it reaches; other clauses are refused, not proved (follow-up). |
+| F22 minimal `build` | 5aa3a02 | `build` writes one self-contained Python module only for a program that is `verified`; the answer is measured against the budget before anything is published; the artefact checks each value against declared types. | One backend (generated Python); a kill between temporary file and name leaves the temporary file; no EXAMINE; last repair reviewed by the coordinator only. |
+| F26 machine obligations in `verify` | 1fb70c5 | `verify` with an optional `descriptor` adds three inductive obligations (initialisation, step enabledness, preservation), settled by the same solver route. | An empty required domain, or a solution past 4000 digits, is not certified (withheld, never disproved); no EXAMINE; repair not independently reviewed. |
+| F27 `step` | 29c9ca5 | `step` drives a machine event by event; a boundary rejection and a business rejection are told apart; a refused contract or an inadmissible event stops the run and publishes what ran. | One sequential state; an empty `events` list is refused; mutation sample small. |
+| F28 broken guards by proof | f446f8b | Preservation names what confirms its witness; an induction-step witness is a different type from a reachable counterexample; a digest covers every contract a proof reads. | Evidence too long to write leaves the obligation unsettled (`evidence_not_written`); mutation sample small. |
+| F23 artefact refusal statuses | 7b39da8 | A built artefact exits 2 MALFORMED, 3 ASSURANCE, 4 ARTEFACT, 5 ILL-TYPED, 6 PRECONDITION, 7 RESOURCE, with the category word first; every argument is read before any is typed. | Nesting limit copied from the compiler at build time; the repair commit had no independent review. |
+| F24 authorised destination | 0b4f706 | A build writes only inside `output_directory` under `output_name`; `replace` records the digest of what was replaced; `..` and a link at the name are refused; a failure leaves what stood byte for byte. | A link as a directory component is followed; no Codex review (filter blocked it). |
 
 Standing process facts: the full suite takes about 4.5 minutes; a delivery
 that touches an existing test's expected result stops and asks the Owner.
