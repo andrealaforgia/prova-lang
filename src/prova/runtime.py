@@ -314,9 +314,17 @@ class MachineRuntime:
         are not attempted at all. What did run is published either way.
 
         `between_events()` is the caller's rule about how much work this
-        run may still do, asked once before each event: driving a
-        sequence is the work of the operation, and the budgets that
-        measure it belong to the caller that owns them.
+        run may still do, asked once before each event and once more
+        after the last transition, before a run is published as one that
+        finished: driving a sequence is the work of the operation, and
+        the budgets that measure it belong to the caller that owns them.
+        The last transition is work like any other, and asking only
+        before each event left whatever it spent unmeasured -- a single
+        event could spend any amount of time and still be answered, and
+        what it spent appeared only at the next boundary, in the next
+        event's reading. A run that stopped early is published as it
+        stands: what it did run is an answer about the machine, and the
+        caller reads how far it got.
         """
         if not events:
             raise ValueError(
@@ -353,6 +361,7 @@ class MachineRuntime:
                     self._roles.assumptions,
                 )
             standing = attempt.state_after
+        between_events()
         return Driven(state, tuple(attempted), None, self._roles.assumptions)
 
     def _attempted(
