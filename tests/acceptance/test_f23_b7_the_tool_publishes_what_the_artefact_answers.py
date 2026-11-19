@@ -85,10 +85,13 @@ def test_the_artefact_carries_the_same_table_as_data_and_in_its_header(
 ):
     """Given one built artefact, when it is read as a module, then the
     table of words and statuses it carries as data is the table the
-    tool publishes, and its header names every word and every status.
+    tool publishes, and its header documents each word beside its own
+    status.
 
-    still passes if: the header had named the words without their
-    numbers -- every number is read out of the header text too.
+    still passes if: the header had named every word with a number that
+    is not its own -- the pairs are read out of the header and compared
+    as pairs, so a header documenting the status 12 for MALFORMED fails
+    here rather than passing because '2' stands inside '12'.
     """
     carried = read_as_data(the_built_component, "m['REFUSALS']")
     assert carried == {
@@ -103,14 +106,22 @@ def test_the_artefact_carries_the_same_table_as_data_and_in_its_header(
     )
 
     header = read_as_data(the_built_component, "m['__doc__']") or ""
-    for word, status, _ in THE_REFUSALS:
-        assert word in header and str(status) in header, (
-            f"WHAT: the artefact's header does not document {word!r} with "
-            f"its status {status}: {header!r}. "
-            "WHY: a reader opening the file must find what each status it "
-            "can exit with means, without running it. "
-            "HOW: write the table into the header the build generates."
-        )
+    documented = {}
+    for line in header.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and parts[0].isdigit() and ":" in parts[1]:
+            documented[parts[1].split(":", 1)[0].strip()] = int(parts[0])
+    assert documented == {
+        word: status for word, status, _ in THE_REFUSALS
+    }, (
+        f"WHAT: the artefact's header documents {documented} and an artefact "
+        f"answers with {[(w, s) for w, s, _ in THE_REFUSALS]}. "
+        "WHY: a reader opening the file must find each status it can exit "
+        "with beside the word that status carries, and the pair must be the "
+        "pair: a header naming the right words with other numbers is worse "
+        "than none, because it is believed. "
+        "HOW: write the table into the header the build generates."
+    )
 
 
 def test_every_word_an_artefact_actually_answers_with_is_published(

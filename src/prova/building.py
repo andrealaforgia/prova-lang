@@ -430,6 +430,33 @@ class PythonNames:
         return self.functions[name]
 
 
+# A number of more than this many bits is written into the generated
+# module as hexadecimal. Python turns the digits of a decimal literal
+# into a number while it reads the file, and refuses to do that past the
+# limit on decimal digits its caller set, which may be as low as 640
+# digits; it reads a hexadecimal literal whatever that limit is. 1000
+# bits is about 302 digits, well inside the lowest limit a caller can
+# set, so every number a program is likely to write stays written as
+# itself and only an enormous one is written another way.
+BITS_WRITTEN_AS_DECIMAL = 1000
+
+
+def _written_number(value: int) -> str:
+    """One integer as the generated module writes it: as itself, where a
+    reader gains from reading the number, and as hexadecimal where a
+    decimal literal of that length would stop the interpreter from
+    reading the file at all.
+
+    The value is the same number either way; nothing of the program
+    depends on which form it is written in.
+    """
+    if value.bit_length() <= BITS_WRITTEN_AS_DECIMAL:
+        return repr(value)
+    if value < 0:
+        return f"-0x{-value:x}"
+    return f"0x{value:x}"
+
+
 def _spelled(name: str) -> str:
     """`name` written with the characters a Python identifier takes.
 
@@ -627,7 +654,7 @@ class Translation:
         writes them.
         """
         if isinstance(expr, syntax.IntLit):
-            return repr(expr.value)
+            return _written_number(expr.value)
         if isinstance(expr, syntax.BoolLit):
             return "True" if expr.value else "False"
         if isinstance(expr, syntax.UnitLit):
@@ -790,7 +817,7 @@ def _pattern(
         bound.append((identifier, reached))
         return inner
     if isinstance(pattern, syntax.PatInt):
-        tests.append(f"_is_int({reached}, {pattern.value!r})")
+        tests.append(f"_is_int({reached}, {_written_number(pattern.value)})")
         return scope
     if isinstance(pattern, syntax.PatBool):
         tests.append(f"_is_bool({reached}, {pattern.value!r})")
@@ -1037,6 +1064,17 @@ def _digits_written():
     return interpreter
 
 
+def _digits_read():
+    """How many digits this artefact reads as one integer literal: the
+    number the compiler declares, unless the interpreter running this
+    file turns fewer digits into a number because its caller lowered
+    the limit on them."""
+    interpreter = sys.get_int_max_str_digits()
+    if interpreter == 0 or interpreter >= _LITERAL_DIGITS:
+        return _LITERAL_DIGITS
+    return interpreter
+
+
 def _too_many_digits(value):
     """Whether `value` writes more digits than this artefact writes,
     answered without writing it: a value of few enough bits cannot reach
@@ -1103,7 +1141,7 @@ def _read_value(text, about):
     true or false, () for unit, and a constructor with its fields inside
     brackets.
     """
-    forms, rest = _read_form(text, 0, about)
+    forms, rest = _read_form(text, 0, about, 0)
     if _skipped(rest, text) != len(text):
         raise _Refused(
             _MALFORMED,
@@ -1131,7 +1169,17 @@ def _skipped(at, text):
     return at
 
 
-def _read_form(text, at, about):
+def _read_form(text, at, about, depth):
+    """The one value standing at `at`, read with `depth` forms already
+    standing around it.
+
+    The depth is carried because a value is read one form inside another
+    by calling this once per form: the artefact declares the same
+    greatest nesting its compiler publishes and refuses past it, so a
+    deep value is answered as a limit of this artefact rather than
+    exhausting the interpreter and being reported as a fault of the
+    generated program.
+    """
     at = _skipped(at, text)
     if at >= len(text):
         raise _Refused(
@@ -1142,6 +1190,20 @@ def _read_form(text, at, about):
             "\\"(Clock 12)\\" or \\"7\\"."
         )
     if text[at] == "(":
+        depth += 1
+        if depth > _NESTING_LIMIT:
+            raise _Refused(
+                _RESOURCE,
+                "WHAT: " + about + " nests " + str(depth) + " forms deep and "
+                "this artefact reads " + str(_NESTING_LIMIT) + ", which is "
+                "the greatest nesting its compiler publishes. "
+                "WHY: one form inside another is read by calling once per "
+                "form, and a maximum is declared so that a deep value is "
+                "refused here instead of exhausting the interpreter and "
+                "answering nothing at all. "
+                "HOW: send a value nesting at most " + str(_NESTING_LIMIT)
+                + " forms."
+            )
         at = _skipped(at + 1, text)
         if at < len(text) and text[at] == ")":
             return _UNIT, at + 1
@@ -1161,7 +1223,7 @@ def _read_form(text, at, about):
                     "brackets. "
                     "HOW: close the value, as \\"(Clock 12)\\"."
                 )
-            field, at = _read_form(text, at, about)
+            field, at = _read_form(text, at, about, depth)
             fields.append(field)
         if name not in _FIELDS:
             raise _Refused(
@@ -1201,6 +1263,7 @@ def _read_integer(word, about):
     1_000 -- and a value the compiler refuses must not be a value this
     artefact answers.
     """
+    limit = _digits_read()
     digits = word[1:] if word[:1] in ("+", "-") else word
     if not digits or not all(character in "0123456789" for character in digits):
         raise _Refused(
@@ -1213,18 +1276,35 @@ def _read_integer(word, about):
             "refuses this text too. "
             "HOW: send one of those."
         )
-    if len(digits) > _LITERAL_DIGITS:
+    if len(digits) > limit:
         raise _Refused(
             _RESOURCE,
             "WHAT: " + about + " writes an integer literal of "
             + str(len(digits)) + " digits and this artefact reads at most "
-            + str(_LITERAL_DIGITS) + ", as the compiler does. "
+            + str(limit) + ", which is the "
+            + ("limit the compiler publishes" if limit == _LITERAL_DIGITS
+               else "limit the caller of this interpreter left it")
+            + ". "
             "WHY: turning a run of digits into a number costs time that "
             "grows with the square of its length. "
-            "HOW: write the number with at most " + str(_LITERAL_DIGITS)
-            + " digits."
+            "HOW: write the number with at most " + str(limit) + " digits."
         )
-    return int(digits) * (-1 if word[:1] == "-" else 1)
+    try:
+        return int(digits) * (-1 if word[:1] == "-" else 1)
+    except ValueError:
+        # The interpreter refuses to turn this run of digits into a
+        # number, which is a limit of this run and not a statement that
+        # the text is no value: it is reported as the limit it is.
+        raise _Refused(
+            _RESOURCE,
+            "WHAT: " + about + " writes an integer literal of "
+            + str(len(digits)) + " digits and the interpreter running this "
+            "artefact turns at most " + str(limit) + " digits into a number. "
+            "WHY: the caller of this interpreter lowered the limit on the "
+            "decimal digits of an integer, which is a limit of this run. "
+            "HOW: raise that limit, or write the number with at most "
+            + str(limit) + " digits."
+        )
 
 
 def _read_word(text, at, about):
@@ -1244,6 +1324,74 @@ def _read_word(text, at, about):
             "HOW: write the value as \\"(Clock 12)\\"."
         )
     return text[start:at], at
+
+
+def _about(place):
+    """Which argument a refusal is about, named as the entry names its
+    parameter, so a caller sending four values knows which one to
+    repair."""
+    return (
+        "argument " + str(place + 1) + " (" + PARAMETERS[place][0] + " "
+        + PARAMETERS[place][1] + ")"
+    )
+
+
+def _refuse_text_that_is_not_utf8(written, about):
+    """Refuse an argument whose bytes are not UTF-8 text.
+
+    An argument reaches a program as bytes. The interpreter puts a byte
+    it cannot decode into the text as a lone surrogate, which nothing
+    can encode back, and a reader stepping over a comment would step
+    over it: a byte that is not text must never be part of a value this
+    artefact answers, because the compiler reads none.
+    """
+    try:
+        written.encode("utf-8")
+    except UnicodeEncodeError as refused:
+        raise _Refused(
+            _MALFORMED,
+            "WHAT: " + about + " carries a byte at position "
+            + str(refused.start) + " that is not part of any UTF-8 text. "
+            "WHY: a value of this language is written in text, and the "
+            "compiler reads none of this argument either; a run that stepped "
+            "over such a byte -- inside a comment, say -- would answer where "
+            "the compiler refuses. "
+            "HOW: send the argument as UTF-8 text."
+        )
+
+
+def _decoded(argv):
+    """Every argument as the value its text writes, read before any of
+    them is typed.
+
+    The order is the compiler's own: text that carries no value at all
+    is refused wherever it stands, ahead of a value of the wrong type
+    standing anywhere else, so the compiler and what it built answer one
+    question the same way.
+    """
+    try:
+        for place, written in enumerate(argv):
+            _refuse_text_that_is_not_utf8(written, _about(place))
+        read = [
+            _read_value(written, _about(place))
+            for place, written in enumerate(argv)
+        ]
+        for place, value in enumerate(read):
+            _check_declared(value, PARAMETERS[place][1], _about(place))
+    except RecursionError:
+        raise _Refused(
+            _RESOURCE,
+            "WHAT: reading the arguments of this run reached the depth the "
+            "interpreter allows. "
+            "WHY: a value is read one form inside another by calling once "
+            "per form, and this artefact refuses past the "
+            + str(_NESTING_LIMIT) + " forms its compiler publishes, so a run "
+            "that still reaches the interpreter's own depth is a limit of "
+            "this run and not a fault of the generated program. "
+            "HOW: send a value nesting at most " + str(_NESTING_LIMIT)
+            + " forms."
+        )
+    return read
 
 
 def _check_declared(value, declared, where):
@@ -1371,15 +1519,7 @@ def main(argv):
                 "HOW: run it again with one argument per parameter, each the "
                 "text of a value."
             )
-        values = []
-        for place, written in enumerate(argv):
-            where = (
-                "argument " + str(place + 1) + " (" + PARAMETERS[place][0]
-                + " " + PARAMETERS[place][1] + ")"
-            )
-            read = _read_value(written, where)
-            _check_declared(read, PARAMETERS[place][1], where)
-            values.append(read)
+        values = _decoded(argv)
         # Every argument is a value of its declared type here, so the
         # entry's own precondition is the last thing between the input
         # and the program. It is decided before the program is called:
@@ -1492,6 +1632,7 @@ class Artefact:
             "# program.",
             f"_LITERAL_DIGITS = {reader.LITERAL_DIGITS.maximum!r}",
             f"_DECLARED_DIGITS = {values.WRITTEN_DIGITS.declared!r}",
+            f"_NESTING_LIMIT = {reader.READING_LIMIT.maximum!r}",
             "",
             "# Every kind of refusal this artefact can give: the word its "
             "first line",

@@ -7,9 +7,10 @@ field of the wrong type -- and got answers where `evaluate` refuses the
 same call as invalid input. Each of those now carries the status of the
 kind of wrong input it is: a value read but of a type the entry does not
 declare is told from text that reads as no value at all, and a limit of
-the artefact reached while writing a number is told from both. Worse, one of them came back as the exit of
-an assurance failure, which says a contract of a verified program did
-not hold: a wrong input must never be reported as that.
+the artefact reached while writing a number is told from both. Worse,
+one of them came back as the exit of an assurance failure, which says a
+contract of a verified program did not hold: a wrong input must never be
+reported as that.
 
 Beside them: an integer whose answer is longer than this tool writes, and
 two texts the compiler's own reader settles one way and the artefact's
