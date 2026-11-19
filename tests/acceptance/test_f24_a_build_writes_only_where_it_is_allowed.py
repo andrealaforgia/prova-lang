@@ -369,13 +369,15 @@ def test_a_destination_written_as_one_path_is_answered_as_before(tmp_path):
 
 
 def test_a_request_that_names_the_destination_twice_or_by_half_is_refused(tmp_path):
-    """Given requests that name the destination in both ways at once,
+    """Given requests that name two different destinations at once,
     that send only half of the two-field way, and that send none of the
     three fields, when each is sent, then each is refused naming the
-    fields to repair, and nothing is written.
+    fields to repair, and nothing is written. A request that names one
+    and the same place in both ways is answered.
 
     still passes if: the tool had refused every build request -- the
-    tests above send each of the two ways on its own and are answered.
+    last assertion names one place in both ways and reads the artefact
+    it published.
     """
     authorised, _ = _authorised_and_outside(tmp_path)
     source = hour_clock()
@@ -384,9 +386,9 @@ def test_a_request_that_names_the_destination_twice_or_by_half_is_refused(tmp_pa
             "operation": "build",
             "source": source,
             "entry": "step",
-            "output_file": str(authorised / "clock.py"),
+            "output_file": str(authorised / "one.py"),
             "output_directory": str(authorised),
-            "output_name": "clock.py",
+            "output_name": "another.py",
         }
     )
     half = ask(
@@ -408,7 +410,7 @@ def test_a_request_that_names_the_destination_twice_or_by_half_is_refused(tmp_pa
     none = ask({"operation": "build", "source": source, "entry": "step"})
 
     for about, answer in (
-        ("both ways at once", both),
+        ("two different places at once", both),
         ("a directory with no name", half),
         ("a name with no directory", other_half),
         ("neither way", none),
@@ -434,6 +436,30 @@ def test_a_request_that_names_the_destination_twice_or_by_half_is_refused(tmp_pa
         "after four refused requests. "
         "WHY: a refused request writes nothing. "
         "HOW: read the request before writing."
+    )
+
+    agreeing = ask(
+        {
+            "operation": "build",
+            "source": source,
+            "entry": "step",
+            "output_file": str(authorised / "clock.py"),
+            "output_directory": str(authorised),
+            "output_name": "clock.py",
+        }
+    )
+    assert agreeing.get("status") == "completed", (
+        f"WHAT: a request naming one and the same place in both ways was "
+        f"answered {agreeing.get('status')!r}. "
+        "WHY: a client that writes a request out of every field the manifest "
+        "publishes names the destination both ways, and the two agree: what "
+        "is refused is two namings that point at different places. "
+        f"HOW: inspect the answer: {agreeing}"
+    )
+    assert entries_under(authorised) == ["clock.py"], (
+        f"WHAT: the authorised directory holds {entries_under(authorised)}. "
+        "WHY: the two namings are one place, so one artefact stands there. "
+        f"HOW: inspect the answer: {agreeing}"
     )
 
 

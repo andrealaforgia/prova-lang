@@ -118,12 +118,45 @@ ENTRY = Field.must_be_sent(
     "the name the submitted program declares for the function the artefact "
     "invokes when it is run",
 )
-OUTPUT_FILE = Field.must_be_sent(
-    "output_file",
+OUTPUT_FILE = Field.may_be_sent(
+    building.OUTPUT_FILE_FIELD,
     "text",
-    "the file to write the artefact to: the directory of that path must "
-    "already exist and nothing may stand at the path itself, or the request "
-    "is refused and nothing is written",
+    "the whole path to write the artefact to, as builds named it before a "
+    "destination could be authorised: the directory of that path is then the "
+    "authorised destination and the last part of it is the name inside it. "
+    "Send this field, or 'output_directory' with 'output_name', or both "
+    "naming one and the same place; a request naming two different places, or "
+    "none, is refused and nothing is written",
+)
+OUTPUT_DIRECTORY = Field.may_be_sent(
+    building.OUTPUT_DIRECTORY_FIELD,
+    "text",
+    "the directory the build is authorised to write into, as one absolute "
+    "path of a directory that already exists. Nothing a request names can "
+    "carry a build out of it: the artefact stands directly inside it, under "
+    "the plain name 'output_name' chooses. A name carrying a separator or "
+    "'..', and a link standing at that name, are refused and nothing is "
+    "written",
+)
+OUTPUT_NAME = Field.may_be_sent(
+    building.OUTPUT_NAME_FIELD,
+    "text",
+    "the name the artefact is given inside the authorised directory: one "
+    "plain file name, with no separator and no '..' in it, of at most 255 "
+    "bytes. Sent together with 'output_directory'",
+)
+REPLACE = Field.may_be_sent(
+    building.REPLACE_FIELD,
+    "true or false",
+    "whether this build may replace an artefact already standing under the "
+    "chosen name. A request that leaves 'replace' out replaces nothing: a "
+    "build over a name something stands at is refused instead. Where it is "
+    "true and something stood there, the answer records 'replaced' as true "
+    "beside the SHA-256 digest of the bytes that were replaced, and the "
+    "replacement is one step: a reader of the directory sees either the "
+    "whole of the old artefact or the whole of the new one. A build that "
+    "fails after the replacement was authorised leaves what was there "
+    "untouched",
 )
 # The descriptor field again, as the one operation that may be asked
 # without it publishes it. Its name is the one above, so a client writes
@@ -750,7 +783,7 @@ THE_OPERATIONS = Catalogue(
             "build",
             InACategory("building"),
             answering(
-                (SOURCE, ENTRY, OUTPUT_FILE),
+                (SOURCE, ENTRY, OUTPUT_FILE, OUTPUT_DIRECTORY, OUTPUT_NAME, REPLACE),
                 AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(

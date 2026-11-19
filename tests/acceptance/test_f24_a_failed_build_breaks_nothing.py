@@ -341,8 +341,8 @@ def test_two_builds_asked_at_once_leave_exactly_one_whole_artefact(tmp_path):
         "working file of either of them. "
         "HOW: give the name to a whole file in one step."
     )
-    ran = run_artefact(authorised / "clock.py", ["(Clock 11)"])
-    assert ran.returncode == 0 and ran.stdout.strip() == "(Clock 0)", (
+    ran = run_artefact(authorised / "clock.py", ["(Clock 11)", "(Tick)"])
+    assert ran.returncode == 0 and ran.stdout.strip() == "(Outcome (Clock 12) true)", (
         f"WHAT: the one file left by two builds at once exited "
         f"{ran.returncode} and printed {ran.stdout.strip()!r}. "
         "WHY: the file that survives a race is a whole artefact, never two "

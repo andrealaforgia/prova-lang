@@ -654,6 +654,24 @@ OUTPUT_FILE_ASKED = RequiredText(
 )
 
 
+OUTPUT_DIRECTORY_ASKED = RequiredText(
+    manifest.OUTPUT_DIRECTORY,
+    "the text of a path",
+    "this tool writes the artefact inside the directory those characters "
+    "name, and a value of another kind has no characters to open; send the "
+    "absolute path of a directory that already exists as one JSON string",
+)
+
+
+OUTPUT_NAME_ASKED = RequiredText(
+    manifest.OUTPUT_NAME,
+    "the text of a file name",
+    "this tool gives the artefact the name those characters spell, and a "
+    "value of another kind spells none; send a plain file name, with no "
+    "separator in it, as one JSON string",
+)
+
+
 STATE_ASKED = RequiredText(
     manifest.STATE,
     "the text of a value",
@@ -740,10 +758,10 @@ class StepAsked:
 @dataclass(frozen=True)
 class BuildAsked:
     """What a request asks a build to do: which function the artefact
-    invokes, and which file to write it to."""
+    invokes, and where it may be written."""
 
     entry: SubmittedText
-    output_file: SubmittedText
+    destination: "building.DestinationAsked"
 
 
 @dataclass(frozen=True)
@@ -870,29 +888,148 @@ class Request:
         return StepAsked(descriptor, state, events)
 
     def build_asked(self) -> "BuildAsked | MalformedRequest":
-        """Which function the artefact is to invoke and which file to
-        write it to, or every field of the two that could not be read.
+        """Which function the artefact is to invoke and where it may be
+        written, or every field of the two that could not be read.
 
         Both are read in one pass, as an evaluation's two fields are: a
         client that wrote both wrongly is told about both at once.
         """
         entry = ENTRY_ASKED.read(self.submitted.get(manifest.ENTRY.name))
-        output_file = OUTPUT_FILE_ASKED.read(
+        destination = self.destination_asked()
+        if isinstance(entry, MalformedRequest):
+            if isinstance(destination, MalformedRequest):
+                return entry.and_also(destination)
+            return entry
+        if isinstance(destination, MalformedRequest):
+            return destination
+        return BuildAsked(entry, destination)
+
+    def destination_asked(self) -> "building.DestinationAsked | MalformedRequest":
+        """Where the request asked its artefact to be written, however
+        it named it.
+
+        A request names the destination as a directory and a name inside
+        it, or as one whole path, and may name it both ways as long as
+        the two name one place: two namings that point at different
+        places name no destination this tool may choose between.
+        """
+        replacement = self._replacement_asked()
+        defects = None
+        if isinstance(replacement, MalformedRequest):
+            defects = replacement
+            replacement = building.Replacement.not_authorised()
+        inside = self._destination_inside_a_directory(replacement)
+        whole = self._destination_at_one_path(replacement)
+        for read in (inside, whole):
+            if isinstance(read, MalformedRequest):
+                defects = read if defects is None else defects.and_also(read)
+        if defects is not None:
+            return defects
+        if inside is None and whole is None:
+            return MalformedRequest.about(
+                manifest.OUTPUT_DIRECTORY.name,
+                "this request names no destination at all, and a build writes "
+                f"one artefact to one place: send {building.OUTPUT_DIRECTORY_FIELD!r} "
+                "naming a directory that already exists together with "
+                f"{building.OUTPUT_NAME_FIELD!r} naming the file inside it, or "
+                f"{building.OUTPUT_FILE_FIELD!r} naming the whole path. "
+                "Nothing was written",
+            )
+        if inside is None:
+            return whole
+        if whole is None:
+            return inside
+        if not inside.names_the_same_place_as(whole):
+            return MalformedRequest.about(
+                manifest.OUTPUT_DIRECTORY.name,
+                f"this request names its destination twice and the two name "
+                f"different places: {building.OUTPUT_DIRECTORY_FIELD!r} with "
+                f"{building.OUTPUT_NAME_FIELD!r} name "
+                f"{inside.authority.written!r} with {inside.name.written!r}, "
+                f"and {building.OUTPUT_FILE_FIELD!r} names "
+                f"{whole.authority.written!r} with {whole.name.written!r}. A "
+                "build writes one artefact to one place and chooses between "
+                "no two of them. Nothing was written. Send one of the two "
+                "namings, or make them agree",
+            )
+        return inside
+
+    def _destination_inside_a_directory(
+        self, replacement: "building.Replacement"
+    ) -> "building.DestinationAsked | MalformedRequest | None":
+        """The destination named as a directory and a name inside it, or
+        nothing at all where the request names neither of the two."""
+        named = (
+            manifest.OUTPUT_DIRECTORY.name in self.submitted
+            or manifest.OUTPUT_NAME.name in self.submitted
+        )
+        if not named:
+            return None
+        directory = OUTPUT_DIRECTORY_ASKED.read(
+            self.submitted.get(manifest.OUTPUT_DIRECTORY.name)
+        )
+        if not isinstance(directory, MalformedRequest):
+            unusable = building.AuthorisedDestination.unusable_text(
+                manifest.OUTPUT_DIRECTORY.name, directory.characters
+            )
+            if unusable is not None:
+                directory = MalformedRequest.about(
+                    manifest.OUTPUT_DIRECTORY.name, unusable
+                )
+        name = OUTPUT_NAME_ASKED.read(self.submitted.get(manifest.OUTPUT_NAME.name))
+        if isinstance(directory, MalformedRequest):
+            if isinstance(name, MalformedRequest):
+                return directory.and_also(name)
+            return directory
+        if isinstance(name, MalformedRequest):
+            return name
+        return building.DestinationAsked.inside(
+            directory.characters, name.characters, replacement
+        )
+
+    def _destination_at_one_path(
+        self, replacement: "building.Replacement"
+    ) -> "building.DestinationAsked | MalformedRequest | None":
+        """The destination named as one whole path, as every build
+        asked for before an authority was named did, or nothing at all
+        where the request does not name it that way."""
+        if manifest.OUTPUT_FILE.name not in self.submitted:
+            return None
+        written = OUTPUT_FILE_ASKED.read(
             self.submitted.get(manifest.OUTPUT_FILE.name)
         )
-        if not isinstance(output_file, MalformedRequest):
-            unusable = building.AuthorisedDestination.unusable_text(output_file.characters)
-            if unusable is not None:
-                output_file = MalformedRequest.about(
-                    manifest.OUTPUT_FILE.name, unusable
-                )
-        if isinstance(entry, MalformedRequest):
-            if isinstance(output_file, MalformedRequest):
-                return entry.and_also(output_file)
-            return entry
-        if isinstance(output_file, MalformedRequest):
-            return output_file
-        return BuildAsked(entry, output_file)
+        if isinstance(written, MalformedRequest):
+            return written
+        unusable = building.AuthorisedDestination.unusable_text(
+            manifest.OUTPUT_FILE.name, written.characters
+        )
+        if unusable is not None:
+            return MalformedRequest.about(manifest.OUTPUT_FILE.name, unusable)
+        return building.DestinationAsked.at(written.characters, replacement)
+
+    def _replacement_asked(
+        self,
+    ) -> "building.Replacement | MalformedRequest":
+        """Whether the request authorised replacing what stands under
+        the chosen name.
+
+        A request that says nothing authorises nothing: replacing what
+        the Owner holds is the one thing a build never does by default.
+        """
+        if manifest.REPLACE.name not in self.submitted:
+            return building.Replacement.not_authorised()
+        written = self.submitted.get(manifest.REPLACE.name)
+        if isinstance(written, bool):
+            return building.Replacement.asked(written)
+        return MalformedRequest.about(
+            manifest.REPLACE.name,
+            f"the {manifest.REPLACE.name!r} field of the request holds "
+            f"{type(written).__name__}, not true or false: this tool replaces "
+            "an artefact the Owner holds only where the request says so in "
+            "that one word, and a value of another kind says neither. Nothing "
+            f"was written. Send {manifest.REPLACE.name!r} as true to authorise "
+            "the replacement, or leave the field out",
+        )
 
     def machine_asked_if_sent(self) -> "machine.Descriptor | MalformedRequest | None":
         """The descriptor the request submits, or nothing at all when it
@@ -1817,7 +1954,7 @@ def _run_build(source: SubmittedText, asked: BuildAsked, run: Run) -> dict:
                 about=checker.AboutASymbol(asked.entry.characters),
             )
         )
-    destination = building.AuthorisedDestination.at(asked.output_file.characters)
+    destination = asked.destination.resolved()
     if isinstance(destination, building.Unwritable):
         refused.append(
             checker.Diagnostic(destination.category, destination.reason)

@@ -250,6 +250,14 @@ WRITTEN_DIGITS_EXCEEDED = "written_integer_digits_exceeded"
 # reads them from here.
 OUTPUT_DIRECTORY_ABSENT = "output_directory_absent"
 OUTPUT_FILE_EXISTS = "output_file_exists"
+# A destination the authority does not cover: a name that carries a
+# separator or a climb out of the authorised directory, a name that is
+# no plain file name at all, a link standing at the name, and a
+# directory this tool may not write into. Each is a fact about a field
+# of the request and about no program.
+OUTPUT_OUTSIDE_AUTHORITY = "output_outside_authority"
+OUTPUT_NAME_IS_A_LINK = "output_name_is_a_link"
+OUTPUT_NOT_WRITABLE = "output_not_writable"
 NOT_SHOWN_WHOLE = "not_shown_whole"
 
 # What a build refuses with when the module it would write cannot be
@@ -548,6 +556,15 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
     ),
     OUTPUT_FILE_EXISTS: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
+    ),
+    OUTPUT_OUTSIDE_AUTHORITY: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
+    ),
+    OUTPUT_NAME_IS_A_LINK: DiagnosticKind(
+        AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
+    ),
+    OUTPUT_NOT_WRITABLE: DiagnosticKind(
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=()
     ),
     NOT_SHOWN_WHOLE: DiagnosticKind(

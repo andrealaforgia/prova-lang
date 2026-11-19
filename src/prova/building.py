@@ -29,6 +29,7 @@ answers over the inputs it reads.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -42,6 +43,9 @@ from prova import formatter, provenance, reader, syntax, values, verdict
 # in checker.DIAGNOSTIC_KINDS, where a client reads what it carries.
 OUTPUT_DIRECTORY_ABSENT = "output_directory_absent"
 OUTPUT_FILE_EXISTS = "output_file_exists"
+OUTPUT_OUTSIDE_AUTHORITY = "output_outside_authority"
+OUTPUT_NAME_IS_A_LINK = "output_name_is_a_link"
+OUTPUT_NOT_WRITABLE = "output_not_writable"
 NOT_SHOWN_WHOLE = "not_shown_whole"
 GENERATED_NESTING_EXCEEDED = "generated_nesting_exceeded"
 
@@ -54,6 +58,20 @@ THE_PROGRAM_BEGINS = "# --- the program, translated ---"
 # The format of the artefact, written into it so a reader of an older
 # file knows which shape they hold.
 ARTEFACT_FORMAT = "prova-core-0-python-1"
+
+# The fields of a request that name where a build writes. The name of
+# each is written once, here, beside the rules that read it, and the
+# manifest publishes these very words, so the field a client reads about
+# is the field a refusal names.
+OUTPUT_FILE_FIELD = "output_file"
+OUTPUT_DIRECTORY_FIELD = "output_directory"
+OUTPUT_NAME_FIELD = "output_name"
+REPLACE_FIELD = "replace"
+
+# The longest name a file may be called. Every filesystem this tool runs
+# on refuses more, and a name refused by the rule rather than by the
+# operating system is refused before anything is opened.
+NAME_LIMIT = 255
 
 
 @dataclass(frozen=True)
@@ -228,6 +246,13 @@ class WorkingFile:
         is never written over."""
         os.link(self._name, str(path))
 
+    def replaces(self, path: pathlib.Path) -> None:
+        """Move the name `path` onto this file, which is one step of the
+        operating system: a reader of that name holds either the whole
+        of what stood there or the whole of this file, never half of
+        either."""
+        os.replace(self._name, str(path))
+
     def removed(self) -> None:
         """Take this file away, whatever happened to the build."""
         try:
@@ -237,41 +262,350 @@ class WorkingFile:
 
 
 @dataclass(frozen=True)
-class AuthorisedDestination:
-    """The one file a build may write, known to stand in a directory
-    that exists and to hold nothing yet.
+class AskedBy:
+    """Which field of a request carried a part of a destination, and
+    what that field wrote.
 
-    Built only by `at`, which refuses the two cases this slice does not
-    write in and names the path in its refusal. Nothing else in this
+    Carried together because every refusal says both: the Owner repairs
+    a field by its name, and reads back the text they sent to see what
+    this tool made of it.
+    """
+
+    field: str
+    written: str
+
+
+@dataclass(frozen=True)
+class Replacement:
+    """Whether the request authorised replacing what stands under the
+    chosen name, and the digest of what stood there.
+
+    One value answers both questions the answer publishes -- was
+    anything of the Owner's replaced, and what was it -- so no caller
+    can record a replacement without the digest of what it replaced, or
+    a digest of something that was never replaced.
+    """
+
+    authorised: bool
+    digest: "str | None" = None
+
+    @classmethod
+    def not_authorised(cls) -> "Replacement":
+        """What a request that says nothing about replacing asks for."""
+        return cls(False)
+
+    @classmethod
+    def asked(cls, authorised: bool) -> "Replacement":
+        return cls(bool(authorised))
+
+    def over(self, standing: "bytes | None") -> "Replacement":
+        """This authorisation, knowing what stands under the name: the
+        digest is of the bytes that were there when the destination was
+        built, which is what the answer records."""
+        if standing is None:
+            return Replacement(self.authorised)
+        return Replacement(self.authorised, hashlib.sha256(standing).hexdigest())
+
+    def names_what_it_replaces(self) -> bool:
+        return self.digest is not None
+
+    def gives_the_name(self, working: "WorkingFile", path: pathlib.Path) -> None:
+        """Give `path` to the file `working` wrote, in the one step that
+        either happens or does not.
+
+        Where nothing is replaced the name is added to the file, which
+        fails if anything got there first. Where a replacement was
+        authorised and something stands there, the name is moved onto
+        the file, which is the step a reader of the directory never sees
+        half of.
+        """
+        if self.digest is None:
+            working.gives_its_name_to(path)
+            return
+        working.replaces(path)
+
+    def published(self) -> dict:
+        """What the answer records about it."""
+        if self.digest is None:
+            return {"replaced": False}
+        return {"replaced": True, "replaced_digest": self.digest}
+
+
+@dataclass(frozen=True)
+class AuthorityRule:
+    """The one directory a build is authorised to write into, resolved
+    through every link and every `..` once, and the words it refuses
+    with.
+
+    Every refusal about where a build may write is written here, so a
+    client reads the same rule whichever way its request named the
+    destination: the directory that was authorised, the field to
+    repair, and that nothing was written.
+    """
+
+    asked: AskedBy
+    directory: str
+
+    @classmethod
+    def over(cls, asked: AskedBy) -> "AuthorityRule":
+        return cls(asked, os.path.realpath(asked.written))
+
+    def destination_named(
+        self, name: AskedBy, replacement: Replacement
+    ) -> "AuthorisedDestination | Unwritable":
+        """The one place a build may write under `name`, or why it may
+        not write there.
+
+        The path is built from the resolved authority and a plain file
+        name, so nothing a request writes can carry it out of the
+        authorised directory; a name that is not a plain file name is
+        refused before the filesystem is touched at all.
+        """
+        unusable = self._why_nothing_may_be_called(name)
+        if unusable is not None:
+            return self.refusing(
+                OUTPUT_OUTSIDE_AUTHORITY,
+                unusable,
+                f"Send a {name.field!r} that is a plain file name, with no "
+                "separator and no '..' in it, naming a file inside the "
+                "authorised directory",
+            )
+        if not os.path.isdir(self.directory):
+            return Unwritable(
+                OUTPUT_DIRECTORY_ABSENT,
+                f"this tool writes an artefact into a directory that already "
+                f"exists and the authorised directory {self.directory!r}, "
+                f"named by the {self.asked.field!r} field of the request, is "
+                f"not one: {_what_is_there(pathlib.Path(self.directory))}. The "
+                "artefact is written as a working file inside that directory "
+                "and then given its name, so there is nowhere to write it. "
+                "Nothing was written. Create that directory, or authorise one "
+                "that exists, and ask for the build again",
+            )
+        path = pathlib.Path(self.directory) / name.written
+        if os.path.islink(str(path)):
+            return self.refusing(
+                OUTPUT_NAME_IS_A_LINK,
+                f"the name {name.written!r} of the {name.field!r} field is a "
+                "link, and a build never writes through one: a link points "
+                "wherever it was made to point, which no authority covers",
+                "Remove the link or choose another name inside the authorised "
+                "directory",
+            )
+        standing = _bytes_standing_at(path)
+        if standing is not None and not replacement.authorised:
+            return self.refusing(
+                OUTPUT_FILE_EXISTS,
+                f"an artefact is already standing at {str(path)!r}, and an "
+                "artefact the Owner holds is replaced only when the request "
+                "says so",
+                "Send 'replace' as true to authorise the replacement, which "
+                "makes the answer record the digest of what it replaced, or "
+                f"send a {name.field!r} that holds nothing",
+            )
+        return AuthorisedDestination(self, name.written, replacement.over(standing))
+
+    def refusing(self, category: str, what: str, how: str) -> Unwritable:
+        """Why this build may not write where it was asked to, in the
+        words every refusal of this rule uses."""
+        return Unwritable(
+            category,
+            f"{what}. A build writes only inside the authorised destination "
+            f"{self.directory!r}, named by the {self.asked.field!r} field of "
+            "the request, and only under a plain file name standing directly "
+            "inside it. Nothing was written. " + how + ", and ask for the "
+            "build again",
+        )
+
+    def as_the_request_named(self, name: str) -> str:
+        """The place this destination stands at, written the way the
+        request wrote it.
+
+        What the answer records: the Owner goes back to the path they
+        sent, not to the one the links of their filesystem resolve it
+        to. Where a build may write is decided on the resolved path;
+        what it is called is the Owner's own words.
+        """
+        return os.path.join(self.asked.written, name)
+
+    def not_writable(self, failure: OSError) -> Unwritable:
+        """Why the artefact could not be written into this directory at
+        all, which is a fact about the destination and not about the
+        program."""
+        return Unwritable(
+            OUTPUT_NOT_WRITABLE,
+            f"the artefact could not be written into the authorised "
+            f"destination {self.directory!r}, named by the "
+            f"{self.asked.field!r} field of the request: the operating system "
+            f"answered {failure.strerror!r}. Nothing was written and anything "
+            "standing there is as it was. Give that directory a mode this "
+            "tool may write in, or authorise another directory, and ask for "
+            "the build again",
+        )
+
+    def _why_nothing_may_be_called(self, name: AskedBy) -> "str | None":
+        """Why no file inside this directory may be called what the
+        request asked for, or `None`.
+
+        A plain file name is the whole of what a request may choose:
+        anything carrying a separator, a climb, a zero byte or nothing
+        at all names a place this authority does not cover, or no place
+        at all.
+        """
+        written = name.written
+        if not written:
+            return (
+                f"the {name.field!r} field of the request carries no "
+                "characters, and an artefact is written under one name"
+            )
+        if "\x00" in written:
+            return (
+                f"the {name.field!r} field of the request carries a zero byte "
+                f"at position {written.index(chr(0))}, which no file name can "
+                "carry"
+            )
+        if written in (".", ".."):
+            return (
+                f"the {name.field!r} field of the request carries "
+                f"{written!r}, which names a directory and not a file in it"
+            )
+        if "/" in written or os.sep in written:
+            return (
+                f"the {name.field!r} field of the request carries "
+                f"{written!r}, which carries a separator and so names a place "
+                "of its own rather than a file inside the authorised "
+                "directory"
+            )
+        if len(written.encode("utf-8", "surrogatepass")) > NAME_LIMIT:
+            return (
+                f"the {name.field!r} field of the request carries a name of "
+                f"{len(written.encode('utf-8', 'surrogatepass'))} bytes, and "
+                f"no file name may be longer than {NAME_LIMIT} bytes"
+            )
+        if pathlib.PurePath(written).name != written:
+            return (
+                f"the {name.field!r} field of the request carries "
+                f"{written!r}, which is not a plain file name"
+            )
+        return None
+
+
+@dataclass(frozen=True)
+class DestinationAsked:
+    """Where a request asked its artefact to be written, however it
+    named it: the authority, the name inside it and the replacement it
+    authorised.
+
+    A request names its destination either as a directory and a name in
+    it, or as one whole path, and both are read into this one value, so
+    everything after the request reader knows one way of naming a place.
+    """
+
+    authority: AskedBy
+    name: AskedBy
+    replacement: Replacement
+
+    @classmethod
+    def inside(
+        cls, directory: str, name: str, replacement: Replacement
+    ) -> "DestinationAsked":
+        return cls(
+            AskedBy(OUTPUT_DIRECTORY_FIELD, directory),
+            AskedBy(OUTPUT_NAME_FIELD, name),
+            replacement,
+        )
+
+    @classmethod
+    def at(cls, written: str, replacement: Replacement) -> "DestinationAsked":
+        """What a request naming the whole path in one field asked for:
+        the directory of that path is the authority it named, and the
+        last part of it is the name inside it."""
+        whole = pathlib.Path(written)
+        return cls(
+            AskedBy(OUTPUT_FILE_FIELD, str(whole.parent)),
+            AskedBy(OUTPUT_FILE_FIELD, whole.name),
+            replacement,
+        )
+
+    def names_the_same_place_as(self, other: "DestinationAsked") -> bool:
+        """Whether two namings of a destination name one place."""
+        return self._final_text() == other._final_text()
+
+    def resolved(self) -> "AuthorisedDestination | Unwritable":
+        return AuthorityRule.over(self.authority).destination_named(
+            self.name, self.replacement
+        )
+
+    def _final_text(self) -> str:
+        return os.path.join(
+            os.path.realpath(self.authority.written), self.name.written
+        )
+
+
+@dataclass(frozen=True)
+class AuthorisedDestination:
+    """The one file a build may write: a plain name standing directly
+    inside a directory this tool was authorised to write into.
+
+    Built only by the authority rule, which refuses every name that
+    would carry a build out of that directory and every file in the way
+    that the request did not authorise replacing. Nothing else in this
     tool opens a file for writing, so a refusal decided before one of
     these is built is a refusal that wrote nothing.
     """
 
-    path: pathlib.Path
+    rule: AuthorityRule
+    name: str
+    replacement: Replacement
+
+    @property
+    def path(self) -> pathlib.Path:
+        """The one path this destination stands at."""
+        return pathlib.Path(self.rule.directory) / self.name
+
+    @classmethod
+    def inside(
+        cls, directory: str, name: str, replacement: "Replacement | None" = None
+    ) -> "AuthorisedDestination | Unwritable":
+        """The destination a request naming a directory and a name
+        asked for, or why it may not be written."""
+        return DestinationAsked.inside(
+            directory, name, replacement or Replacement.not_authorised()
+        ).resolved()
+
+    @classmethod
+    def at(
+        cls, written: str, replacement: "Replacement | None" = None
+    ) -> "AuthorisedDestination | Unwritable":
+        """The destination a request naming one whole path asked for,
+        or why it may not be written."""
+        return DestinationAsked.at(
+            written, replacement or Replacement.not_authorised()
+        ).resolved()
 
     @staticmethod
-    def unusable_text(written: str) -> "str | None":
-        """Why the text of the 'output_file' field is not a path this
-        tool can write to at all, or `None`.
+    def unusable_text(field: str, written: str) -> "str | None":
+        """Why the text of a field naming a directory or a whole path is
+        not something this tool can open at all, or `None`.
 
         Asked by the reader of the request, before any path is built:
-        text with no characters, text carrying a character no file name
-        can carry, and a path that is not absolute are all answers about
-        the request and not about a program. A relative path would be
-        read against whatever directory this process happens to stand
-        in, which is not something the caller named.
+        text with no characters, text carrying a character no path can
+        carry, and a path that is not absolute are all answers about the
+        request and not about a program. A relative path would be read
+        against whatever directory this process happens to stand in,
+        which is not something the caller named.
         """
         if not written:
             return (
-                "the 'output_file' field of the request carries no "
-                "characters, and an artefact is written to one named file: "
-                "send the absolute path of a file to write, inside a "
-                "directory that already exists"
+                f"the {field!r} field of the request carries no "
+                "characters, and an artefact is written inside one named "
+                "directory: send the absolute path of a directory that "
+                "already exists"
             )
         if "\x00" in written:
             return (
-                "the 'output_file' field of the request carries a character "
-                f"at position {written.index(chr(0))} that no file name can "
+                f"the {field!r} field of the request carries a character "
+                f"at position {written.index(chr(0))} that no path can "
                 "carry (the zero byte): this tool opens the characters of "
                 "that field as a path, and the operating system reads a path "
                 "up to the first zero byte. Nothing was written. Send the "
@@ -279,71 +613,71 @@ class AuthorisedDestination:
             )
         if not pathlib.PurePath(written).is_absolute():
             return (
-                f"the 'output_file' field of the request carries "
+                f"the {field!r} field of the request carries "
                 f"{written!r}, which is not an absolute path: a path that is "
                 "not absolute is read against the directory this process "
                 f"happens to stand in, which is {str(pathlib.Path.cwd())!r} "
                 "for this run and is not something the request named. "
-                "Nothing was written. Send the absolute path of the file to "
-                "write"
+                "Nothing was written. Send an absolute path"
             )
         return None
 
-    @classmethod
-    def at(cls, written: str) -> "AuthorisedDestination | Unwritable":
-        path = pathlib.Path(written)
-        directory = path.parent
-        if not directory.is_dir():
-            return Unwritable(
-                OUTPUT_DIRECTORY_ABSENT,
-                f"this tool writes an artefact into a directory that already "
-                f"exists and the directory {str(directory)!r} of the "
-                f"'output_file' field is not one: {_what_is_there(directory)}. "
-                "The artefact is written as a temporary file inside that "
-                "directory and then given its name, so there is nowhere to "
-                "write it. Nothing was written. Create that directory, or "
-                "send an 'output_file' inside one that exists, and ask for "
-                "the build again",
-            )
-        if path.exists():
-            return Unwritable(
-                OUTPUT_FILE_EXISTS,
-                f"this tool never writes over a file that is already there "
-                f"and {str(path)!r}, the 'output_file' field of the request, "
-                "is already there. An artefact the Owner holds is the one "
-                "thing a build must not replace without being asked. Nothing "
-                "was written. Send an 'output_file' naming a path that holds "
-                "nothing, or move that file aside first, and ask for the "
-                "build again",
-            )
-        return cls(path)
+    def recorded(self) -> dict:
+        """What the answer says about where the artefact went and what
+        it replaced."""
+        return {
+            "path": self.rule.as_the_request_named(self.name),
+            **self.replacement.published(),
+        }
 
     def publish(self, text: str) -> "Unwritable | None":
         """Put `text` at this destination, or say why it could not be.
 
-        The text is written into a temporary file in the same directory
-        and the destination is then made a name for it, which is the one
+        The text is written into a working file in the same directory
+        and the destination's name is then given to it, which is the one
         step that either happens or does not: a reader of the directory
-        sees no half-written artefact, and a file that appeared at the
-        path while this build ran is not replaced. The temporary file is
-        removed whatever happens, so a destination that holds nothing
-        after a refusal holds nothing at all.
+        sees no half-written artefact, and where no replacement was
+        authorised a file that appeared at the path while this build ran
+        is not written over. The working file is removed whatever
+        happens, so a destination that holds nothing after a refusal
+        holds nothing at all.
         """
-        working = WorkingFile(self.path.parent)
         try:
-            working.holding(text).gives_its_name_to(self.path)
+            working = WorkingFile(self.path.parent)
+        except OSError as failure:
+            return self.rule.not_writable(failure)
+        try:
+            self.replacement.gives_the_name(working.holding(text), self.path)
         except FileExistsError:
             return Unwritable(
                 OUTPUT_FILE_EXISTS,
                 f"a file appeared at {str(self.path)!r} while this build "
-                "was running, and this tool never writes over one. The "
-                "artefact was not published and nothing at that path was "
-                "changed. Send an 'output_file' naming a path that holds "
-                "nothing and ask for the build again",
+                "was running, and this tool writes over nothing it was not "
+                "asked to. The artefact was not published and nothing at that "
+                "path was changed. Send 'replace' as true, or a name that "
+                "holds nothing, and ask for the build again",
             )
+        except OSError as failure:
+            return self.rule.not_writable(failure)
         finally:
             working.removed()
         return None
+
+
+def _bytes_standing_at(path: pathlib.Path) -> "bytes | None":
+    """The bytes of what stands under a name, or `None` where nothing
+    stands there.
+
+    What cannot be read -- a directory, a file this tool may not open --
+    stands there all the same, and is answered as standing rather than
+    as absent: a build never takes a name it cannot read for a free one.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return b""
 
 
 def _what_is_there(directory: pathlib.Path) -> str:
@@ -1742,6 +2076,7 @@ class Artefact:
 
     def published(self, destination: "AuthorisedDestination") -> dict:
         """What the answer records about the artefact that was written:
-        the same record the artefact carries, beside the path it is at.
-        One place writes both, so the two cannot disagree."""
-        return {"path": str(destination.path), **self.recorded}
+        the same record the artefact carries, beside where it went and
+        what it replaced. One place writes both, so the two cannot
+        disagree."""
+        return {**destination.recorded(), **self.recorded}
