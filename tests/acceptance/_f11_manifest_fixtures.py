@@ -120,15 +120,25 @@ A_MACHINE_DESCRIPTOR = {
     "assumptions": ["One count at a time, over one authoritative counter."],
 }
 
-# The operations that take a descriptor: a descriptor names what its
-# program declares, so a request built out of every field one of these
-# publishes must be about the machine program above. `verify` is one of
-# them since it takes a descriptor it may leave out.
-OPERATIONS_ABOUT_A_MACHINE = ("machine", "verify")
+# The state the counter machine above may be driven from, and one event
+# of its event type: a request built from the published shape of the
+# operation that drives a machine carries both, and the state must be one
+# its invariant is true at, or the request would be refused for a reason
+# that says nothing about the shape.
+A_STATE_OF_THE_MACHINE = "(Counter 0)"
+AN_EVENT_OF_THE_MACHINE = ["(Count)"]
+
+# The operations whose fields must agree with each other: a descriptor
+# names what its program declares, and a state and an event are values
+# of the types that descriptor names. A request built out of every field
+# one of these publishes must be about the machine program above.
+# `verify` is one of them since it takes a descriptor it may leave out,
+# and `step` is one because it drives that machine.
+OPERATIONS_ABOUT_A_MACHINE = ("machine", "verify", "step")
 
 
 # The program a request for `operation` is about: the machine for the
-# operations whose other field names what its program declares, and the
+# operations whose other fields name what its program declares, and the
 # program above for every other.
 def a_program_for(operation: str) -> str:
     if operation in OPERATIONS_ABOUT_A_MACHINE:
@@ -270,6 +280,10 @@ def a_value_matching(operation: str, field: str, described: dict) -> object:
         return a_program_for(operation)
     if field == "descriptor":
         return A_MACHINE_DESCRIPTOR
+    if field == "state":
+        return A_STATE_OF_THE_MACHINE
+    if field == "events":
+        return list(AN_EVENT_OF_THE_MACHINE)
     if field in ("function", "entry"):
         return THE_FUNCTION_THE_PROGRAM_DECLARES
     if field == "output_file":
