@@ -1004,6 +1004,16 @@ def _run_discover() -> dict:
                     f"'{runtime.STATE_OUTSIDE_INVARIANT}' -- and 'stopped_at' "
                     "then names the position, the reason, the role that "
                     "decided it and how many events were never attempted. "
+                    "A contract of a role's own function that refuses the "
+                    "values the run calls it with stops the sequence too, "
+                    f"under the reason '{runtime.CONTRACT_REFUSED}': the "
+                    "answer carries the located "
+                    f"'{runtime.PRECONDITION_VIOLATION}' or "
+                    f"'{runtime.POSTCONDITION_VIOLATION}' refusal beside the "
+                    "result, which publishes the transitions that ran before "
+                    "that event and the state they left -- no entry stands "
+                    "for the event itself, because nothing of the machine "
+                    "was decided there. "
                     "Every event the request carries is read as a value of "
                     "the declared type before the first of them is driven, so "
                     "a request carrying one text this tool cannot read drives "
@@ -2193,7 +2203,7 @@ def _run_step(source: SubmittedText, driving: "StepAsked", run: Run) -> dict:
 
     run.stop_if_exhausted()
     try:
-        driven = driver.driven(state, events)
+        driven = driver.driven(state, events, run.stop_if_exhausted)
     except evaluator.EvaluationTooDeep as too_deep:
         return _too_deep_to_run("step", source, too_deep)
 
@@ -2210,11 +2220,10 @@ def _run_step(source: SubmittedText, driving: "StepAsked", run: Run) -> dict:
         "stands_on": _stands_on(),
         "diagnostics": [],
     }
-    if isinstance(driven, runtime.ContractRefused):
+    if driven.refused is not None:
         answer["diagnostics"] = [
-            _diagnostic_dict(_contract_refused(driven, program), revision)
+            _diagnostic_dict(_contract_refused(driven.refused, program), revision)
         ]
-        return answer
     try:
         answer["result"] = driven.published()
     except TooLargeToWrite as too_large:
@@ -2224,6 +2233,15 @@ def _run_step(source: SubmittedText, driving: "StepAsked", run: Run) -> dict:
             too_large,
             _declared_place(program, resolved.named_for(machine.STEP)),
         )
+
+    # The whole answer is written out and measured against the budget of
+    # this run before it is given, as a build measures its own: a
+    # sequence long enough to drive is also long enough to answer past
+    # what a caller may be given, and the first part of an answer carries
+    # no outcome to read.
+    too_large = run.budgets.answer_exhausted_by(printable_answer(answer))
+    if too_large is not None:
+        return budget_response("step", too_large)
     return answer
 
 

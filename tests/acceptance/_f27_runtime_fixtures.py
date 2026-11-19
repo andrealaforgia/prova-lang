@@ -13,6 +13,7 @@ Owner reads from the tool.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import subprocess
 
@@ -30,6 +31,10 @@ MACHINES = ("hour-clock", "reservation")
 A_TRANSITION = "transition"
 A_BOUNDARY_REJECTION = "boundary_rejection"
 A_STATE_OUTSIDE_THE_INVARIANT = "state_outside_invariant"
+
+# The fourth word, which only a stop carries: a role function's own
+# contract refused the values the run called it with.
+A_CONTRACT_REFUSAL = "contract_refused"
 
 
 def machine_source(machine: str) -> str:
@@ -206,6 +211,26 @@ def clock_whose_step_asks_for_more() -> tuple[str, dict]:
     return A_CLOCK_WHOSE_STEP_ASKS_FOR_MORE_SOURCE, descriptor
 
 
+# A clock whose step promises more than it can keep past 12 o'clock: it
+# answers an hour one higher, and promises the hour it answers is on the
+# dial. Its invariant admits any hour from 1 upwards, so the run reaches
+# the step at 12 and the promise it breaks is a postcondition, at the
+# second event rather than the first.
+A_CLOCK_WHOSE_STEP_PROMISES_MORE_SOURCE = (
+    A_CLOCK_WHOSE_STEP_ASKS_FOR_MORE_SOURCE.replace(
+        "  (requires (on-the-dial current))\n", "  (ensures (on-the-dial (.state result)))\n"
+    )
+)
+
+
+def clock_whose_step_promises_more() -> tuple[str, dict]:
+    """A machine whose step promises an hour on the dial and answers 13,
+    so a run reaches a promise it does not keep."""
+    descriptor = dict(A_CLOCK_DESCRIPTOR)
+    descriptor["roles"] = dict(descriptor["roles"], invariant="one-or-more")
+    return A_CLOCK_WHOSE_STEP_PROMISES_MORE_SOURCE, descriptor
+
+
 # --- the six rows SPEC.md's reservation table defines -----------------------
 
 
@@ -236,9 +261,16 @@ def the_spec_table() -> tuple[tuple[int, str, int, str], ...]:
 # --- the request and the answer --------------------------------------------
 
 
-def drive(source: str, descriptor: object, state: object, events: object) -> dict:
+def drive(
+    source: str,
+    descriptor: object,
+    state: object,
+    events: object,
+    lowering: "dict | None" = None,
+) -> dict:
     """What the tool answers when the Owner drives `source` from `state`
-    through `events`."""
+    through `events`, optionally with a budget lowered in the
+    environment the command runs in."""
     return run(
         {
             "operation": THE_OPERATION,
@@ -246,7 +278,8 @@ def drive(source: str, descriptor: object, state: object, events: object) -> dic
             "descriptor": descriptor,
             "state": state,
             "events": events,
-        }
+        },
+        lowering,
     )
 
 
@@ -254,13 +287,14 @@ def ask_for_the_manifest() -> dict:
     return run({"operation": "discover"})
 
 
-def run(request: dict) -> dict:
+def run(request: dict, lowering: "dict | None" = None) -> dict:
     proc = subprocess.run(
         ["prova"],
         input=json.dumps(request),
         capture_output=True,
         text=True,
-        timeout=30.0,
+        timeout=60.0,
+        env={**os.environ, **(lowering or {})},
     )
     assert proc.returncode == 0, (
         f"WHAT: the tool exited {proc.returncode} on a "

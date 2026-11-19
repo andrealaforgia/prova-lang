@@ -654,7 +654,8 @@ THE_OPERATIONS = Catalogue(
                     Field.when(
                         "result",
                         "object",
-                        "when at least one event was attempted",
+                        "whenever the run was driven, including a run a "
+                        "refused contract stopped",
                         "what the run published: under 'state_given' the "
                         "state the request carried, under 'transitions' one "
                         "entry per event attempted, in the order they were "
@@ -678,7 +679,14 @@ THE_OPERATIONS = Catalogue(
                         "'stopped_at' with the 'position' it stopped at, the "
                         "'reason', the 'role' of the descriptor that decided "
                         "it and how many events were 'events_not_run'; a run "
-                        "that drove them all carries none",
+                        "that drove them all carries none. The 'reason' is "
+                        f"{checker.listed(runtime.THE_STOP_REASONS)}: the "
+                        "last of those is a contract of a role's own "
+                        "function refusing the values the run called it "
+                        "with, which carries no entry for that event -- "
+                        "nothing of the machine was decided there -- and "
+                        "stands beside the located precondition or "
+                        "postcondition refusal in 'diagnostics'",
                     ),
                 ),
             ),

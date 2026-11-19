@@ -124,10 +124,10 @@ def test_the_refusal_of_a_state_outside_the_invariant_is_published_first():
 
 
 def test_every_word_an_answer_publishes_is_in_the_manifest():
-    """Given the three answers a transition, a boundary rejection and a
-    stop at the invariant produce, when the words they publish are read,
-    then each of them stands in what the manifest documents for this
-    operation."""
+    """Given the four answers a transition, a boundary rejection, a stop
+    at the invariant and a refused contract produce, when the words they
+    publish are read, then each of them stands in what the manifest
+    documents for this operation."""
     documented = (THE_MANIFEST.get("documentation") or {}).get(
         machines.THE_OPERATION
     )
@@ -142,6 +142,7 @@ def test_every_word_an_answer_publishes_is_in_the_manifest():
     clock_source, clock_descriptor = machines.shipped_machine("hour-clock")
     narrow_source, narrow_descriptor = machines.reservation_that_admits_less()
     drifting_source, drifting_descriptor = machines.clock_that_leaves_its_invariant()
+    asking_source, asking_descriptor = machines.clock_whose_step_asks_for_more()
     answers = (
         machines.drive(clock_source, clock_descriptor, "(Clock 11)", ["(Tick)"]),
         machines.drive(
@@ -149,6 +150,9 @@ def test_every_word_an_answer_publishes_is_in_the_manifest():
         ),
         machines.drive(
             drifting_source, drifting_descriptor, "(Clock 12)", ["(Tick)", "(Tick)"]
+        ),
+        machines.drive(
+            asking_source, asking_descriptor, "(Clock 12)", ["(Tick)", "(Tick)"]
         ),
     )
 
@@ -166,11 +170,13 @@ def test_every_word_an_answer_publishes_is_in_the_manifest():
         machines.A_TRANSITION,
         machines.A_BOUNDARY_REJECTION,
         machines.A_STATE_OUTSIDE_THE_INVARIANT,
+        machines.A_CONTRACT_REFUSAL,
     }, (
-        f"WHAT: the three answers published the words {sorted(emitted)}. "
+        f"WHAT: the four answers published the words {sorted(emitted)}. "
         "WHY: this test compares what is published with what is emitted, so "
-        "it must first have emitted all three. "
-        "HOW: read the three answers above."
+        "it must first have emitted every word a run can carry: the three a "
+        "result entry carries and the stop reason a refused contract adds. "
+        "HOW: read the four answers above."
     )
     for word in sorted(emitted):
         assert word in documented, (

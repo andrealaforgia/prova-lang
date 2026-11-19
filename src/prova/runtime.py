@@ -33,9 +33,21 @@ BOUNDARY_REJECTION = "boundary_rejection"
 STATE_OUTSIDE_INVARIANT = "state_outside_invariant"
 THE_RESULTS = (TRANSITION, BOUNDARY_REJECTION, STATE_OUTSIDE_INVARIANT)
 
-# The two of them that end a run, each beside the role of the descriptor
+# The word a stop carries when a role's own contract refused the values
+# the run called it with. It is a reason a run stopped and never the
+# result of an attempt: no attempt was published for the event that
+# reached it, because nothing of the machine was decided there.
+CONTRACT_REFUSED = "contract_refused"
+THE_STOP_REASONS = (
+    BOUNDARY_REJECTION,
+    STATE_OUTSIDE_INVARIANT,
+    CONTRACT_REFUSED,
+)
+
+# The two results that end a run, each beside the role of the descriptor
 # that decided it: a reader of a stop is sent to the part of their own
-# machine that answered, and not to this tool.
+# machine that answered, and not to this tool. A refused contract names
+# the role the run was asking, which the refusal itself carries.
 THE_ROLE_THAT_DECIDES = {
     BOUNDARY_REJECTION: machine.ADMISSIBLE,
     STATE_OUTSIDE_INVARIANT: machine.INVARIANT,
@@ -137,22 +149,33 @@ class Stopped:
     events_not_run: int
 
     @classmethod
-    def after(cls, attempted: tuple[Attempted, ...], events: int) -> "Stopped | None":
-        """The stop of a run that attempted `attempted` out of `events`
-        events, or `None` when every event ran.
+    def at(cls, attempt: "Attempted", events: int) -> "Stopped":
+        """The stop a published attempt stands for: the attempt that ran
+        no step, out of `events` events.
 
-        Read off the last attempt rather than kept beside it, so a run
-        cannot publish a stop that disagrees with the entry it stands at.
+        Built from that attempt rather than by reaching for the last of
+        a list, so a run cannot publish a stop that disagrees with the
+        entry it stands at.
         """
-        last = attempted[-1]
-        if last.ran_the_step():
-            return None
         return cls(
-            last.position,
-            last.result,
-            THE_ROLE_THAT_DECIDES[last.result],
-            events - len(attempted),
+            attempt.position,
+            attempt.result,
+            THE_ROLE_THAT_DECIDES[attempt.result],
+            events - attempt.position,
         )
+
+    @classmethod
+    def refusing_a_contract(
+        cls, refused: "ContractRefused", events: int
+    ) -> "Stopped":
+        """The stop a refused contract stands for: the position the run
+        was driving, out of `events` events.
+
+        No attempt is published for that event -- nothing of the machine
+        was decided there -- so the count of the events left behind is
+        read from the position, exactly as it is for an attempt.
+        """
+        return cls(refused.position, CONTRACT_REFUSED, refused.role, events - refused.position)
 
     def published(self) -> dict:
         return {
@@ -178,12 +201,23 @@ class Driven:
     attempted: tuple[Attempted, ...]
     stop: "Stopped | None"
     assumptions: machine.StatedAssumptions
+    refused: "ContractRefused | None" = None
+
+    def state_now(self) -> object:
+        """The state the run left the machine at: the one its last
+        attempt published, or the state it was given when no attempt was
+        published at all -- which is a run stopped at its first event by
+        a contract of one of the roles.
+        """
+        if not self.attempted:
+            return self.state_given
+        return self.attempted[-1].state_after
 
     def published(self) -> dict:
         published = {
             "state_given": render(self.state_given),
             "transitions": [attempt.published() for attempt in self.attempted],
-            "state_now": render(self.attempted[-1].state_after),
+            "state_now": render(self.state_now()),
             "assumptions_stated": self.assumptions.published(),
             "what_this_says": WHAT_A_RUN_SAYS,
         }
@@ -211,12 +245,32 @@ class StateRefused:
 @dataclass(frozen=True)
 class ContractRefused:
     """A contract of one role's function that was broken while the run
-    was asking it: which of the two contracts, the function that broke
-    it and the event the run was attempting."""
+    was asking it: which of the two contracts, the role the run was
+    asking, the function that broke it and the event the run was
+    attempting.
+
+    The role and the function are both carried: the role says which part
+    of the descriptor the run was reading, and the function is the one
+    whose contract refused, which may be a function the role's own body
+    reaches.
+    """
 
     category: str
+    role: str
     function_name: str
     position: int
+
+
+class _RoleRefused(Exception):
+    """A contract refused while one role was being run, carried out of
+    the one place a role is run so that the role is known where the
+    refusal is built."""
+
+    def __init__(self, category: str, role: str, function_name: str) -> None:
+        super().__init__(f"{function_name}: {category}")
+        self.category = category
+        self.role = role
+        self.function_name = function_name
 
 
 class MachineRuntime:
@@ -244,47 +298,71 @@ class MachineRuntime:
         return self._roles.named_for(role)
 
     def driven(
-        self, state: object, events: tuple[object, ...]
-    ) -> "Driven | StateRefused | ContractRefused":
-        """What driving `events` from `state` published, or the one thing
-        that stopped the run before it published anything.
+        self,
+        state: object,
+        events: tuple[object, ...],
+        between_events=lambda: None,
+    ) -> "Driven | StateRefused":
+        """What driving `events` from `state` published, or the refusal
+        of the state the run was given.
 
         Each event is attempted from the state the one before it
         published, in the order the request wrote them. The run stops at
-        the first event it does not drive, and the events after it are
-        not attempted at all.
+        the first event it does not drive -- one outside the admissible
+        domain, one whose state the invariant excludes, or one that
+        reached a refused contract of a role -- and the events after it
+        are not attempted at all. What did run is published either way.
+
+        `between_events()` is the caller's rule about how much work this
+        run may still do, asked once before each event: driving a
+        sequence is the work of the operation, and the budgets that
+        measure it belong to the caller that owns them.
         """
+        if not events:
+            raise ValueError(
+                "WHAT: a machine was asked to be driven through no event at "
+                "all: the 'events' sequence handed to this run is empty. "
+                "WHY: a run publishes one attempt per event, and a run with "
+                "no event would publish the state it was handed as though a "
+                "transition had left it there, which is a machine nothing "
+                "moved. HOW: hand this run at least one event; the reader of "
+                "a request refuses an empty 'events' field by name, so a "
+                "caller reaching here has built the sequence itself."
+            )
         attempted: list[Attempted] = []
         standing = state
         for position, event in enumerate(events, start=1):
+            between_events()
             attempt = self._attempted(position, standing, event)
             if isinstance(attempt, ContractRefused):
-                return attempt
+                return Driven(
+                    state,
+                    tuple(attempted),
+                    Stopped.refusing_a_contract(attempt, len(events)),
+                    self._roles.assumptions,
+                    attempt,
+                )
             if attempt.result == STATE_OUTSIDE_INVARIANT and position == 1:
                 return StateRefused(machine.INVARIANT, self.type_of(machine.INVARIANT))
             attempted.append(attempt)
             if attempt.stopped_the_run():
-                break
+                return Driven(
+                    state,
+                    tuple(attempted),
+                    Stopped.at(attempt, len(events)),
+                    self._roles.assumptions,
+                )
             standing = attempt.state_after
-        return Driven(
-            state,
-            tuple(attempted),
-            Stopped.after(tuple(attempted), len(events)),
-            self._roles.assumptions,
-        )
+        return Driven(state, tuple(attempted), None, self._roles.assumptions)
 
     def _attempted(
         self, position: int, state: object, event: object
     ) -> "Attempted | ContractRefused":
         try:
             return self._attempt(position, state, event)
-        except evaluator.PreconditionViolation as violation:
+        except _RoleRefused as refused:
             return ContractRefused(
-                PRECONDITION_VIOLATION, violation.function_name, position
-            )
-        except evaluator.PostconditionViolation as violation:
-            return ContractRefused(
-                POSTCONDITION_VIOLATION, violation.function_name, position
+                refused.category, refused.role, refused.function_name, position
             )
 
     def _attempt(self, position: int, state: object, event: object) -> Attempted:
@@ -317,4 +395,13 @@ class MachineRuntime:
         that breaks one is refused in one place.
         """
         function = self._program.functions[self._roles.named_for(role)]
-        return evaluator.call_function(function, args, self._program)
+        try:
+            return evaluator.call_function(function, args, self._program)
+        except evaluator.PreconditionViolation as violation:
+            raise _RoleRefused(
+                PRECONDITION_VIOLATION, role, violation.function_name
+            ) from None
+        except evaluator.PostconditionViolation as violation:
+            raise _RoleRefused(
+                POSTCONDITION_VIOLATION, role, violation.function_name
+            ) from None

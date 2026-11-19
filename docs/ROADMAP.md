@@ -1167,16 +1167,6 @@ there.
 
 ### Follow-ups raised during delivery
 
-- **Decide whether a refused contract should stop a run the way a boundary
-  rejection does.** F27 answers a run that reaches a refused precondition or
-  postcondition of a role function as `evaluate` answers the same two
-  refusals: completed, one located refusal naming the function and the
-  position, and no result at all -- so the transitions that ran before it are
-  not published and the Owner drives the prefix again to see where the
-  machine stood. Publishing the attempts before it, with a stop of its own,
-  would need a fourth word in the published vocabulary of a result entry.
-  Raised during F27, which has a test pinning the current answer
-  (tests/acceptance/test_f27_b7_a_role_whose_own_contract_refuses_stops_the_run.py).
 - **Decide what a build does with a symbolic link and with `..` in
   `output_file`.** F22 refuses a relative path, a path carrying a zero byte and a
   path whose file already exists, and writes through a temporary file in the
