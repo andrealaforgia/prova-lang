@@ -174,8 +174,8 @@ class Budget:
                 "declares",
             )
         significant = written.lstrip("0")
-        readable = sys.get_int_max_str_digits()
-        if len(significant) > readable:
+        readable = sys.get_int_max_str_digits()  # 0: the interpreter has no limit
+        if readable != 0 and len(significant) > readable:
             # Only a run of digits the interpreter will not turn into a
             # number at all is refused by its length; every text that
             # can be read as a number is read, and answered against the

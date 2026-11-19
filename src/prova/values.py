@@ -49,8 +49,42 @@ class DigitsWritten:
     here.
     """
 
-    maximum: int
+    declared: int
     name: str = "written_integer_digits"
+
+    @property
+    def maximum(self) -> int:
+        """The limit in force: the one number enforced, refused with and
+        published. It is the declared number unless the interpreter this
+        tool runs on writes fewer digits than that, because its caller
+        lowered PYTHONINTMAXSTRDIGITS; a limit of 0 there means the
+        interpreter has none, and the declared number stands.
+        """
+        interpreter = sys.get_int_max_str_digits()
+        if interpreter == 0 or interpreter >= self.declared:
+            return self.declared
+        return interpreter
+
+    def produced_by(self) -> str:
+        """Which setting produced the number in force."""
+        interpreter = sys.get_int_max_str_digits()
+        if self.maximum == self.declared:
+            if interpreter == 0:
+                return (
+                    f"the number this tool declares, {self.declared}, "
+                    "because the interpreter's own limit (PYTHONINTMAXSTRDIGITS) "
+                    "is 0, which disables it"
+                )
+            return (
+                f"the number this tool declares, {self.declared}, which the "
+                f"interpreter's own limit of {interpreter} digits "
+                "(PYTHONINTMAXSTRDIGITS) does not go below"
+            )
+        return (
+            f"the interpreter's own limit of {interpreter} digits "
+            f"(PYTHONINTMAXSTRDIGITS), which the caller of this process "
+            f"set below the {self.declared} this tool declares"
+        )
 
     def passed_by(self, value: int) -> bool:
         """Whether `value` writes more digits than this tool writes.
@@ -83,12 +117,13 @@ class DigitsWritten:
         """Why the number is the number it is, for a caller that must
         make its program compute a smaller result."""
         return (
-            f"turning a number into characters costs time that grows with the "
-            f"square of its length, and the interpreter this tool runs on "
-            f"refuses a number past {sys.get_int_max_str_digits()} digits with "
-            f"an error of its own; {self.maximum} digits stands below that, so "
-            "a caller meets this tool's refusal, naming the place and the "
-            "limit, rather than the interpreter's. It also stands far above "
+            f"the limit in force is {self.maximum} digits, being "
+            f"{self.produced_by()}; turning a number into characters costs "
+            "time that grows with the square of its length, and the "
+            "interpreter this tool runs on refuses a number past its own "
+            "limit with an error of its own, so a caller meets this tool's "
+            "refusal, naming the place and the limit, rather than the "
+            "interpreter's. The limit stands far above "
             "the numbers programs are written to compute: a value that fills "
             f"64 bits is 20 digits long, and this tool reads an integer "
             f"literal of up to 1000 digits."
@@ -105,28 +140,6 @@ class DigitsWritten:
             f"and read that length from what the 'discover' operation "
             "documents about computed integers",
             self.maximum,
-            reached,
-        )
-
-    def refusal_the_interpreter_forced(self, value: int) -> TooLargeToWrite:
-        """The refusal where the interpreter writes fewer digits than
-        this tool declares, because a caller lowered its limit.
-
-        The same answer, with the number that really stopped it: a
-        caller reading the tool's own limit would otherwise look for a
-        result it is already under.
-        """
-        written = sys.get_int_max_str_digits()
-        reached = self.digits_of(value)
-        return TooLargeToWrite(
-            f"this operation computed an integer of {reached} digits, which "
-            f"the interpreter running this tool will not write: it writes at "
-            f"most {written} digits as one number, below the {self.maximum} "
-            "this tool declares, because the caller of this process lowered "
-            "that number. Start the tool without lowering the digits its "
-            "interpreter writes, or have the program compute a result of at "
-            f"most {written} digits",
-            written,
             reached,
         )
 
@@ -180,10 +193,9 @@ def render(value: object) -> str:
         try:
             return str(value)
         except ValueError:
-            # Only where the caller of this process lowered the digits
-            # the interpreter writes below the number this tool
-            # declares; the limit above keeps every other value inside.
-            raise WRITTEN_DIGITS.refusal_the_interpreter_forced(value) from None
+            # Unreachable while the limit in force is not above the
+            # interpreter's own; kept so a value is still refused by name.
+            raise WRITTEN_DIGITS.refusal_for(value) from None
     if isinstance(value, Unit):
         return "()"
     if isinstance(value, ConstructorValue):
