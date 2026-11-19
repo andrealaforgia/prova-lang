@@ -29,7 +29,7 @@ THE_TYPE_ROLES = ("state", "event", "outcome")
 THE_FUNCTION_ROLES = ("init", "step", "state-of", "admissible", "invariant")
 THE_ROLES = THE_TYPE_ROLES + THE_FUNCTION_ROLES
 
-# The four roles SPEC.md lines 358-360 require to be valid for every
+# The four roles SPEC.md lines 359-360 require to be valid for every
 # input of their declared types; the step is allowed to ask for an
 # invariant state, so it is not one of them.
 THE_ROLES_VALID_EVERYWHERE = ("init", "state-of", "admissible", "invariant")

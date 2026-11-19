@@ -1,11 +1,11 @@
 """F25 criterion 3 -- a descriptor whose initialiser, projection,
 invariant or admissibility function asks for something of its input is
-refused: SPEC.md lines 358-360 require those four to be valid for every
+refused: SPEC.md lines 359-360 require those four to be valid for every
 input of their declared types, and this tool establishes that for a
 clause that asks for nothing and for no other.
 
 The law: those four roles are confirmed only where nothing narrows their
-declared input; the step, which SPEC.md line 360 allows to require an
+declared input; the step, which SPEC.md lines 360-361 allow to require an
 invariant state, is confirmed with its precondition.
 
 Drives only the installed `prova` command over its JSON stdin/stdout
@@ -86,7 +86,7 @@ def test_a_role_whose_clause_asks_for_nothing_is_accepted():
         f"nothing was answered {answer.get('status')!r}: {answer}. "
         "WHY: a precondition that asks for nothing is valid for every input "
         "of the declared type, so refusing it would refuse a machine that "
-        "meets SPEC.md lines 358-360. "
+        "meets SPEC.md lines 359-360. "
         "HOW: read what the clause asks for, not whether it is written."
     )
     assert machines.roles_of(answer)["invariant"]["named"] == "tolerant-invariant"
@@ -95,7 +95,7 @@ def test_a_role_whose_clause_asks_for_nothing_is_accepted():
 def test_the_step_is_accepted_with_the_precondition_it_declares():
     """Given the shipped hour clock machine, whose step asks for a valid
     state, when the Owner asks the tool about its descriptor, then it is
-    accepted: SPEC.md line 360 allows the step to require an invariant
+    accepted: SPEC.md lines 360-361 allow the step to require an invariant
     state."""
     source, descriptor = machines.shipped_machine("hour-clock")
 
@@ -104,7 +104,7 @@ def test_the_step_is_accepted_with_the_precondition_it_declares():
     assert answer.get("status") == "completed", (
         f"WHAT: the shipped hour clock machine was answered "
         f"{answer.get('status')!r}: {answer}. "
-        "WHY: its step asks for a valid state, which SPEC.md line 360 "
+        "WHY: its step asks for a valid state, which SPEC.md lines 360-361 "
         "allows; a tool that refused it would refuse every real machine. "
         "HOW: apply the rule about preconditions to the four roles SPEC.md "
         "names, and not to the step."

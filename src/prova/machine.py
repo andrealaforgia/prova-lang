@@ -205,10 +205,10 @@ class FunctionRole:
     needs.
 
     Four of the five must also be valid for every input of their declared
-    types (SPEC.md lines 358-360). This tool establishes that for a
+    types (SPEC.md lines 359-360). This tool establishes that for a
     precondition that asks for nothing and for no other, so a function
     whose precondition asks something of its input cannot stand in one of
-    those four. The step is not one of them: SPEC.md line 360 lets it
+    those four. The step is not one of them: SPEC.md lines 360-361 let it
     require an invariant state.
     """
 
@@ -295,7 +295,7 @@ class FunctionRole:
             ROLE_PRECONDITION_RESTRICTED,
             f"WHAT: the {self._name!r} role of the descriptor names "
             f"{named!r}, which asks something of its input in its requires "
-            f"clause. WHY: SPEC.md lines 358-360 require the initialiser, "
+            f"clause. WHY: SPEC.md lines 359-360 require the initialiser, "
             "the projection, the invariant and the admissibility function to "
             "have preconditions valid for every input of their declared "
             "types, and this tool establishes that for a clause that asks "
@@ -315,10 +315,10 @@ class FunctionRole:
                 "valid for every input of its declared types: this tool "
                 "accepts a requires clause left out or written as 'true', "
                 "and refuses any other, because it reads the clause and "
-                "settles nothing about it (SPEC.md lines 358-360)"
+                "settles nothing about it (SPEC.md lines 359-360)"
             )
         return (
-            "may require a state: SPEC.md line 360 lets the step ask for an "
+            "may require a state: SPEC.md lines 360-361 let the step ask for an "
             "invariant state, so its requires clause is read and left as it is"
         )
 
@@ -441,7 +441,11 @@ class ResolvedMachine:
                 "nothing about the machine over its runs: no initialisation, "
                 "preservation or admissibility claim is settled here, and the "
                 "assumptions above are the descriptor's own, read and not "
-                "checked"
+                "checked. Nothing in the program was run and no obligation of "
+                "it was settled: the declared examples of these functions were "
+                "not run and their contracts were not put to a solver. Two "
+                "other operations this manifest lists answer those two "
+                "questions"
             ),
         }
 
@@ -558,7 +562,7 @@ def _version_defects_in(submitted: dict) -> list[tuple[str, str]]:
             f"{FIELD}.{SCHEMA}",
             f"WHAT: the descriptor is written in the version {written!r}, "
             f"and this tool reads {SCHEMA_VERSION!r}. WHY: the shape of a "
-            "descriptor is fixed per version (SPEC.md lines 352-353), so a "
+            "descriptor is fixed per version (SPEC.md line 353), so a "
             "document of a version this tool has never read cannot be read "
             f"by guesswork. HOW: write {SCHEMA_VERSION!r} under {SCHEMA!r} "
             "and the fields that version publishes, which the 'discover' "
@@ -635,10 +639,10 @@ def _assumptions_in(submitted: dict) -> tuple[StatedAssumptions, list[tuple[str,
                 f"{FIELD}.{ASSUMPTIONS}",
                 f"WHAT: the {ASSUMPTIONS!r} field of the descriptor holds "
                 f"{'an empty list' if isinstance(written, list) else type(written).__name__}, "
-                "not at least one sentence. WHY: SPEC.md lines 352-356 ask a "
+                "not at least one sentence. WHY: SPEC.md lines 351-352 ask a "
                 "descriptor to state the assumptions its runtime makes, and "
                 "the evidence about a machine is conditional on them "
-                "(SPEC.md lines 441-444); a descriptor stating none would "
+                "(SPEC.md line 416); a descriptor stating none would "
                 "leave a reader of the answer with nothing to read them "
                 "from. HOW: write the assumptions as a JSON list of "
                 "sentences, such as that the runtime applies one event at a "

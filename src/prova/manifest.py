@@ -544,8 +544,12 @@ THE_OPERATIONS = Catalogue(
                         "the roles resolve to declared types and checked "
                         "functions of the right shapes in this revision of "
                         "this program, and settles no claim about the machine "
-                        "over its runs; 'what_this_says' in the result says "
-                        "the same. The shape of a descriptor, and of every "
+                        "over its runs. Nothing of the program was run and no "
+                        "obligation of it was settled: the declared examples "
+                        "of those functions were not run and their contracts "
+                        "were not put to a solver, which the 'examples' and "
+                        "'verify' operations answer. 'what_this_says' in the "
+                        "result says the same. The shape of a descriptor, and of every "
                         "role in it, is published under "
                         "'machine_descriptor_schema'",
                     ),
