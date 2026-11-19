@@ -4,7 +4,10 @@ refuses the rest the way the compiler refuses them.
 An independent review ran artefacts over values outside the declared
 types -- `true` where an Int is declared, `7` where a Bool is, a record
 field of the wrong type -- and got answers where `evaluate` refuses the
-same call as invalid input. Worse, one of them came back as the exit of
+same call as invalid input. Each of those now carries the status of the
+kind of wrong input it is: a value read but of a type the entry does not
+declare is told from text that reads as no value at all, and a limit of
+the artefact reached while writing a number is told from both. Worse, one of them came back as the exit of
 an assurance failure, which says a contract of a verified program did
 not hold: a wrong input must never be reported as that.
 
@@ -24,7 +27,9 @@ import tempfile
 from _f22_fixtures import (
     ANSWERED,
     ASSURANCE_FAILURE,
-    REFUSED_THE_INPUT,
+    ILL_TYPED,
+    MALFORMED,
+    RESOURCE_EXHAUSTED,
     artefact_of,
     build,
     evaluate,
@@ -85,35 +90,41 @@ def test_a_value_outside_the_declared_type_is_refused_as_input():
     with tempfile.TemporaryDirectory() as tmp_dir:
         destination = pathlib.Path(tmp_dir)
         cases = [
-            ("ident", "Int", "true", "a flag where a number is declared"),
-            ("ident", "Int", "()", "the unit value where a number is declared"),
-            ("flag", "Bool", "7", "a number where a flag is declared"),
-            ("unitly", "Unit", "7", "a number where the unit type is declared"),
+            ("ident", "Int", "true", ILL_TYPED,
+             "a flag where a number is declared"),
+            ("ident", "Int", "()", ILL_TYPED,
+             "the unit value where a number is declared"),
+            ("flag", "Bool", "7", ILL_TYPED,
+             "a number where a flag is declared"),
+            ("unitly", "Unit", "7", ILL_TYPED,
+             "a number where the unit type is declared"),
             (
                 "pair-left",
                 "Pair",
                 "(Pair true true)",
+                ILL_TYPED,
                 "a field of the wrong type inside a record",
             ),
             (
                 "pair-left",
                 "Pair",
                 "(Clock 1)",
+                MALFORMED,
                 "a constructor the program does not declare",
             ),
         ]
         built = {}
-        for entry, declared, written, about in cases:
+        for entry, declared, written, refused_as, about in cases:
             if entry not in built:
                 built[entry] = _an_artefact_of(
                     THE_TYPES_OF_CORE_0, entry, destination
                 )
             ran = run_artefact(built[entry], [written])
 
-            assert ran.returncode == REFUSED_THE_INPUT, (
+            assert ran.returncode == refused_as, (
                 f"WHAT: the artefact of {entry!r} over {written!r} "
                 f"({about}) exited {ran.returncode}, not "
-                f"{REFUSED_THE_INPUT}. "
+                f"{refused_as}. "
                 "WHY: a value outside the declared types is input this "
                 "artefact cannot answer; an exit of 3 would say a contract "
                 "of a verified program did not hold, and an exit of 0 would "
@@ -194,7 +205,7 @@ def test_a_wrong_typed_field_of_the_hour_clock_is_refused_not_answered():
             (["(Tick)", "(Tick)"], "an event where a clock is declared"),
         ):
             ran = run_artefact(target, arguments)
-            assert ran.returncode == REFUSED_THE_INPUT, (
+            assert ran.returncode == ILL_TYPED, (
                 f"WHAT: the artefact over {about} exited {ran.returncode}. "
                 "WHY: neither value is of the type `step` declares, and the "
                 "program promises nothing about either. "
@@ -237,7 +248,7 @@ def test_an_answer_too_long_to_write_is_refused_as_the_compiler_refuses_it():
         target = _an_artefact_of(source, "big", pathlib.Path(tmp_dir))
 
         ran = run_artefact(target, ["10"])
-        assert ran.returncode == REFUSED_THE_INPUT, (
+        assert ran.returncode == RESOURCE_EXHAUSTED, (
             f"WHAT: the artefact exited {ran.returncode} where its answer is "
             "longer than this tool writes. "
             "WHY: the limit on the digits an answer writes is the compiler's "
@@ -286,7 +297,7 @@ def test_the_artefact_reads_a_value_the_way_the_compiler_reads_one():
         )
 
         refused = run_artefact(target, ["1_0"])
-        assert refused.returncode == REFUSED_THE_INPUT, (
+        assert refused.returncode == MALFORMED, (
             f"WHAT: the artefact answered {refused.stdout.strip()!r} for the "
             "text '1_0', which this language does not read as a number. "
             "WHY: a value the compiler refuses must not be a value the "

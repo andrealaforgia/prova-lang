@@ -10,7 +10,9 @@ No imports from src/prova.
 The six refusal words and their exit statuses below are the decision
 this delivery records, not something read back out of the tool: the
 tests compare what the tool publishes and what an artefact does against
-this table, so a change of either is seen here.
+this table, so a change of either is seen here. The statuses themselves
+are read from _f22_fixtures, which the tests of the build already read
+them from, so one table stands test-side.
 """
 
 from __future__ import annotations
@@ -20,22 +22,24 @@ import pathlib
 import subprocess
 import sys
 
-from _f22_fixtures import artefact_of, build
+from _f22_fixtures import (
+    ANSWERED,
+    ASSURANCE_FAILURE,
+    A_FAILURE_OF_THE_FILE,
+    ILL_TYPED,
+    MALFORMED,
+    PRECONDITION_UNMET,
+    RESOURCE_EXHAUSTED,
+    artefact_of,
+    build,
+)
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # What an artefact's own exit status says, and the word its first line
 # carries. 0 is an answer; every other status is a refusal of its own
-# kind, and none of them is a traceback.
-ANSWERED = 0
-
-MALFORMED = 2
-ASSURANCE_FAILURE = 3
-A_FAILURE_OF_THE_FILE = 4
-ILL_TYPED = 5
-PRECONDITION_UNMET = 6
-RESOURCE_EXHAUSTED = 7
-
+# kind, and none of them is a traceback. The numbers themselves stand in
+# _f22_fixtures, which the tests of the build already read them from.
 THE_REFUSALS = (
     ("MALFORMED", MALFORMED, "text that cannot be read as a value"),
     ("ASSURANCE", ASSURANCE_FAILURE, "a contract of the program did not hold"),
