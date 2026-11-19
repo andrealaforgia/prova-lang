@@ -387,12 +387,17 @@ THE_TYPE_ROLES = (
     TypeRole(EVENT, "the type of the values the machine takes as its events"),
     TypeRole(OUTCOME, "the type the step answers, carrying the new state and the result"),
 )
+INIT = "init"
+STEP = "step"
+STATE_OF = "state-of"
+ADMISSIBLE = "admissible"
+INVARIANT = "invariant"
 THE_FUNCTION_ROLES = (
-    FunctionRole("init", RoleShape((), STATE), True),
-    FunctionRole("step", RoleShape((STATE, EVENT), OUTCOME), False),
-    FunctionRole("state-of", RoleShape((OUTCOME,), STATE), True),
-    FunctionRole("admissible", RoleShape((STATE, EVENT), BOOL), True),
-    FunctionRole("invariant", RoleShape((STATE,), BOOL), True),
+    FunctionRole(INIT, RoleShape((), STATE), True),
+    FunctionRole(STEP, RoleShape((STATE, EVENT), OUTCOME), False),
+    FunctionRole(STATE_OF, RoleShape((OUTCOME,), STATE), True),
+    FunctionRole(ADMISSIBLE, RoleShape((STATE, EVENT), BOOL), True),
+    FunctionRole(INVARIANT, RoleShape((STATE,), BOOL), True),
 )
 THE_ROLES = THE_TYPE_ROLES + THE_FUNCTION_ROLES
 
@@ -497,6 +502,40 @@ class DescriptorDefects:
     defects: tuple[tuple[str, str], ...]
 
 
+RESOLUTION_ALONE_SAYS = (
+    "every role the descriptor names resolves, in the submitted "
+    "revision of the submitted program, to a declared type or to "
+    "a checked function of the shape its role needs. It says "
+    "nothing about the machine over its runs: no initialisation, "
+    "preservation or admissibility claim is settled here, and the "
+    "assumptions above are the descriptor's own, read and not "
+    "checked. Nothing in the program was run and no obligation of "
+    "it was settled: the declared examples of these functions were "
+    "not run and their contracts were not put to a solver. Two "
+    "other operations this manifest lists answer those two "
+    "questions"
+)
+
+OBLIGATIONS_BESIDE_THE_ROLES_SAY = (
+    "every role the descriptor names resolves, in the submitted revision "
+    "of the submitted program, to a declared type or to a checked "
+    "function of the shape its role needs, and the three obligations of "
+    "this machine stand in the inventory beside the obligations the "
+    "program itself owes, each with what became of it. What each of them "
+    "says is written beside it under 'to_show'. They are statements about "
+    "this revision of this source and about the roles above, and they are "
+    "conditional on the assumptions above, which are the descriptor's own, "
+    "read and checked by nothing (SPEC.md line 416): nothing here "
+    "establishes that the machine's runtime keeps them. The two "
+    "obligations about events are stated over one value of the event type, "
+    "whatever that type holds, so no event is listed and a type with no "
+    "bound is read exactly as a type with two values (SPEC.md lines "
+    "384-386). Nothing of the program was run for them: what the declared "
+    "examples did when they were run here is reported beside the word over "
+    "the whole program"
+)
+
+
 @dataclass(frozen=True)
 class ResolvedMachine:
     """The witness that all eight roles of one descriptor resolved: what
@@ -511,23 +550,39 @@ class ResolvedMachine:
     assumptions: StatedAssumptions
 
     def published(self) -> dict:
+        """What an answer that resolved this machine and settled nothing
+        about it says: the words the `machine` operation answers in."""
+        return self._published(RESOLUTION_ALONE_SAYS)
+
+    def published_beside_its_obligations(self) -> dict:
+        """What an answer that resolved this machine and put the three
+        obligations of SPEC.md lines 395-401 to a solver says.
+
+        Written here, beside the sentence above, because both are
+        sentences about one descriptor: an answer that reads this machine
+        and an answer that reasons about it cannot then drift apart in
+        what they say they establish.
+        """
+        return self._published(OBLIGATIONS_BESIDE_THE_ROLES_SAY)
+
+    def named_for(self, role: str) -> str:
+        """The name of the function that filled `role`.
+
+        Asked of the witness rather than read from a table of its own, so
+        nothing outside this module keeps a second answer to which
+        function fills which role.
+        """
+        for resolved in self.roles:
+            if resolved.role == role:
+                return resolved.named
+        raise KeyError(role)
+
+    def _published(self, says: str) -> dict:
         return {
             SCHEMA: SCHEMA_VERSION,
             ROLES: {resolved.role: resolved.published() for resolved in self.roles},
             "assumptions_stated": self.assumptions.published(),
-            "what_this_says": (
-                "every role the descriptor names resolves, in the submitted "
-                "revision of the submitted program, to a declared type or to "
-                "a checked function of the shape its role needs. It says "
-                "nothing about the machine over its runs: no initialisation, "
-                "preservation or admissibility claim is settled here, and the "
-                "assumptions above are the descriptor's own, read and not "
-                "checked. Nothing in the program was run and no obligation of "
-                "it was settled: the declared examples of these functions were "
-                "not run and their contracts were not put to a solver. Two "
-                "other operations this manifest lists answer those two "
-                "questions"
-            ),
+            "what_this_says": says,
         }
 
 

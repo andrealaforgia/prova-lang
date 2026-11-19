@@ -16,6 +16,7 @@ from prova import (
     evaluator,
     examples,
     formatter,
+    induction,
     machine,
     manifest,
     obligations,
@@ -186,7 +187,10 @@ def _answer(request: "Request", run: Run) -> dict:
         if operation == "examples":
             return _run_examples(source, run)
         if operation == "verify":
-            return _run_verify(source, run)
+            descriptor = request.machine_asked_if_sent()
+            if isinstance(descriptor, MalformedRequest):
+                return descriptor.response_for(operation)
+            return _run_verify(source, descriptor, run)
         if operation == "parse":
             return _run_parse(source, run)
         if operation == "format":
@@ -772,6 +776,20 @@ class Request:
         if isinstance(output_file, MalformedRequest):
             return output_file
         return BuildAsked(entry, output_file)
+
+    def machine_asked_if_sent(self) -> "machine.Descriptor | MalformedRequest | None":
+        """The descriptor the request submits, or nothing at all when it
+        sends no descriptor field.
+
+        The field is asked for by presence and not by what it holds: a
+        request that sends nothing there is answered about its program
+        alone, and a request that sends anything there has it read by
+        the rule above -- so a field holding a value of another kind is
+        refused by name rather than taken for a request that sent none.
+        """
+        if manifest.DESCRIPTOR.name not in self.submitted:
+            return None
+        return self.machine_asked()
 
     def evaluation_asked(self) -> "EvaluationAsked | MalformedRequest":
         """Which function the request asks to call and with which
@@ -1447,7 +1465,9 @@ def _run_check(source: SubmittedText, run: Run) -> dict:
     }
 
 
-def _run_verify(source: SubmittedText, run: Run) -> dict:
+def _run_verify(
+    source: SubmittedText, descriptor: "machine.Descriptor | None", run: Run
+) -> dict:
     """The obligations the program owes, each beside what became of it.
 
     Reads nothing but `source`, writes nothing and keeps nothing: asking
@@ -1468,11 +1488,30 @@ def _run_verify(source: SubmittedText, run: Run) -> dict:
     the obligations that are about them: no kind of evidence silently
     upgrades another, and a solver's word about an example is not the
     example having been run.
+
+    A request that sends a descriptor is answered about one more thing:
+    the three obligations of that machine stand in the same inventory,
+    settled by the same loop and counted by the same word. A descriptor
+    whose roles do not resolve refuses the whole answer, because the
+    three are stated over the functions its roles resolve to, and an
+    inventory beside that refusal would read as a machine this tool
+    reasoned about. A request that sends none is answered exactly as it
+    was before those obligations existed: nothing below reads a
+    descriptor that is not there.
     """
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("verify")
-    shown = _what_was_shown(checked, run)
+    read = None
+    if descriptor is not None:
+        run.stop_if_exhausted()
+        resolved = descriptor.resolved_against(checked.program)
+        if isinstance(resolved, machine.UnresolvedRoles):
+            return Refusal(
+                "invalid_input", resolved.refusals, SourceRevision.of(source)
+            ).response_for("verify")
+        read = resolved
+    shown = _what_was_shown(checked, run, read)
 
     answer = {
         "operation": "verify",
@@ -1508,14 +1547,31 @@ class WhatWasShown:
     over: verdict.Verdict
 
 
-def _what_was_shown(checked: "Checked", run: Run) -> WhatWasShown:
+def _what_was_shown(
+    checked: "Checked", run: Run, of_a_machine: object = None
+) -> WhatWasShown:
+    """What was shown about one checked program, and about the machine a
+    request named beside it when it named one.
+
+    The machine's three obligations stand in the same inventory as the
+    program's own, so one loop settles all of them, one rule reports them
+    and the one word over the whole rests on all of them. A request that
+    named no machine -- every build request, and a verify request that
+    sent no descriptor -- is answered about the program alone, exactly as
+    it was before those obligations existed.
+    """
     owed = obligations.inventory_for(checked.program)
+    if of_a_machine is not None:
+        owed = owed.with_also(induction.the_obligations_of(of_a_machine))
     settled = discharge.Discharge(checked.program, solving.PinnedZ3(), run).settle(
         owed
     )
     ran = examples.run_declared(checked.program, run)
+    reported = {"inventory": settled.inventory_of(owed)}
+    if of_a_machine is not None:
+        reported["machine"] = of_a_machine.published_beside_its_obligations()
     return WhatWasShown(
-        {"inventory": settled.inventory_of(owed)},
+        reported,
         settled.standing,
         settled.disclosure(),
         verdict.Verdict.over(

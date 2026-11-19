@@ -475,6 +475,17 @@ class Inventory:
                 "arises, as the walk over requires, ensures and the body does."
             )
 
+    def with_also(self, more: tuple[Obligation, ...]) -> "Inventory":
+        """This inventory with `more` owed after it.
+
+        One inventory, so that the obligations of a machine are settled
+        by the one loop that settles a program's own, reported by the one
+        rule that reports them, and counted by the one word that is said
+        over all of them. The identity rule above then holds across both
+        sets rather than inside each.
+        """
+        return Inventory(self.obligations + more)
+
     def as_dict(self, findings: dict) -> dict:
         """Every obligation beside what became of it.
 

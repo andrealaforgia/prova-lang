@@ -125,6 +125,22 @@ OUTPUT_FILE = Field.must_be_sent(
     "already exist and nothing may stand at the path itself, or the request "
     "is refused and nothing is written",
 )
+# The descriptor field again, as the one operation that may be asked
+# without it publishes it. Its name is the one above, so a client writes
+# one field and a refusal names one field; what differs is that a verify
+# request may leave it out, and what the answer then carries.
+DESCRIPTOR_WHEN_VERIFYING = Field.may_be_sent(
+    DESCRIPTOR.name,
+    DESCRIPTOR.kind,
+    "the machine descriptor whose obligations are asked about beside the "
+    "program's own, as one JSON object of the shape published under "
+    "'machine_descriptor_schema'. A request that sends it is answered with "
+    "the three obligations of that machine listed in the inventory; a "
+    "request that leaves it out is answered about the program alone, "
+    "exactly as it was before those obligations existed. A descriptor whose "
+    "roles do not resolve in the submitted program refuses the whole "
+    "answer: it carries no inventory"
+)
 ARGUMENTS = Field.may_be_sent(
     "arguments",
     "list of texts",
@@ -437,7 +453,7 @@ THE_OPERATIONS = Catalogue(
             "verify",
             InACategory("verification"),
             answering(
-                SOURCE_READING_REQUEST,
+                SOURCE_READING_REQUEST + (DESCRIPTOR_WHEN_VERIFYING,),
                 AN_ANSWER_OF_THE_PROFILE
                 + (
                     Field.when_completed(
@@ -461,7 +477,25 @@ THE_OPERATIONS = Catalogue(
                         "declared budget the run that confirmed it stood "
                         "inside: the limit it names and the maximum that "
                         "limit allows are the ones published under "
-                        "resource_limits",
+                        "resource_limits. When the request sent a "
+                        "descriptor, the inventory carries the three "
+                        "obligations of that machine as well, each listed "
+                        "separately: 'machine_initialisation', that the "
+                        "state the initialiser answers satisfies the "
+                        "invariant; 'machine_step_enabledness', that the "
+                        "step is defined in every state the invariant "
+                        "admits for every event admissible there; and "
+                        "'machine_preservation', that the state after the "
+                        "step satisfies the invariant again. The last two "
+                        "are stated over one value of the event type, so no "
+                        "event is listed and a type with no bound is read "
+                        "exactly as a type with two values. Beside the "
+                        "inventory, 'machine' then says the descriptor "
+                        "version that was read, the name and shape each "
+                        "role resolved to, the assumptions the descriptor "
+                        "states -- which this tool checks none of -- and "
+                        "what an answer carrying those three obligations "
+                        "says",
                     ),
                     Field.when_completed(
                         "aggregate",
@@ -487,7 +521,11 @@ THE_OPERATIONS = Catalogue(
                         "is 'not_verified' beside 'tool_failure': the answer "
                         "itself is still 'completed', because the inventory "
                         "is still there to read, and a failure of this tool "
-                        "is never a statement about the program",
+                        "is never a statement about the program. When the "
+                        "request sent a descriptor, the three obligations of "
+                        "its machine are among the obligations this word "
+                        "rests on, so a machine whose initialisation or "
+                        "preservation is not 'proved' is not 'verified'",
                     ),
                     TRUST,
                 ),

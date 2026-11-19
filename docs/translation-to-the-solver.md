@@ -161,6 +161,39 @@ Those last two carry `discharged_by: "structure"` instead of `"solver"`,
 so you can see at a glance which of your obligations rest on a solver's
 word and which on the two rules just stated.
 
+When you send a machine descriptor with a `verify` request, three more
+obligations join that list, and the same reading settles them. SPEC.md
+lines 395-401 state them for the candidate invariant `Inv` your descriptor
+names: `Init(s) => Inv(s)`, `Inv(s) and admissible(s, e) => Pre_step(s, e)`
+and `Inv(s) and admissible(s, e) => Inv(state-of(step(s, e)))`. Each becomes
+one claim of exactly the shape above. The first has no variable in it: the
+initialiser takes nothing, so the formula is the invariant read over the one
+state it answers, which is why an initial condition nothing satisfies is
+caught here and by nothing else — preservation of a condition no state
+satisfies is valid for an empty reason, and a machine certified on it would
+be certified for having no states. The other two take the two parameters the
+step declares, which become one symbolic value of the state type and one of
+the event type: the formula says what it says for *every* value of that
+event type, so nothing lists the events and an event type with no bound —
+one carrying a whole number, say — is read exactly as one with two values,
+as SPEC.md lines 384-386 require. The invariant, the admissibility
+predicate, the projection and the step reach the formula the way every other
+call does, by the translation reading a call as the callee's body over its
+arguments, so no new primitive and no wider fragment is involved; an
+obligation whose roles reach a construct this translation does not cover is
+left unsettled with that reason, exactly like any other. Two of the three
+also say, beside themselves, that the replay gate confirms no witness for
+them: this tool calls a solution a counterexample only when running the role
+function over it makes the reference semantics refuse, and neither an
+initialiser answering a state outside the invariant nor a step leaving it is
+a refusal. So an invariant that is not inductive on its own leaves
+preservation unsettled, never `proved`, and no weaker predicate is put in
+its place. Everything these three say is conditional on the model your
+descriptor states (SPEC.md line 416): the assumptions it lists are carried
+into the answer as stated and this tool checks none of them, and a proof
+about the step functions is not a statement about the runtime that calls
+them.
+
 ## How the three answers are decided
 
 A claim is `assumptions implies conclusion`, and it is valid exactly when
