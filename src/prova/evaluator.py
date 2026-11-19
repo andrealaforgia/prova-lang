@@ -150,6 +150,22 @@ def check_value_type(value: object, type_name: str, program: syntax.Program, whe
         check_value_type(field_value, field_type, program, f"{where} field {field_name!r}")
 
 
+class SelectionOffARecord(Exception):
+    """A selector was run on a value that holds no such field.
+
+    No program the checker accepts reaches this: field selection is
+    defined only for records, resolved from the operand's nominal type,
+    and a selector naming a field that type does not declare is refused
+    before anything runs. It says that a tree reached the evaluator
+    unchecked, and says so instead of letting a list lookup fail with a
+    message about a list.
+    """
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
 class PreconditionViolation(Exception):
     def __init__(self, function_name: str):
         super().__init__(f"precondition violated calling {function_name!r}")
@@ -263,8 +279,22 @@ def eval_expr(
 
     if isinstance(expr, syntax.FieldAccess):
         target = eval_expr(expr.target, env, program, standing)
-        assert isinstance(target, ConstructorValue)
+        if not isinstance(target, ConstructorValue):
+            raise SelectionOffARecord(
+                f"the selector {expr.field_name!r} stands on {target!r}, which "
+                "carries no fields: a selector reads a field of a record value"
+            )
         field_names = [name for name, _ in _fields_of(target.constructor, program)]
+        if expr.field_name not in field_names:
+            raise SelectionOffARecord(
+                f"the selector {expr.field_name!r} stands on a "
+                f"{target.constructor!r} value, which declares "
+                f"{', '.join(repr(name) for name in field_names) or 'no field'}: "
+                "field selection is defined only for records and resolves from "
+                "the operand's nominal type, so the checker refuses a selector "
+                "a value reaching here could not answer. This expression was "
+                "never checked: run 'check' over the program before running it"
+            )
         return target.fields[field_names.index(expr.field_name)]
 
     if isinstance(expr, syntax.OperatorCall):

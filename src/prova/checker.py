@@ -1642,10 +1642,51 @@ def _declared_fields(type_decl: object) -> tuple[tuple[str, str], ...]:
 
 
 def _field_type(type_name: str, field_name: str, program: syntax.Program) -> str | None:
-    for name, field_type in _declared_fields(program.types.get(type_name)):
+    """The declared type of the field a selector reads, or None when the
+    operand's type has no such field to read.
+
+    SPEC.md line 142: field selection is defined only for records. A
+    union declares no fields of its own; each of its variants declares
+    its own, and which variant a value carries is not known where the
+    selector stands, so reading one through a selector would be defined
+    for some values of the type and undefined for the rest.
+    """
+    declared = program.types.get(type_name)
+    if not isinstance(declared, syntax.RecordType):
+        return None
+    for name, field_type in declared.fields:
         if name == field_name:
             return field_type
     return None
+
+
+def _no_such_field(type_name: str, field_name: str, program: syntax.Program) -> str:
+    """Why a selector reads nothing here: the type has no such field, or
+    it is a union and so has no field a selector reads at all."""
+    declared = program.types.get(type_name)
+    if isinstance(declared, syntax.UnionType):
+        carriers = sorted(
+            variant.name
+            for variant in declared.variants
+            for name, _ in variant.fields
+            if name == field_name
+        )
+        reason = (
+            f"type {type_name!r} is a union and a selector reads a field of a "
+            "record: field selection is defined only for records and resolves "
+            "from the operand's nominal type, and a union declares no fields of "
+            "its own"
+        )
+        if carriers:
+            carrying = ", ".join(repr(name) for name in carriers)
+            return (
+                f"{reason}; {field_name!r} is declared by variant(s) {carrying} "
+                f"of {type_name!r}, and which variant a value of {type_name!r} "
+                "carries is not known where the selector stands: read it with a "
+                "'match' clause over the variants instead"
+            )
+        return reason
+    return f"type {type_name!r} has no field {field_name!r}"
 
 
 _LITERAL_PATTERN_TYPES = {
@@ -1894,7 +1935,7 @@ def _infer(
             diagnostics.append(
                 Diagnostic(
                     "unbound_field",
-                    f"type {target_type!r} has no field {expr.field_name!r}",
+                    _no_such_field(target_type, expr.field_name, program),
                     (expr.line, expr.column),
                     about=AboutASymbol(f"{target_type}.{expr.field_name}"),
                 )
