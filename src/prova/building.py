@@ -101,8 +101,7 @@ class Destination:
                 OUTPUT_DIRECTORY_ABSENT,
                 f"this tool writes an artefact into a directory that already "
                 f"exists and the directory {str(directory)!r} of the "
-                f"'output_file' field is not one: "
-                f"{'nothing stands at that path' if not directory.exists() else 'what stands there is not a directory'}. "
+                f"'output_file' field is not one: {_what_is_there(directory)}. "
                 "The artefact is written as a temporary file inside that "
                 "directory and then given its name, so there is nowhere to "
                 "write it. Nothing was written. Create that directory, or "
@@ -153,6 +152,15 @@ class Destination:
         finally:
             os.unlink(temporary)
         return None
+
+
+def _what_is_there(directory: pathlib.Path) -> str:
+    """What a reader will find where a directory was expected, so the
+    refusal tells them which of the two things to repair: a path with
+    nothing at it, or a path with a file at it."""
+    if not directory.exists():
+        return "nothing stands at that path"
+    return "what stands there is not a directory"
 
 
 @dataclass(frozen=True)
@@ -309,7 +317,7 @@ class Lines:
         self._temporaries = 0
 
     def write(self, depth: int, text: str) -> None:
-        self._written.append(("    " * depth) + text if text else "")
+        self._written.append(("    " * depth) + text)
 
     def blank(self) -> None:
         self._written.append("")

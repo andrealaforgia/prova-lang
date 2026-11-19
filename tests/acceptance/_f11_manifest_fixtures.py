@@ -9,7 +9,6 @@ never from the answer under observation.
 
 from __future__ import annotations
 
-import os
 import pathlib
 import tempfile
 
@@ -232,16 +231,24 @@ def wrong_kind_for(kind: str) -> object:
 # reasons that say nothing about the shape. The destination stands in
 # one directory per test session and is a path nothing is at.
 THE_FUNCTION_THE_PROGRAM_DECLARES = "twice"
+
+# Where a build asked for out of a published shape writes. One directory
+# per test process, removed when the process ends, so a run of the suite
+# leaves nothing behind it and no two runs meet at one path.
+_WHERE_A_BUILD_MAY_WRITE = tempfile.TemporaryDirectory(
+    prefix="prova-published-shape-"
+)
 _DESTINATIONS = [0]
 
 
 def a_destination() -> str:
-    """A path in an existing directory that holds nothing yet, for a
+    """A path in an existing directory that nothing stands at, for a
     request built from the published shape of `build`."""
     _DESTINATIONS[0] += 1
-    directory = pathlib.Path(tempfile.gettempdir()) / "prova-published-shape"
-    directory.mkdir(exist_ok=True)
-    return str(directory / f"artefact-{os.getpid()}-{_DESTINATIONS[0]}.py")
+    return str(
+        pathlib.Path(_WHERE_A_BUILD_MAY_WRITE.name)
+        / f"artefact-{_DESTINATIONS[0]}.py"
+    )
 
 
 def a_value_matching(operation: str, field: str, described: dict) -> object:
