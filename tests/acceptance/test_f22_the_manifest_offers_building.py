@@ -68,13 +68,25 @@ def test_the_manifest_says_build_is_available_and_covers_building():
         "one to fall back to. "
         f"HOW: publish it as required: {sent['entry']}"
     )
-    assert sent["output_file"]["presence"] == "required", (
+    assert sent["output_file"]["presence"] == "optional", (
         f"WHAT: the output_file field is published as "
         f"{sent['output_file'].get('presence')!r}. "
         "WHY: a build writes one artefact and nothing decides where but the "
-        "request. "
-        f"HOW: publish it as required: {sent['output_file']}"
+        "request, which now names that one place either as this whole path "
+        "or as an authorised directory with a name inside it: neither of the "
+        "two namings is required on its own, and a request carrying none of "
+        "them is refused. "
+        f"HOW: publish it as optional, beside the two fields of the other "
+        f"naming: {sent['output_file']}"
     )
+    for field in ("output_directory", "output_name", "replace"):
+        assert field in sent, (
+            f"WHAT: the build operation publishes {sorted(sent)} and not "
+            f"{field!r}. "
+            "WHY: a client writes the fields the manifest publishes, and the "
+            "authorised destination is named by these. "
+            f"HOW: name it in manifest.py: {sent}"
+        )
     assert "result" in answered, (
         f"WHAT: the published answer shape of build names {sorted(answered)}. "
         "WHY: a completed build carries what it wrote, and an answer may "
