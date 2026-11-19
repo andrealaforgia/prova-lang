@@ -24,7 +24,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prova import encoding, machine, obligations, provenance, replay, syntax
+from prova import (
+    checker,
+    encoding,
+    machine,
+    obligations,
+    provenance,
+    replay,
+    syntax,
+    witnesses,
+)
 from prova.values import render
 
 # Where the obligations of a machine stand. A site is a structural path,
@@ -39,6 +48,12 @@ PRESERVATION = "preservation"
 # stand. Named here because this module composes that answer.
 CONTRACTS_THE_PROOFS_REST_ON = "contracts_the_proofs_rest_on"
 REACHABLE_COUNTEREXAMPLE = "reachable_counterexample"
+
+# Where a run from the initial state says it established something this
+# tool will not write. A reader who is told nothing would read the
+# absence of a trace as every declared transition replaying, which is a
+# different thing.
+EVIDENCE_NOT_WRITTEN = "evidence_not_written"
 
 
 def _over_every_typed_event(event_type: str) -> str:
@@ -485,10 +500,20 @@ class TheContractsTheProofsRestOn:
                 machine.INVARIANT,
             ),
             "what_is_covered": (
-                "the signature, the preconditions, the guarantees and the "
-                "declared examples of each function named above, in the "
-                "order the roles are named, and no body"
+                "the signature -- including the name and the declared type of "
+                "every parameter, so renaming one moves the digest -- the "
+                "preconditions, the guarantees and the declared examples of "
+                "every function named above, of every function reachable from "
+                "one of them through a call in a body or a contract, and the "
+                "declaration of every type any of those signatures names: a "
+                "record's fields and a union's variants with their fields, so "
+                "that adding a variant to the event type moves the digest "
+                "because it widens the domain the obligations range over. No "
+                "body is covered, and no comment, so an answer about the same "
+                "requirements carries the same digest however the bodies are "
+                "written"
             ),
+            "reaches": sorted(self._every_function_covered()),
             "what_this_says": THE_REQUIREMENT_INTEGRITY_RULE,
         }
 
@@ -497,13 +522,98 @@ class TheContractsTheProofsRestOn:
         program writes it.
 
         Built from the parsed program rather than from the characters
-        submitted, so that reformatting a contract, renaming nothing and
-        moving a clause's whitespace leave the digest where it is, while
-        deleting a clause or an example moves it.
+        submitted, so that reformatting a contract and moving a clause's
+        whitespace leave the digest where it is, while deleting a clause
+        or an example moves it.
+
+        Everything the proofs read is in it. A proof about a role
+        function is a proof over the contracts of every function it
+        calls, because the translation expands a call into the callee's
+        body and the callee's own obligations are what make that sound;
+        and over the types the signatures name, because the domain the
+        obligations range over is what those declare. So the walk follows
+        calls to their end and writes the type declarations beside them.
         """
+        covered = self._every_function_covered()
         return "\n".join(
-            self._contract_of(role, named)
-            for role, named in sorted(self._named().items())
+            [
+                "roles:"
+                + ";".join(
+                    f"{role}={named}" for role, named in sorted(self._named().items())
+                )
+            ]
+            + [self._contract_of(named) for named in sorted(covered)]
+            + [self._type_declaration_of(named) for named in self._types_named(covered)]
+        )
+
+    def _every_function_covered(self) -> set:
+        """Every function a proof about this machine reads: the five the
+        roles name and everything reachable from them through a call in a
+        body or in a contract.
+
+        The reachability itself is asked of the checker, which already
+        owns that question for the rule about cycles, so the digest and
+        the rule cannot disagree about what a program depends on. The
+        graph is acyclic in this profile, and the walk would terminate on
+        a cycle anyway because it never revisits a name.
+        """
+        reached = set()
+        waiting = [
+            named for named in self._named().values() if named in self.program.functions
+        ]
+        while waiting:
+            named = waiting.pop()
+            if named in reached:
+                continue
+            reached.add(named)
+            waiting.extend(
+                callee
+                for callee in checker.callees_of(
+                    self.program.functions[named], self.program
+                )
+                if callee not in reached
+            )
+        return reached
+
+    def _types_named(self, covered: set) -> list:
+        """Every type the signatures of the covered functions name, in
+        one order, and declared by this program.
+
+        A type a signature names is the domain an obligation ranges over,
+        so a variant added to it widens what has to be shown; the
+        declaration is therefore part of what a proof rests on.
+        """
+        named = []
+        for function in (self.program.functions[name] for name in sorted(covered)):
+            for parameter in function.signature.params:
+                named.append(parameter.type_name)
+            named.append(function.signature.return_type)
+        return [
+            name
+            for name in dict.fromkeys(named)
+            if name in self.program.types
+        ]
+
+    def _type_declaration_of(self, named: str) -> str:
+        """One type declaration, written as its fields or its variants.
+
+        Written from the parsed declaration rather than from the
+        characters of the source, so that the digest answers the same
+        text for a type whose declaration was reformatted and a
+        different one for a type that gained a field or a variant.
+        """
+        declared = self.program.types[named]
+        variants = getattr(declared, "variants", None)
+        if variants is not None:
+            return f"type {named}=union:" + ";".join(
+                variant.name
+                + "("
+                + " ".join(f"{field} {kind}" for field, kind in variant.fields)
+                + ")"
+                for variant in variants
+            )
+        return f"type {named}=record:" + " ".join(
+            f"({field} {kind})" for field, kind in getattr(declared, "fields", ())
         )
 
     def _named(self) -> dict:
@@ -515,16 +625,16 @@ class TheContractsTheProofsRestOn:
             machine.INVARIANT,
         )
 
-    def _contract_of(self, role: str, named: str) -> str:
+    def _contract_of(self, named: str) -> str:
         function = self.program.functions.get(named)
         if function is None:
-            return f"{role}={named}:absent"
+            return f"{named}:absent"
         parameters = " ".join(
             f"({parameter.name} {parameter.type_name})"
             for parameter in function.signature.params
         )
         parts = [
-            f"{role}={named}",
+            f"function={named}",
             f"sig=({parameters}) -> {function.signature.return_type}",
             "requires="
             + ";".join(obligations.text_of(clause) for clause in function.requires),
@@ -559,7 +669,9 @@ def the_machine_answer(resolved: machine.ResolvedMachine, program: syntax.Progra
         roles, program
     ).published()
     trace = replay.ATraceFromTheInitialState(roles, program).built()
-    if trace is not None:
+    if isinstance(trace, witnesses.EvidenceTooLargeToWrite):
+        said[EVIDENCE_NOT_WRITTEN] = trace.published()
+    elif trace is not None:
         said[REACHABLE_COUNTEREXAMPLE] = trace.published()
     return said
 

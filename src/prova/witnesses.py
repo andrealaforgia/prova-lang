@@ -67,9 +67,11 @@ THE_KINDS = {
     A_REACHABLE_COUNTEREXAMPLE: {
         "what_it_is": (
             "the state the machine's initialiser answers, which the invariant "
-            "admits, together with a sequence of transitions replayed from it "
-            "through the reference semantics, one of which the program itself "
-            "refuses or answers against an approved example"
+            "admits, followed by the first failing declared transition from "
+            "that state: the transitions the program's own examples declare "
+            "are replayed from it through the reference semantics, and the "
+            "first one the program refuses or answers against its approved "
+            "example is carried, with the transitions replayed before it"
         ),
         "carried_in": (
             "the 'reachable_counterexample' of the machine block of a verify "
@@ -89,6 +91,52 @@ WHAT_A_WITNESS_WITHOUT_A_KIND_IS = (
     "the text it was. It is not a reachable trace either: it names an input, "
     "not a run from the initialiser."
 )
+
+
+@dataclass(frozen=True)
+class EvidenceTooLargeToWrite:
+    """Evidence a run established and this tool will not write.
+
+    The reference semantics can compute a number past the digits this
+    tool writes into an answer. The run itself finished, so something was
+    established; the evidence cannot be shown, and evidence a reader
+    cannot see is no evidence at all. So the obligation is left unsettled
+    naming the limit, rather than reported broken on a counterexample
+    nobody can read -- and rather than letting the limit end the whole
+    answer, which would lose the inventory the reader came for.
+    """
+
+    what_could_not_be_written: str
+    limit: str
+    digits_reached: int
+    maximum: int
+
+    def because(self) -> str:
+        return (
+            f"the solver found an input where the denial of this obligation "
+            f"has a solution, and replaying it computed {self.what_could_not_be_written} "
+            f"of {self.digits_reached} digits, which this tool will not write "
+            f"into an answer: the limit {self.limit!r} allows at most "
+            f"{self.maximum} digits. Evidence a reader cannot be shown is no "
+            "counterexample, so this obligation is left unsettled rather than "
+            "reported as broken, and nothing about the program is claimed "
+            "either way. The rest of the inventory stands"
+        )
+
+    def published(self) -> dict:
+        return {
+            "what_could_not_be_written": self.what_could_not_be_written,
+            "digits_reached": self.digits_reached,
+            "limit": self.limit,
+            "maximum": self.maximum,
+            "what_this_says": (
+                "a run from the initial state established something this tool "
+                "will not write: the number it computed is longer than the "
+                "digits an answer carries, so no trace is shown here. Nothing "
+                "about the machine is claimed either way, and every "
+                "obligation of the inventory stands as it was settled"
+            ),
+        }
 
 
 def published_kinds() -> dict:
@@ -116,6 +164,10 @@ class AnInductionStepWitness:
     state: str
     event: str
     state_after_the_step: str
+    invariant_of_the_state: bool
+    admissible_there: bool
+    invariant_after_the_step: bool
+    the_step_contract_said: str
     step: str
     state_of: str
     invariant: str
@@ -140,10 +192,10 @@ class AnInductionStepWitness:
             "kind": self.kind,
             "state": self.state,
             "event": self.event,
-            "invariant_of_the_state": True,
-            "admissible_there": True,
+            "invariant_of_the_state": self.invariant_of_the_state,
+            "admissible_there": self.admissible_there,
             "state_after_the_step": self.state_after_the_step,
-            "invariant_after_the_step": False,
+            "invariant_after_the_step": self.invariant_after_the_step,
             "read_by": {
                 "invariant": self.invariant,
                 "admissible": self.admissible,
@@ -159,6 +211,7 @@ class AnInductionStepWitness:
                 "step also keeps its own postcondition is a separate "
                 "obligation of this same inventory"
             ),
+            "the_step_own_contract": self.the_step_contract_said,
             "reachability": NOT_A_REACHABLE_TRACE,
             "replayed_within": dict(self.replayed_within),
         }
@@ -187,6 +240,7 @@ class AReachableCounterexample:
     """
 
     initial_state: str
+    invariant_of_the_initial_state: bool
     transitions: tuple[ATransitionReplayed, ...]
     init: str
     invariant: str
@@ -198,7 +252,7 @@ class AReachableCounterexample:
         return {
             "kind": self.kind,
             "initial_state": self.initial_state,
-            "invariant_of_the_initial_state": True,
+            "invariant_of_the_initial_state": self.invariant_of_the_initial_state,
             "transitions": [
                 transition.published() for transition in self.transitions
             ],

@@ -28,7 +28,7 @@ role.
 from __future__ import annotations
 
 from prova import evaluator, witnesses
-from prova.values import render
+from prova.values import WRITTEN_DIGITS, TooLargeToWrite, render
 
 # The budget a confirmation stands inside, said the way the obligations
 # say it: read from the limit itself, so an answer and the manifest
@@ -48,6 +48,21 @@ _THE_PROGRAM_REFUSED = (
     evaluator.PreconditionViolation,
     evaluator.PostconditionViolation,
 )
+
+
+def _too_large(
+    what: str, refusal: TooLargeToWrite
+) -> witnesses.EvidenceTooLargeToWrite:
+    """The evidence a run established and this tool will not write.
+
+    One place reads the refusal, so both paths name the same limit and
+    neither lets it end the answer: an operation that stopped here would
+    lose the inventory the reader asked for, and the base of this tool
+    answered that inventory before either kind of evidence existed.
+    """
+    return witnesses.EvidenceTooLargeToWrite(
+        what, WRITTEN_DIGITS.name, refusal.reached, refusal.limit
+    )
 
 
 class _RunningTheRoles:
@@ -83,6 +98,45 @@ class _RunningTheRoles:
 
     def answered_false(self, named: str, args: tuple) -> bool:
         return self.answered(named, args) is False
+
+    def what_the_step_contract_did(self, state, event) -> str:
+        """What the step's own contract does with this pair, said beside
+        the witness.
+
+        A reader told only that the invariant fails afterwards cannot
+        tell whether the step would even accept the pair, and the two are
+        different faults: a step whose own precondition refuses it is
+        telling the Owner something else again. Read from a run of the
+        contract-checked call, never from the text of the program.
+        """
+        step = self._program.functions.get(self._roles.step)
+        if step is None or len(step.signature.params) != 2:
+            return "the step could not be called with a state and an event"
+        try:
+            evaluator.call_function(step, (state, event), self._program)
+        except evaluator.PreconditionViolation as refusal:
+            return (
+                f"the step's own precondition refuses this pair ({refusal}), "
+                "so the pair is outside what the step promises anything "
+                "about; the obligation above assumes only the invariant and "
+                "admissibility, which both hold of it"
+            )
+        except evaluator.PostconditionViolation as refusal:
+            return (
+                f"the step's own postcondition refuses this pair ({refusal}): "
+                "the step breaks its own promise here too, which is a "
+                "separate obligation of this inventory"
+            )
+        except _NOTHING_WAS_SHOWN:
+            return (
+                "the contract-checked call could not be run to the end on "
+                "this pair, so nothing is said about the step's own promise"
+            )
+        return (
+            "the step's own contract accepts this pair: it keeps its "
+            "precondition and its postcondition here, and the invariant "
+            "still fails of the state it leads to"
+        )
 
     def the_state_the_step_leads_to(self, state, event) -> object:
         """The state the machine's transition leads to, or `None` when
@@ -147,10 +201,20 @@ class TheTransition:
             return None
         if not self._running.answered_false(self._roles.invariant, (after,)):
             return None
+        try:
+            written = render(after)
+        except TooLargeToWrite as too_large:
+            return _too_large(
+                "the state the step leads to", too_large
+            )
         return witnesses.AnInductionStepWitness(
             texts[0],
             texts[1],
-            render(after),
+            written,
+            True,
+            True,
+            False,
+            self._running.what_the_step_contract_did(state, event),
             self._roles.step,
             self._roles.state_of,
             self._roles.invariant,
@@ -201,13 +265,19 @@ class ATraceFromTheInitialState:
             did = self._what_the_run_did(step, (state, event), declared.expected)
             if did is None:
                 continue
-            return witnesses.AReachableCounterexample(
-                render(initial),
-                (witnesses.ATransitionReplayed(render(event), did),),
-                self._roles.init,
-                self._roles.invariant,
-                THE_REPLAY_BUDGET,
-            )
+            if isinstance(did, witnesses.EvidenceTooLargeToWrite):
+                return did
+            try:
+                return witnesses.AReachableCounterexample(
+                    render(initial),
+                    True,
+                    (witnesses.ATransitionReplayed(render(event), did),),
+                    self._roles.init,
+                    self._roles.invariant,
+                    THE_REPLAY_BUDGET,
+                )
+            except TooLargeToWrite as too_large:
+                return _too_large("a state of the trace", too_large)
         return None
 
     def _what_the_run_did(self, step, args: tuple, expected) -> str | None:
@@ -230,8 +300,11 @@ class ATraceFromTheInitialState:
             return None
         if evaluator.values_equal(answered, expected):
             return None
-        return (
-            f"running the step from the initial state answers "
-            f"{render(answered)} and the approved example of this machine "
-            f"states {render(expected)}"
-        )
+        try:
+            return (
+                f"running the step from the initial state answers "
+                f"{render(answered)} and the approved example of this machine "
+                f"states {render(expected)}"
+            )
+        except TooLargeToWrite as too_large:
+            return _too_large("the outcome the step answers", too_large)

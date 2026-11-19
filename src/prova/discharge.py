@@ -19,9 +19,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prova import encoding, evaluator, obligations, provenance, solving, syntax
+from prova import (
+    encoding,
+    evaluator,
+    obligations,
+    provenance,
+    solving,
+    syntax,
+    witnesses,
+)
 from prova.reader import ReaderError, read_program
-from prova.values import render
+from prova.values import WRITTEN_DIGITS, TooLargeToWrite, render
 
 # The four words a logical result may carry (SPEC.md lines 270-284).
 # The last of them is read from the module that lists what a program
@@ -312,6 +320,8 @@ class Discharge:
         """A solution the solver found, which is a counterexample only if
         the reference semantics refuses it."""
         confirmed = self._validated(obligation, claim, refuted)
+        if isinstance(confirmed, witnesses.EvidenceTooLargeToWrite):
+            return Finding.unknown_because(confirmed.because(), COMPLETED)
         if confirmed is not None:
             return Finding.disproved_with(confirmed)
         return Finding.unknown_because(
@@ -324,6 +334,28 @@ class Discharge:
         )
 
     def _validated(self, obligation, claim, refuted):
+        """The witness this obligation's own replay confirms, the evidence
+        it established and this tool will not write, or `None`.
+
+        Every way of confirming a candidate ends in writing the evidence
+        back as the characters a reader sees, and the reference semantics
+        can compute a number longer than this tool writes. That is read
+        here, in the one place every confirmation passes through, because
+        letting it out would end the operation and lose the inventory the
+        reader asked for -- and because an obligation whose evidence
+        cannot be shown is unsettled, not broken.
+        """
+        try:
+            return self._confirmed(obligation, claim, refuted)
+        except TooLargeToWrite as too_large:
+            return witnesses.EvidenceTooLargeToWrite(
+                "the evidence that breaks this obligation",
+                WRITTEN_DIGITS.name,
+                too_large.reached,
+                too_large.limit,
+            )
+
+    def _confirmed(self, obligation, claim, refuted):
         function = self._program.functions[obligation.function]
         supplied = self._arguments(obligation, claim, refuted, function)
         if supplied is None:
