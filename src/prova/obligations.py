@@ -221,6 +221,39 @@ class Obligation:
     # replayed for them.
     confirmed_by = BY_NOTHING
 
+    # Whether a run of the program decides this kind outright. False for
+    # every kind that ranges over inputs no single run exhausts: nothing
+    # a run of one input shows proves such a statement. True only where
+    # the input is written in the program itself, so there is one run to
+    # make and its answer is the whole of the evidence.
+    settled_by_running = False
+
+    @property
+    def whose_refusal_confirms_it(self) -> str:
+        """Which function's own refusal confirms a candidate for this
+        obligation.
+
+        A run of one input can be refused by any function the run
+        reaches, and most of those refusals say nothing about the
+        obligation being settled: a body that never answers because a
+        function it calls refused is not a body that broke its own
+        promise. The kind names the one function whose refusal is the
+        thing it denies, and the replay reads that name rather than
+        taking any refusal it meets.
+        """
+        return self.function
+
+    def rests_on(self) -> tuple[str, ...]:
+        """The obligations of the same inventory this one is settled
+        from, by identity.
+
+        Empty for every kind that stands on its own claim. A kind that
+        names some is settled after them and from what became of them,
+        so one fact is decided once and two entries of one answer cannot
+        disagree about it.
+        """
+        return ()
+
     def confirmed_by_replaying(self, program, claim, texts: tuple, args: tuple):
         """The witness a replay of this obligation's own composition
         confirms for `args`, or `None` when it confirms none.
@@ -290,6 +323,19 @@ class CallPrecondition(Obligation):
 
     kind = "call_precondition"
     confirmed_by = BY_A_PRECONDITION
+
+    @property
+    def whose_refusal_confirms_it(self) -> str:
+        """The callee, and no other function.
+
+        What this obligation denies is that the callee refuses the
+        arguments this call passes it. A run refused by anything else --
+        the calling function's own precondition, a function called
+        before this one -- did not reach this call at all, and reading
+        it as a confirmation would report a counterexample that never
+        gets there.
+        """
+        return self.callee
 
     def to_show(self) -> str:
         return (
@@ -396,6 +442,15 @@ class ExampleValidity(Obligation):
     kind = "example_validity"
     confirmed_by = BY_THE_EXAMPLE_ITSELF
 
+    # The arguments of an example are closed values written in the
+    # program, so this obligation is about one run of one function over
+    # one input. The reference semantics answers it outright: it says
+    # whether that run reaches the end, whether the function keeps its
+    # own contract over it, and what value it answers. No statement
+    # about other inputs is involved, so no formula is the last word
+    # here.
+    settled_by_running = True
+
     def to_show(self) -> str:
         return (
             f"declared example {self.ordinal} of '{self.function}' has arguments of the "
@@ -444,6 +499,7 @@ class ContractDefinedness(Obligation):
     """A function's contract is defined for every input of its types."""
 
     contract_clauses: int
+    calls_in_the_contract: tuple[str, ...] = ()
 
     kind = "contract_definedness"
 
@@ -455,6 +511,22 @@ class ContractDefinedness(Obligation):
 
     def detail(self) -> dict:
         return {"contract_clauses": self.contract_clauses}
+
+    def rests_on(self) -> tuple[str, ...]:
+        """The precondition obligations of the calls the contract makes.
+
+        The rule below settles the primitives of core-0, which are total,
+        and says so itself: it does not claim that running a clause
+        answers a value, because a call whose precondition does not hold
+        stops the run. A contract that calls a function is defined
+        everywhere exactly when each of those calls meets the callee's
+        precondition wherever the clause before it has let the run get
+        there -- which is what these obligations are. So this entry is
+        settled from them rather than from the rule alone, and a contract
+        with no call in it rests on nothing and is settled by the rule as
+        it always was.
+        """
+        return self.calls_in_the_contract
 
     def _claim(self, program: syntax.Program):
         return encoding.ByRuleOfTheProfile(TOTALITY_OF_THE_PROFILE)
@@ -613,9 +685,15 @@ def inventory_for(program: syntax.Program) -> Inventory:
 
 def _owed_by(function: syntax.Function, program: syntax.Program) -> list[Obligation]:
     contract_clauses = len(function.requires) + len(function.ensures)
-    calls = _calls_owed_by(function, program)
+    in_the_contract = _calls_in_the_contract_of(function, program)
+    calls = in_the_contract + _calls_in_the_body_of(function, program)
     owed: list[Obligation] = [
-        ContractDefinedness(function.name, Site(("contract",)), contract_clauses)
+        ContractDefinedness(
+            function.name,
+            Site(("contract",)),
+            contract_clauses,
+            tuple(call.identity for call in in_the_contract),
+        )
     ]
     owed.extend(calls)
     owed.append(
@@ -633,12 +711,22 @@ def _owed_by(function: syntax.Function, program: syntax.Program) -> list[Obligat
     return owed
 
 
-def _calls_owed_by(
+def _calls_in_the_contract_of(
     function: syntax.Function, program: syntax.Program
 ) -> list[Obligation]:
+    """Every call the contract of `function` makes, each under what
+    reaches it."""
     owed: list[Obligation] = []
     for index, clause in enumerate(function.requires):
-        owed.extend(_calls_in(clause, Site((f"requires[{index}]",)), function, program))
+        owed.extend(
+            _calls_in(
+                clause,
+                Site((f"requires[{index}]",)),
+                function,
+                program,
+                _the_clauses_before(function.requires, index),
+            )
+        )
     under_its_own_precondition = _precondition_of(function)
     for index, clause in enumerate(function.ensures):
         owed.extend(
@@ -650,16 +738,33 @@ def _calls_owed_by(
                 under_its_own_precondition,
             )
         )
-    owed.extend(
-        _calls_in(
-            function.body,
-            Site(("body",)),
-            function,
-            program,
-            under_its_own_precondition,
-        )
-    )
     return owed
+
+
+def _calls_in_the_body_of(
+    function: syntax.Function, program: syntax.Program
+) -> list[Obligation]:
+    return _calls_in(
+        function.body,
+        Site(("body",)),
+        function,
+        program,
+        _precondition_of(function),
+    )
+
+
+def _the_clauses_before(clauses: tuple, index: int) -> PathCondition:
+    """What reaches the clause at `index` of a precondition.
+
+    The evaluator checks the clauses of a precondition in source order
+    and refuses at the first one that is not true, so a later clause runs
+    only where every earlier clause held. A call in it may rely on that,
+    exactly as a call in a branch may rely on the test in front of it,
+    and a witness that breaks an earlier clause never reaches this one.
+    The clause may still not assume itself: its own text is not among
+    these.
+    """
+    return PathCondition(tuple(Holds(clause) for clause in clauses[:index]))
 
 
 def _precondition_of(function: syntax.Function) -> PathCondition:
@@ -669,9 +774,9 @@ def _precondition_of(function: syntax.Function) -> PathCondition:
     SPEC.md, "Meaning of a claim": the claim is `Pre_f(x) implies ...`, so
     the postcondition is checked under the precondition and the body answers
     it for every input that meets the precondition. A call in the
-    precondition itself is reached under nothing: a precondition must be
-    well-defined for every typed input and cannot assume itself true to
-    justify a partial call.
+    precondition itself is reached under the clauses written before it and
+    no more: a precondition must be well-defined for every typed input
+    reaching it and cannot assume itself true to justify a partial call.
     """
     return PathCondition(tuple(Holds(clause) for clause in function.requires))
 
@@ -725,9 +830,9 @@ def _call_obligation(
 def _parts_of(expression: object) -> list[tuple[object, str, tuple[object, ...]]]:
     """Each subexpression of `expression` with the path segment that names
     it and the conditions that must hold to reach it."""
-    if isinstance(
-        expression, (syntax.Call, syntax.ConstructorCall, syntax.OperatorCall)
-    ):
+    if isinstance(expression, syntax.OperatorCall):
+        return _parts_of_operator(expression)
+    if isinstance(expression, (syntax.Call, syntax.ConstructorCall)):
         return [(arg, f"arg[{index}]", ()) for index, arg in enumerate(expression.args)]
     if isinstance(expression, syntax.FieldAccess):
         return [(expression.target, "target", ())]
@@ -749,27 +854,64 @@ def _parts_of(expression: object) -> list[tuple[object, str, tuple[object, ...]]
     return []
 
 
+def _parts_of_operator(
+    expression: syntax.OperatorCall,
+) -> list[tuple[object, str, tuple[object, ...]]]:
+    """Each operand of an operator with what reaches it.
+
+    `and` and `or` are the two operators of core-0 that do not evaluate
+    every operand: the evaluator reads the first, and reads the second
+    only where the first was true for `and` and where it was false for
+    `or`. An operand nothing can reach is reached under a condition
+    nothing satisfies, which is what makes a call behind a guard
+    unreachable rather than unguarded. Every other operator evaluates
+    all of its operands, so each is reached under nothing of its own.
+    """
+    if expression.operator not in _ONE_OPERAND_GUARDS_THE_NEXT:
+        return [(arg, f"arg[{index}]", ()) for index, arg in enumerate(expression.args)]
+    guarded_by = _ONE_OPERAND_GUARDS_THE_NEXT[expression.operator]
+    parts: list[tuple[object, str, tuple[object, ...]]] = []
+    reached: tuple[object, ...] = ()
+    for index, arg in enumerate(expression.args):
+        parts.append((arg, f"arg[{index}]", reached))
+        reached = reached + (guarded_by(arg),)
+    return parts
+
+
+# The operators whose earlier operand decides whether the next one runs,
+# and what the earlier one must have done for it to run.
+_ONE_OPERAND_GUARDS_THE_NEXT = {"and": Holds, "or": Fails}
+
+
 def _parts_of_match(
     expression: syntax.Match,
 ) -> list[tuple[object, str, tuple[object, ...]]]:
+    """Each part of a match with what reaches it.
+
+    Clauses are tried in source order, so a clause is reached where its
+    own pattern matches and every pattern before it did not. A pattern
+    that cannot fail adds nothing to the first of those and everything
+    to the second: no value gets past a catch-all, so a clause written
+    after one is reached under a condition nothing satisfies rather than
+    under the patterns that can fail alone.
+    """
     scrutinee = expression.scrutinee
     parts: list[tuple[object, str, tuple[object, ...]]] = [
         (expression.scrutinee, "scrutinee", ())
     ]
     earlier: tuple[object, ...] = ()
     for index, clause in enumerate(expression.clauses):
-        taken = _can_fail(clause.pattern)
-        reached = earlier + ((Matches(scrutinee, clause.pattern),) if taken else ())
-        parts.append((clause.body, f"case[{index}]", reached))
-        earlier = earlier + (
-            (DoesNotMatch(scrutinee, clause.pattern),) if taken else ()
+        reached = earlier + (
+            (Matches(scrutinee, clause.pattern),) if _can_fail(clause.pattern) else ()
         )
+        parts.append((clause.body, f"case[{index}]", reached))
+        earlier = earlier + (DoesNotMatch(scrutinee, clause.pattern),)
     return parts
 
 
 def _can_fail(pattern: object) -> bool:
     """Whether a value can fail to match the pattern. A wildcard or a plain
-    name always matches, so it adds no condition."""
+    name always matches, so it adds no condition to the clause it heads."""
     return not isinstance(pattern, (syntax.PatWildcard, syntax.PatVar))
 
 

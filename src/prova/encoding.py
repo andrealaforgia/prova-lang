@@ -38,6 +38,31 @@ VERSION = "1"
 # below what would make one query slow.
 EXPANSION_LIMIT = 64
 
+# How deeply one expression may stand inside another before the
+# translation gives up. The expansion count above bounds how many calls
+# are inlined and says nothing about how far the result nests: twenty
+# calls each written inside twenty additions expand to four hundred
+# expressions standing on one another, which is twenty expansions and a
+# stack this tool will not walk. Both are resource bounds SPEC.md asks
+# for, and neither covers the other.
+#
+# One level costs about three interpreter frames here and two where the
+# term is then built for the solver, and the two walks are made one
+# after the other rather than inside one another. So 200 levels cost
+# about 620 of the 1000 frames Python allows by default, measured
+# against a tool that runs out at about 320 levels, and the refusal is
+# reached with room to spare however deep the caller's own stack
+# already stands.
+#
+# It stands above the 160 evaluation steps the evaluator runs rather
+# than beside it. An expression a little deeper than the evaluator runs
+# is still translated and still put to the solver: a solution it finds
+# is then replayed, the replay runs out of depth, and the obligation is
+# left unsettled for that reason. Were the two numbers equal, nothing
+# would ever reach that gate and this tool would have an answer no
+# program could produce.
+TRANSLATION_DEPTH_LIMIT = 200
+
 # Where the translation is written out for a reader: what every primitive
 # above means, and why settling an obligation settles the claim the
 # source makes. The manifest publishes this path, so a reader follows the
@@ -281,30 +306,55 @@ class Translation:
     def __init__(self, program: syntax.Program):
         self._program = program
         self._expansions = 0
+        self._standing = 0
 
     def term_of(self, expression: object, bound: dict) -> Term:
         """`expression` as a term, with `bound` giving a term for each
-        name in scope."""
-        for shape, translate in (
-            (syntax.IntLit, self._integer),
-            (syntax.BoolLit, self._boolean),
-            (syntax.UnitLit, self._unit),
-            (syntax.NameRef, self._name),
-            (syntax.OperatorCall, self._operator),
-            (syntax.ConstructorCall, self._construction),
-            (syntax.FieldAccess, self._selection),
-            (syntax.If, self._choice),
-            (syntax.Match, self._match),
-            (syntax.Call, self._expanded_call),
-        ):
-            if isinstance(expression, shape):
-                return translate(expression, bound)
-        raise _Outside(
-            f"the translation covers no {type(expression).__name__.lower()} "
-            "expression yet: it covers whole numbers, booleans, the unit "
-            "value, names, the operators of core-0, constructors, field "
-            "selection, if, match and calls to declared functions"
-        )
+        name in scope.
+
+        The one place this walk stands inside itself, so the one place
+        its depth is counted. Counting it here rather than at a call
+        alone covers an expression written inside an expression, a chain
+        of calls and any mixture of them, because all three stand on the
+        same interpreter stack.
+        """
+        self._standing += 1
+        try:
+            if self._standing > TRANSLATION_DEPTH_LIMIT:
+                raise _Outside(
+                    f"translating this obligation reached {self._standing} "
+                    "expressions standing inside one another and this "
+                    f"translation walks {TRANSLATION_DEPTH_LIMIT}, which is "
+                    "the bound it keeps rather than walking until the "
+                    "interpreter stack runs out and nothing at all is "
+                    "answered; the obligation is left unsettled instead, "
+                    "and the rest of the inventory stands. The bound is on "
+                    "how deep the expanded expression nests and not on how "
+                    "many calls were expanded, which is counted on its own"
+                )
+            for shape, translate in (
+                (syntax.IntLit, self._integer),
+                (syntax.BoolLit, self._boolean),
+                (syntax.UnitLit, self._unit),
+                (syntax.NameRef, self._name),
+                (syntax.OperatorCall, self._operator),
+                (syntax.ConstructorCall, self._construction),
+                (syntax.FieldAccess, self._selection),
+                (syntax.If, self._choice),
+                (syntax.Match, self._match),
+                (syntax.Call, self._expanded_call),
+            ):
+                if isinstance(expression, shape):
+                    return translate(expression, bound)
+            raise _Outside(
+                f"the translation covers no "
+                f"{type(expression).__name__.lower()} expression yet: it "
+                "covers whole numbers, booleans, the unit value, names, the "
+                "operators of core-0, constructors, field selection, if, "
+                "match and calls to declared functions"
+            )
+        finally:
+            self._standing -= 1
 
     def term_of_value(self, value: object) -> Term:
         """One closed value -- what a declared example is written from --

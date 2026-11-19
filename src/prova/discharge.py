@@ -85,6 +85,22 @@ THE_TRUST_IT_DISCLOSES = (
 
 
 @dataclass(frozen=True)
+class TheRunCouldNotFinish:
+    """A replay the reference semantics could not carry to the end: a
+    value of the wrong shape for the types it was handed to, or a run
+    that nested deeper than this tool runs.
+
+    Kept apart from a run that finished and refuted nothing. Both leave
+    an obligation unsettled when a candidate was being confirmed, but
+    where nothing was being confirmed -- where the solver found nothing
+    and the run is the whole evidence -- the difference is the
+    difference between a proof and an unanswered question.
+    """
+
+    reason: str
+
+
+@dataclass(frozen=True)
 class ValidatedWitness:
     """An input the reference semantics really refuses.
 
@@ -243,11 +259,62 @@ class Discharge:
         self._asked_a_solver = False
 
     def settle(self, inventory: obligations.Inventory) -> Settlement:
+        """Every obligation of the inventory beside what became of it.
+
+        An obligation settled from others is settled after them, in a
+        second round over the same list: it is listed where it was
+        listed and reported in the same place, and the fact it shares
+        with them is decided once.
+        """
         findings = {}
+        settled_from_others = []
         for obligation in inventory.obligations:
             self._run.stop_if_exhausted()
+            if obligation.rests_on():
+                settled_from_others.append(obligation)
+                continue
             findings[obligation.identity] = self._finding_for(obligation)
+        for obligation in settled_from_others:
+            self._run.stop_if_exhausted()
+            findings[obligation.identity] = self._from_what_it_rests_on(
+                obligation, findings
+            )
         return Settlement(findings, self._what_it_stands_on())
+
+    def _from_what_it_rests_on(self, obligation, findings: dict) -> Finding:
+        """What became of an obligation whose answer is the answer to
+        others.
+
+        It is settled where every one of them was settled proved, broken
+        where one of them was broken -- the input that breaks the other
+        breaks this one, and the same confirmed witness says so -- and
+        unsettled while any of them is, naming the ones that are. A
+        reader is never told that a contract is defined everywhere while
+        a call inside it is reported unsettled or broken two lines
+        below.
+        """
+        resting = [findings[name] for name in obligation.rests_on()]
+        broken = [finding for finding in resting if finding.result == DISPROVED]
+        if broken:
+            return Finding.disproved_with(broken[0].witness)
+        unsettled = [
+            name
+            for name, finding in zip(obligation.rests_on(), resting)
+            if finding.result != PROVED
+        ]
+        if unsettled:
+            return Finding.unknown_because(
+                "this obligation is settled from the calls the contract "
+                f"makes, and {', '.join(unsettled)} "
+                + ("is" if len(unsettled) == 1 else "are")
+                + " not settled: a contract whose own calls were not shown "
+                "to be met cannot be said to be defined for every input, so "
+                "the word is withheld rather than taken from the totality of "
+                "the primitives alone. Nothing here says the contract is "
+                "wrong: settle those entries and ask again",
+                COMPLETED,
+            )
+        return self._finding_for(obligation)
 
     def _finding_for(self, obligation) -> Finding:
         stated = obligation.claim_in(self._program)
@@ -264,7 +331,9 @@ class Discharge:
         self._asked_a_solver = True
         verdict = self._solver.asked(claim, self._run.milliseconds_left())
         if isinstance(verdict, solving.Unrefutable):
-            return self._if_it_ranges_over_anything(obligation)
+            return self._unless_a_run_refutes_it(
+                obligation, claim, self._if_it_ranges_over_anything(obligation)
+            )
         if isinstance(verdict, solving.SolverUnavailable):
             return Finding.unknown_because(verdict.reason, "tool_failure")
         if isinstance(verdict, solving.Undecided):
@@ -272,6 +341,44 @@ class Discharge:
                 verdict.reason, verdict.execution_status
             )
         return self._candidate(obligation, claim, verdict)
+
+    def _unless_a_run_refutes_it(self, obligation, claim, taken: Finding) -> Finding:
+        """The word the solver's silence would earn, withheld where a run
+        of the program says otherwise.
+
+        An obligation whose input is written in the program itself --
+        a declared example -- is about one run and no range of inputs,
+        so the reference semantics decides it outright and the solver's
+        word is not the last one. The formula the solver is asked reads
+        the bodies of the functions a call reaches and not the contracts
+        they keep, so it can be valid while the run it is about is
+        refused by a precondition inside it, or ends in the function
+        breaking its own promise. SPEC.md lines 307-309 make the
+        reference semantics the authority, so the run is made and its
+        answer stands: it confirms the word, breaks it with the refusal
+        it really met, or leaves the obligation unsettled when it could
+        not be carried to the end.
+
+        Every other kind ranges over inputs no single run exhausts, and
+        nothing is run for it here.
+        """
+        if taken.result != PROVED or not obligation.settled_by_running:
+            return taken
+        said = self._validated(obligation, claim, None)
+        if isinstance(said, witnesses.EvidenceTooLargeToWrite):
+            return Finding.unknown_because(said.because(), COMPLETED)
+        if isinstance(said, TheRunCouldNotFinish):
+            return Finding.unknown_because(
+                "nothing the solver found refutes this obligation, and "
+                f"running the program over the input it is about {said.reason}. "
+                "What this obligation states is about that one run, so it is "
+                "left unsettled rather than proved from a formula no run "
+                "confirmed",
+                COMPLETED,
+            )
+        if said is not None:
+            return Finding.disproved_with(said)
+        return taken
 
     def _if_it_ranges_over_anything(self, obligation) -> Finding:
         """Proved, where the obligation ranges over something; unsettled
@@ -322,7 +429,7 @@ class Discharge:
         confirmed = self._validated(obligation, claim, refuted)
         if isinstance(confirmed, witnesses.EvidenceTooLargeToWrite):
             return Finding.unknown_because(confirmed.because(), COMPLETED)
-        if confirmed is not None:
+        if confirmed is not None and not isinstance(confirmed, TheRunCouldNotFinish):
             return Finding.disproved_with(confirmed)
         return Finding.unknown_because(
             "the solver found an input where the denial of this obligation "
@@ -359,7 +466,10 @@ class Discharge:
         function = self._program.functions[obligation.function]
         supplied = self._arguments(obligation, claim, refuted, function)
         if supplied is None:
-            return None
+            return TheRunCouldNotFinish(
+                "could not be written back as values of the program to run it "
+                "over"
+            )
         texts, args = supplied
         if obligation.confirmed_by == obligations.BY_THE_INVARIANT_AFTER_THE_STEP:
             return obligation.confirmed_by_replaying(
@@ -383,19 +493,32 @@ class Discharge:
             evaluator.EvaluationTooDeep,
             evaluator.MalformedValue,
             evaluator.IllTypedValue,
-        ):
-            return None
+        ) as stopped:
+            return TheRunCouldNotFinish(f"could not be carried to the end: {stopped}")
         return self._if_answered_another_value(obligation, texts, answered)
 
     def _if_confirmed(
         self, obligation, refusal_kind: str, texts: tuple, refusal
     ) -> ValidatedWitness | None:
-        if obligation.confirmed_by in (
-            refusal_kind,
-            obligations.BY_THE_EXAMPLE_ITSELF,
-        ):
+        """The refusal as a witness, where it is the refusal this
+        obligation denies.
+
+        A declared example is confirmed by any refusal at all: it states
+        that running the function over its own arguments answers a
+        value, so a run refused anywhere inside is already not that.
+        Every other kind denies one function's refusal -- the callee of
+        the call, the function whose promise is in question -- and a
+        refusal made by anything else means the run never reached what
+        this obligation is about. Reading it as a confirmation would
+        report a counterexample that does not get there.
+        """
+        if obligation.confirmed_by == obligations.BY_THE_EXAMPLE_ITSELF:
             return ValidatedWitness(obligation.function, texts, str(refusal))
-        return None
+        if obligation.confirmed_by != refusal_kind:
+            return None
+        if refusal.function_name != obligation.whose_refusal_confirms_it:
+            return None
+        return ValidatedWitness(obligation.function, texts, str(refusal))
 
     def _if_answered_another_value(
         self, obligation, texts: tuple, answered: object
@@ -418,12 +541,19 @@ class Discharge:
         A claim about no variable at all -- a declared example -- is
         replayed over the example's own arguments; every other claim is
         replayed over the solution the solver found.
+
+        A function that takes nothing is replayed over the empty tuple,
+        which is the whole of its input: a solution naming no variable
+        is the solution for it, and reading "no names" as "nothing to
+        run" would throw away the one witness such a function can have.
+        A claim whose variables are not the parameters of the function
+        is not one this replay can run at all.
         """
         if obligation.confirmed_by == obligations.BY_THE_EXAMPLE_ITSELF:
             values = tuple(obligation.example.args)
             return tuple(render(value) for value in values), values
         names = tuple(name for name, _ in claim.variables)
-        if not names:
+        if len(names) != len(function.signature.params):
             return None
         texts = refuted.arguments(names)
         try:

@@ -75,12 +75,23 @@ and the evaluator's are Python integers, which are unbounded. There is no
 width on either side, so no input exists at which the two differ.
 
 **The connectives.** `and` and `or` short-circuit left to right in
-`core-0`. Short-circuit and strict evaluation agree for every expression
-that is total and free of effects, and in this fragment every expression
-is: the profile has no division and no other partial primitive, no
-effect, and no call that fails to end. So the strict connectives mean the
-same thing here. Division is the operation that would break this
-argument, and it is not in the profile at all.
+`core-0`. Short-circuit and strict evaluation agree on the *value* of
+every expression that is total and free of effects, and in this fragment
+every expression is: the profile has no division and no other partial
+primitive, no effect, and no call that fails to end. So the strict
+connectives mean the same thing here. Division is the operation that
+would break this argument, and it is not in the profile at all.
+
+They do not agree on what *runs*. A call standing in the second operand
+of an `and` happens only where the first operand was true, and in the
+second operand of an `or` only where it was false; a contract clause
+whose precondition refuses the input is never reached at all. So the
+condition that reaches a site keeps the short-circuit order even though
+the formula is strict: the first operand holding, or failing, is carried
+into the second as an assumption, exactly as the test of an `if` is
+carried into its branch. That is a statement about which calls happen
+and not about what the connective means, and the two are kept apart on
+purpose.
 
 **Records and unions.** Each declared type becomes one freely generated
 datatype: distinct constructors build distinct values, every value is
@@ -95,6 +106,14 @@ alternative with no test of its own: the checker that accepted the
 program has already shown the match exhaustive over the scrutinee's
 type, so nothing but a value that clause matches can reach it.
 
+Source order is also what reaches a clause: a clause is reached where
+its own pattern matches and **every** pattern written before it did not.
+A pattern that cannot fail — a wildcard or a plain name — adds nothing
+to the first of those and everything to the second, because no value
+gets past it. So a clause written after a catch-all is reached under a
+condition nothing satisfies, which is what makes the call inside it
+unreachable rather than unguarded.
+
 **Field selection.** Selection is defined only on records and is
 resolved from the operand's nominal type by the checker, so an accessor
 is only ever applied to a value of its own constructor.
@@ -104,7 +123,13 @@ for the arguments. SPEC.md names inlining a valid initial strategy. The
 combined dependency graph of bodies and contracts is acyclic in
 `core-0`, so the expansion ends; a bound on how far it may go is kept
 anyway, and an obligation that passes it is left unsettled rather than
-answered from half a translation. A callee's postcondition is **never**
+answered from half a translation. A second bound covers what expanding
+leaves behind: how deep one expression ends up standing inside another.
+Few calls can expand into a very deep expression — twenty calls each
+written inside twenty additions are four hundred expressions on one
+stack — so the depth is counted as well as the expansions, and an
+obligation passing either bound is left unsettled with that reason while
+the rest of the inventory stands. A callee's postcondition is **never**
 assumed in place of its body: SPEC.md permits that only with
 independently established callee obligations and a justified modular
 proof rule, and this tool has neither.
@@ -130,36 +155,64 @@ So, obligation by obligation:
   promise the function makes.
 - **a call's precondition.** The claim is: wherever the condition that
   reaches the call holds, the callee's precondition holds of the
-  arguments. The condition that reaches it — the function's own
-  `requires`, plus every branch and clause on the way down — is
-  **assumed**. That is why a call standing behind a test that establishes
-  its precondition is provable, and the same call with nothing in front
-  of it is not. Where the call stands in what the function promises, the
+  arguments. The condition that reaches it is **assumed**, and it is
+  everything that must have happened for the call to run: the `requires`
+  clauses of the function written **before** the one the call stands in,
+  the whole precondition where the call stands in the postcondition or
+  the body, the branch of every `if` and the clause of every `match` on
+  the way down together with every pattern those clauses got past, and
+  the operand of an `and` or an `or` that had to run first. That is why
+  a call standing behind a test that establishes its precondition is
+  provable, and the same call with nothing in front of it is not. It is
+  also why a call nothing can reach is proved for want of anything to
+  reach it, under a condition the answer prints so you can see that is
+  what happened. The counterexample side is read the same way: a
+  solution is a counterexample to **this** call only where running the
+  program over it makes the **callee** refuse. A run stopped earlier —
+  by the function's own precondition, or by a call made before this one
+  — never reached this call, so it leaves the obligation unsettled
+  instead. Where the call stands in what the function promises, the
   function's answer is in scope and stands for its body, because only a
   postcondition may read it.
 - **a declared example.** The claim is: the arguments meet the
   precondition, and what the function answers over them is the value the
   example states. The arguments are closed values, so the formula has no
-  variable in it.
-- **a contract's definedness.** Not sent to a solver, and the narrowest
-  of these claims. Read over the total meaning of `core-0` above, every
-  operation the profile has is defined for every value of its declared
-  types. That is all this entry claims. It does **not** claim that
-  running a clause answers a value, because three things can stop a run
-  of one: a call whose precondition does not hold, a call whose
-  postcondition does not hold — which the evaluator checks and refuses —
-  and the evaluation depth budget, which stops a run that nests deeper
-  than this tool runs. The first is a call-precondition obligation of
-  its own, listed and settled separately; the second is the callee's own
-  body-to-postcondition obligation, also listed; the third is a budget
-  this tool declares and is not a statement about your program.
+  variable in it — and the formula is not the last word. This obligation
+  is about one run of one function over one input, so the run is made:
+  the example is replayed through the evaluator with every contract
+  checked, and only a run that reaches the end and answers the value the
+  example states leaves the entry `proved`. A run the program refuses,
+  anywhere inside, and a run answering another value are both reported
+  as the counterexample they are. The formula alone cannot see either,
+  because it reads the bodies a call reaches and not the contracts they
+  keep.
+- **a contract's definedness.** No solver is asked about this entry, and
+  it is the narrowest of these claims. Read over the total meaning of
+  `core-0` above, every operation the profile has is defined for every
+  value of its declared types. That is all the **rule** gives. It does
+  not by itself say that running a clause answers a value, because three
+  things can stop a run of one: a call whose precondition does not hold,
+  a call whose postcondition does not hold — which the evaluator checks
+  and refuses — and the evaluation depth budget, which stops a run that
+  nests deeper than this tool runs. The second is the callee's own
+  body-to-postcondition obligation, listed separately; the third is a
+  budget this tool declares and is not a statement about your program.
+  The first is a call-precondition obligation of its own, and this entry
+  is settled **from** those: a contract that calls nothing rests on the
+  rule alone, and a contract that calls something is defined only where
+  every one of those calls was shown to be met. One of them disproved
+  makes this entry disproved over the same input, and one of them
+  unsettled leaves this entry unsettled naming it, so you are never told
+  that a contract is defined everywhere while a call inside it is
+  reported broken two lines below.
 - **a function's structural ending.** Not sent to a solver. The checker
   refuses any program whose combined dependency graph has a cycle, so
   every call this function can reach ends, and so does it.
 
-Those last two carry `discharged_by: "structure"` instead of `"solver"`,
-so you can see at a glance which of your obligations rest on a solver's
-word and which on the two rules just stated.
+Where those last two come back `proved` they carry
+`discharged_by: "structure"` instead of `"solver"`, so you can see at a
+glance which of your obligations rest on a solver's word and which on
+the two rules just stated.
 
 When you send a machine descriptor with a `verify` request, three more
 obligations join that list, and the same reading settles them. SPEC.md
@@ -221,6 +274,7 @@ question the solver is asked.
 | The solver says | You are told | Execution status |
 |---|---|---|
 | no solution | `proved` | `completed` |
+| no solution, and the run a declared example is about refutes it anyway | `disproved`, with that example's own input | `completed` |
 | a solution, and running the program over it is refused for this claim | `disproved`, with that input | `completed` |
 | a solution that is **not** refused when run | `unknown`, saying the candidate did not replay | `completed` |
 | it could not tell, out of time | `unknown` | `timed_out` |
