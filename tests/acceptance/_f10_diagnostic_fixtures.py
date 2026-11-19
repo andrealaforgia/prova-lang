@@ -80,6 +80,22 @@ def with_example(example: str) -> str:
     )
 
 
+def with_signature_and_example(signature: str, example: str) -> str:
+    """The program with both its signature and its example replaced.
+
+    A case that changes the declared types alone leaves the example
+    stating a value of the types that were there before, which is a
+    second defect of its own and not the one the case is about. The
+    fixtures here hold one defect per program, so a case changing the
+    signature says what the example states under it.
+    """
+    return with_signature(signature).replace(
+        "  (examples (example (fare 100) => 110))\n",
+        f"  (examples {example})\n",
+        1,
+    )
+
+
 @dataclass(frozen=True)
 class Case:
     """One refused program and the structured answer a client acts on:
@@ -118,7 +134,10 @@ TWO_FUNCTIONS = """\
 
 TYPE_ERRORS: dict[str, Case] = {
     "a body that does not have the declared return type": Case(
-        source=with_signature("  (sig ((cents Int)) -> Bool ! pure)"),
+        source=with_signature_and_example(
+            "  (sig ((cents Int)) -> Bool ! pure)",
+            "(example (fare 100) => true)",
+        ),
         category="type_mismatch",
         symbol="fare",
         expected="Bool",
