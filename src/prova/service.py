@@ -2712,6 +2712,17 @@ def _run_evaluate(source: SubmittedText, asked: EvaluationAsked, run: Run) -> di
         }
 
     try:
+        # Every argument is read out of the program's own declarations
+        # before any of them is typed, which is the order the artefact
+        # a build publishes reads them in: a value naming a constructor
+        # the program does not declare is refused wherever it stands,
+        # ahead of a readable value of the wrong type standing anywhere
+        # else. Typing an argument first made the two disagree about
+        # the same pair of arguments.
+        for arg, parameter in zip(args, params):
+            evaluator.check_value_shape(
+                arg, program, f"argument {parameter.name!r}"
+            )
         for arg, parameter in zip(args, params):
             evaluator.check_value_type(
                 arg, parameter.type_name, program, f"argument {parameter.name!r}"

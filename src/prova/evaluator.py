@@ -113,6 +113,33 @@ class IllTypedValue(Exception):
         self.reason = reason
 
 
+def check_value_shape(value: object, program: syntax.Program, where: str) -> None:
+    """Raise `MalformedValue` when `value` is built out of something
+    this program does not declare, at any depth. Silent otherwise, and
+    silent about the type the value is used at.
+
+    Read before any value is typed, over every value a caller sent: a
+    constructor the program does not declare, or one given the wrong
+    number of fields, is not a value of this program at all, and the
+    artefact a build publishes refuses it that way wherever it stands,
+    because its reader resolves a constructor as it reads one. The two
+    answer one question the same way only if the compiler reads every
+    argument before it types any.
+    """
+    if not isinstance(value, ConstructorValue):
+        return
+    declared = syntax.DeclaredConstructor.of(value.constructor, program)
+    if declared is None:
+        raise MalformedValue(f"{where}: no record type or union variant named {value.constructor!r}")
+    if declared.disagrees_with(len(value.fields)):
+        raise MalformedValue(
+            f"{where}: constructor {value.constructor!r} takes {declared.takes()} field(s), "
+            f"got {len(value.fields)}"
+        )
+    for (field_name, _), field_value in zip(declared.fields, value.fields):
+        check_value_shape(field_value, program, f"{where} field {field_name!r}")
+
+
 def check_value_type(value: object, type_name: str, program: syntax.Program, where: str) -> None:
     """Raise `MalformedValue` or `IllTypedValue` when `value` does not
     match `type_name`, recursing into constructor fields. Silent when it
