@@ -19,12 +19,14 @@ JSON answer on standard output, always, whatever the input.
 | Profile | What it covers | State |
 |---|---|---|
 | `core-0` | total pure first-order functions, records, unions, `match`, contracts, examples | implemented and checked |
-| `verify-0` | proof obligations discharged by a pinned Z3, each answer saying what rests on the solver and what on a rule of the language | linear integer arithmetic fragment implemented; the aggregate "verified" verdict is in progress |
-| `machine-0` | state machines and inductive invariants | not started |
+| `verify-0` | proof obligations discharged by a pinned Z3, each answer saying what rests on the solver and what on a rule of the language; one aggregate word `verified` or `not_verified` | implemented for the linear integer arithmetic fragment |
+| `machine-0` | state machines: a separate JSON descriptor names five roles; the three inductive obligations are proved; a machine can be driven event by event | implemented; broken guards are caught by proof and named as induction-step witnesses |
 
-Operations: `discover`, `check`, `examples`, `evaluate`, `parse`, `format`, `verify`.
-`build` (an executable artefact for a fully verified program) is not available yet; the
-manifest says so, and no answer claims otherwise.
+Operations: `discover`, `check`, `examples`, `evaluate`, `parse`, `format`, `verify`,
+`machine`, `step` and `build`. `build` writes one generated Python file, and only for a
+program whose aggregate is `verified`. The file answers like `evaluate` and refuses with
+six distinct statuses. A build writes only inside the directory the request names, and
+replaces an existing file only when the request says so.
 
 ## Quick start
 
@@ -77,7 +79,7 @@ language's types and operators, so a client needs nothing else to use the tool.
 
 ```sh
 uv sync
-uv run pytest -q tests      # about 4 minutes
+uv run pytest -q tests      # about 7 minutes
 ```
 
 Continuous integration runs the same command on every push. The tests read `SPEC.md` at a

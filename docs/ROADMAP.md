@@ -1313,5 +1313,5 @@ durable statement of each behaviour.
 | F23 artefact refusal statuses | 7b39da8 | A built artefact exits 2 MALFORMED, 3 ASSURANCE, 4 ARTEFACT, 5 ILL-TYPED, 6 PRECONDITION, 7 RESOURCE, with the category word first; every argument is read before any is typed. | Nesting limit copied from the compiler at build time; the repair commit had no independent review. |
 | F24 authorised destination | 0b4f706 | A build writes only inside `output_directory` under `output_name`; `replace` records the digest of what was replaced; `..` and a link at the name are refused; a failure leaves what stood byte for byte. | A link as a directory component is followed; no Codex review (filter blocked it). |
 
-Standing process facts: the full suite takes about 4.5 minutes; a delivery
+Standing process facts: the full suite takes about 7 minutes; a delivery
 that touches an existing test's expected result stops and asks the Owner.
