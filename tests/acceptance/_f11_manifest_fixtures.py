@@ -258,14 +258,33 @@ _WHERE_A_BUILD_MAY_WRITE = tempfile.TemporaryDirectory(
 _DESTINATIONS = [0]
 
 
+# The destination the fields of the last request built from a published
+# shape name. A build names where it writes either as one whole path or
+# as a directory with a name inside it, and a request built from the
+# whole published shape carries both: they must name one and the same
+# place, so all three fields are answered from here.
+_THE_LAST_DESTINATION = [pathlib.Path(_WHERE_A_BUILD_MAY_WRITE.name) / "artefact-0.py"]
+
+
 def a_destination() -> str:
     """A path in an existing directory that nothing stands at, for a
     request built from the published shape of `build`."""
     _DESTINATIONS[0] += 1
-    return str(
+    _THE_LAST_DESTINATION[0] = (
         pathlib.Path(_WHERE_A_BUILD_MAY_WRITE.name)
         / f"artefact-{_DESTINATIONS[0]}.py"
     )
+    return str(_THE_LAST_DESTINATION[0])
+
+
+def the_authorised_directory() -> str:
+    """The directory of the destination the last request named."""
+    return str(_THE_LAST_DESTINATION[0].parent)
+
+
+def the_name_inside_it() -> str:
+    """The name inside that directory the last request named."""
+    return _THE_LAST_DESTINATION[0].name
 
 
 def a_value_matching(operation: str, field: str, described: dict) -> object:
@@ -288,6 +307,12 @@ def a_value_matching(operation: str, field: str, described: dict) -> object:
         return THE_FUNCTION_THE_PROGRAM_DECLARES
     if field == "output_file":
         return a_destination()
+    if field == "output_directory":
+        return the_authorised_directory()
+    if field == "output_name":
+        return the_name_inside_it()
+    if field == "replace":
+        return True
     if "list" in described["kind"]:
         return ["3"]
     return "3"
