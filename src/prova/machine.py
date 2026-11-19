@@ -249,7 +249,7 @@ class FunctionRole:
         wanted = self._shape.written_for(types)
         if written != wanted:
             return self._of_another_shape(declared, named, written, wanted)
-        restricted = self._restricted_precondition(declared, named)
+        restricted = self._restricted_precondition(declared, named, program)
         if restricted is not None:
             return restricted
         return ResolvedRole(self._name, named, written)
@@ -286,36 +286,87 @@ class FunctionRole:
             about=checker.AboutARole(self._name, named),
         )
 
-    def _restricted_precondition(self, declared: syntax.Function, named: str):
+    def _restricted_precondition(
+        self, declared: syntax.Function, named: str, program: syntax.Program
+    ):
+        """The refusal of this role because a precondition narrows the
+        input it is reached with, or `None`.
+
+        Read over the role's own function and over every function
+        reaching it reaches, because a clause asking something of its
+        input is as binding behind a call as it is in front of one:
+        SPEC.md lines 361-362 say that calls inside all helpers still
+        need their own preconditions established, and this tool
+        establishes none of them.
+        """
         if not self._valid_for_every_input:
             return None
-        if not checker.ContractStrength.of(declared.requires).promises_something():
+        asking = _the_first_asking_something(declared, program)
+        if asking is None:
             return None
+        if asking.name == declared.name:
+            return self._asks_of_its_own_input(declared, named)
+        return self._reaches_one_that_asks(declared, named, asking)
+
+    def _asks_of_its_own_input(
+        self, declared: syntax.Function, named: str
+    ) -> checker.Diagnostic:
         return checker.Diagnostic(
             ROLE_PRECONDITION_RESTRICTED,
             f"WHAT: the {self._name!r} role of the descriptor names "
             f"{named!r}, which asks something of its input in its requires "
-            f"clause. WHY: SPEC.md lines 359-360 require the initialiser, "
-            "the projection, the invariant and the admissibility function to "
-            "have preconditions valid for every input of their declared "
-            "types, and this tool establishes that for a clause that asks "
-            "for nothing and for no other: it reads the clause and settles "
-            "nothing about it. HOW: name a function whose requires clause is "
-            "left out or written as 'true', moving the condition into the body or "
-            "into the postcondition; the step is the one role allowed to "
-            "require a state, so a condition that must hold for a transition "
-            "belongs there",
+            f"clause. WHY: {self._why_it_must_hold_everywhere()} HOW: name a "
+            "function whose requires clause is left out or written as "
+            "'true', moving the condition into the body or into the "
+            "postcondition; the step is the one role allowed to require a "
+            "state, so a condition that must hold for a transition belongs "
+            "there",
             (declared.line, declared.column),
             about=checker.AboutARole(self._name, named),
+        )
+
+    def _reaches_one_that_asks(
+        self, declared: syntax.Function, named: str, asking: syntax.Function
+    ) -> checker.Diagnostic:
+        return checker.Diagnostic(
+            ROLE_PRECONDITION_RESTRICTED,
+            f"WHAT: the {self._name!r} role of the descriptor names "
+            f"{named!r}, whose own requires clause asks for nothing, and "
+            f"reaching it reaches {asking.name!r} at line {asking.line}, "
+            "which asks something of its input in its requires clause. "
+            f"WHY: {self._why_it_must_hold_everywhere()} A clause behind a "
+            "call binds the role as much as one in front of it: running "
+            f"{named!r} over an input {asking.name!r} refuses would refuse "
+            "inside the role, which the 'evaluate' operation shows as a "
+            "precondition violation. HOW: leave the condition out of "
+            f"{asking.name!r} as well, or name a role function that reaches "
+            "no function asking anything of its input; the 'verify' "
+            "operation lists the preconditions each call owes",
+            (declared.line, declared.column),
+            about=checker.AboutARole(self._name, named),
+        )
+
+    def _why_it_must_hold_everywhere(self) -> str:
+        return (
+            "SPEC.md lines 359-360 require the initialiser, the projection, "
+            "the invariant and the admissibility function to have "
+            "preconditions valid for every input of their declared types, "
+            "and lines 361-362 require the calls inside their helpers to "
+            "have their own preconditions established; this tool "
+            "establishes that for a clause that asks for nothing and for no "
+            "other, because it reads the clause and settles nothing about "
+            "it."
         )
 
     def _published_precondition(self) -> str:
         if self._valid_for_every_input:
             return (
-                "valid for every input of its declared types: this tool "
-                "accepts a requires clause left out or written as 'true', "
-                "and refuses any other, because it reads the clause and "
-                "settles nothing about it (SPEC.md lines 359-360)"
+                "valid for every input of its declared types, and so must "
+                "every function reaching it reaches through a call, in a "
+                "body or in a contract: this tool accepts a requires clause "
+                "left out or written as 'true', and refuses any other, "
+                "because it reads the clause and settles nothing about it "
+                "(SPEC.md lines 359-360 and 361-362)"
             )
         return (
             "may require a state: SPEC.md lines 360-361 let the step ask for an "
@@ -353,6 +404,36 @@ def _roles_needing(type_role: str) -> tuple[str, ...]:
     return tuple(
         role.name for role in THE_FUNCTION_ROLES if role.needs(type_role)
     )
+
+
+def _the_first_asking_something(
+    declared: syntax.Function, program: syntax.Program
+) -> "syntax.Function | None":
+    """The first function, reading `declared` and then every function it
+    reaches through a call, whose requires clause asks something of its
+    input -- or `None` when none of them does.
+
+    Which functions reaching one reaches is asked of the checker, which
+    owns that walk for its rule about cycles, so the machine module holds
+    no second answer to it. A program whose calls form a cycle is refused
+    before any descriptor is read, and the names already reached are kept
+    anyway, so the walk ends.
+    """
+    reached: set[str] = set()
+    waiting = [declared]
+    while waiting:
+        function = waiting.pop(0)
+        if function.name in reached:
+            continue
+        reached.add(function.name)
+        if checker.ContractStrength.of(function.requires).promises_something():
+            return function
+        waiting += [
+            program.functions[name]
+            for name in checker.callees_of(function, program)
+            if name not in reached
+        ]
+    return None
 
 
 def _written_kind_of(declared: object) -> str:
@@ -477,7 +558,18 @@ class Descriptor:
     assumptions: StatedAssumptions
 
     @classmethod
-    def read(cls, submitted: object) -> "Descriptor | DescriptorDefects":
+    def read(
+        cls, submitted: object, unwritable: "object"
+    ) -> "Descriptor | DescriptorDefects":
+        """The descriptor `submitted` carries, or every field of it that
+        could not be read.
+
+        `unwritable(field, text)` is the rule about a text this tool can
+        write, asked of the caller that owns it: every text a request
+        carries is turned back into bytes somewhere, and half of a
+        character has none. It is asked here, where the document is
+        walked once, rather than by a second walk at the boundary.
+        """
         if not isinstance(submitted, dict):
             return DescriptorDefects(
                 (
@@ -496,7 +588,13 @@ class Descriptor:
             )
         defects: list[tuple[str, str]] = []
         defects += _unknown_fields_in(submitted)
-        defects += _version_defects_in(submitted)
+        unreadable = _unwritable_texts_in(submitted, unwritable)
+        defects += unreadable
+        # The version is read from its text, so a text this tool cannot
+        # write is not also reported as the wrong version: that check
+        # depends on this one and did not run.
+        if f"{FIELD}.{SCHEMA}" not in {field for field, _ in unreadable}:
+            defects += _version_defects_in(submitted)
         named, naming_defects = _named_roles_in(submitted)
         defects += naming_defects
         assumptions, assumption_defects = _assumptions_in(submitted)
@@ -533,6 +631,50 @@ class Descriptor:
                 continue
             refused.append(answer)
         return resolved, refused
+
+
+def _unwritable_texts_in(submitted: dict, unwritable) -> list[tuple[str, str]]:
+    """Every text of the document this tool cannot write, named by the
+    field it stands in.
+
+    Read before any name is looked up and before the program is read:
+    this tool writes every text a request carries back into its answer,
+    so a text it cannot write must be refused where it stands rather
+    than taken as far as the answer, where the field it came from is no
+    longer known.
+    """
+    defects: list[tuple[str, str]] = []
+    for field, written in _texts_of(submitted):
+        reason = unwritable(field, written)
+        if reason is not None:
+            defects.append((field, reason))
+    return defects
+
+
+def _texts_of(submitted: dict) -> list[tuple[str, str]]:
+    """Every text the document carries, each beside the name of the field
+    it stands in, walked from the one description of the document."""
+    found: list[tuple[str, str]] = []
+    version = submitted.get(SCHEMA)
+    if isinstance(version, str):
+        found.append((f"{FIELD}.{SCHEMA}", version))
+    for group in (TYPES, ROLES):
+        written = submitted.get(group)
+        if not isinstance(written, dict):
+            continue
+        found += [
+            (f"{FIELD}.{group}.{role}", given)
+            for role, given in written.items()
+            if isinstance(given, str)
+        ]
+    stated = submitted.get(ASSUMPTIONS)
+    if isinstance(stated, list):
+        found += [
+            (f"{FIELD}.{ASSUMPTIONS}[{place}]", sentence)
+            for place, sentence in enumerate(stated)
+            if isinstance(sentence, str)
+        ]
+    return found
 
 
 def _unknown_fields_in(submitted: dict) -> list[tuple[str, str]]:

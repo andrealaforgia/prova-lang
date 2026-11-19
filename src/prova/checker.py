@@ -1273,9 +1273,14 @@ def _calls_in(expression: object) -> list[syntax.Call]:
     return found
 
 
-def _callees_of(function: syntax.Function, program: syntax.Program) -> list[str]:
+def callees_of(function: syntax.Function, program: syntax.Program) -> list[str]:
     """The declared functions `function` depends on: the ones it calls in
     its body and in its contract clauses.
+
+    Read by the rule about cycles below and by the machine module, which
+    asks the same question of a role's function: which functions does
+    reaching this one reach. One walk answers both, so the two cannot
+    disagree about what a program depends on.
 
     Its declared examples are never read. An example names its own
     function -- `DeclaredExample` refuses a program where it does not --
@@ -1294,7 +1299,7 @@ def _cycles_in(program: syntax.Program) -> list[Cycle]:
     set, ordered by where the program declares them."""
     declared = list(program.functions)
     edges = {
-        name: _callees_of(program.functions[name], program) for name in declared
+        name: callees_of(program.functions[name], program) for name in declared
     }
     return [Cycle(members) for members in _cycles_among(declared, edges)]
 

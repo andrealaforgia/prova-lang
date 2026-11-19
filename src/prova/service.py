@@ -665,7 +665,9 @@ class Request:
         that owns its shape; this is where its refusals become the one
         refusal every unreadable field of a request gets.
         """
-        read = machine.Descriptor.read(self.submitted.get(manifest.DESCRIPTOR.name))
+        read = machine.Descriptor.read(
+            self.submitted.get(manifest.DESCRIPTOR.name), _unwritable_reason_for
+        )
         if isinstance(read, machine.DescriptorDefects):
             return MalformedRequest(read.defects)
         return read
@@ -883,6 +885,20 @@ def _run_discover() -> dict:
             **manifest.published_parts(AVAILABLE_OPERATIONS, UNAVAILABLE_OPERATIONS),
         },
     }
+
+
+def _unwritable_reason_for(field: str, written: str) -> str | None:
+    """Why `written` cannot be written as UTF-8 under the name `field`,
+    or `None` when it can.
+
+    The one sentence this tool gives for such a text, read from the one
+    unit that decides it, so a text inside a descriptor is refused in the
+    same words as a text sent as a field of the request itself.
+    """
+    read = SubmittedText.read(field, written)
+    if isinstance(read, MalformedRequest):
+        return read.defects[0][1]
+    return None
 
 
 def _unwritable_text_in(field: str, value: object) -> "MalformedRequest | None":
