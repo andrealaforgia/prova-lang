@@ -1,9 +1,8 @@
-"""F26 repair -- the four things an independent review showed a machine
-obligation must not claim: that a statement holding over an empty domain
-is a proof, that a solution nobody can write is a counterexample, that a
-step refusing an event is anything but a counterexample, and that an
-invariant is preserved when the event it depends on was never ranged
-over.
+"""What a machine obligation must not claim: that a statement holding
+over an empty domain is a proof, that a solution nobody can write is a
+counterexample, that a step refusing an event is anything but a
+counterexample, and that an invariant is preserved when the event it
+depends on was never ranged over.
 
 The laws:
 - a claim valid only because nothing satisfies what it assumes does not
@@ -13,7 +12,8 @@ The laws:
 - an event the step refuses is reported as the counterexample it is,
   replayed through the evaluator;
 - preservation is withheld wherever some admitted event breaks the
-  invariant, whatever the events the examples name.
+  invariant, whatever the events the examples name, and is disproved
+  wherever replaying the whole transition confirms the pair.
 
 Drives only the installed `prova` command over its JSON stdin/stdout
 surface. No imports from src/prova.
@@ -362,11 +362,12 @@ def test_preservation_is_withheld_for_an_event_no_example_names():
     )
 
 
-def test_preservation_withholds_its_word_rather_than_naming_a_counterexample():
+def test_preservation_names_the_counterexample_its_replay_confirms():
     """Given a machine whose step requires an invariant state and whose
     invariant is not inductive, when the Owner asks the tool to verify it
-    with its descriptor, then preservation is unsettled -- not disproved
-    -- and its reason says this tool confirms no witness for it."""
+    with its descriptor, then preservation is disproved and carries the
+    pair the reference semantics confirmed, which is not called a
+    reachable trace."""
     source, descriptor = a_machine(
         invariant="(<= (.n current) 10)",
         admissible="true",
@@ -378,25 +379,28 @@ def test_preservation_withholds_its_word_rather_than_naming_a_counterexample():
     answered = induction.ask_to_verify(source, descriptor)
 
     entry = induction.the_three_obligations(answered)[induction.PRESERVATION]
-    assert entry.get("result") == "unknown", (
+    assert entry.get("result") == "disproved", (
         f"WHAT: preservation stands as {entry.get('result')!r}: {entry}. "
-        "WHY: the replay gate of this tool confirms a witness by running the "
-        "role function and seeing the reference semantics refuse it, and a "
-        "step that answers a state outside the invariant refuses nothing; "
-        "reporting a disproof here would name a counterexample this tool did "
-        "not establish, and reporting 'proved' would certify an invariant "
-        "that is not inductive. HOW: leave it unsettled with its reason."
+        "WHY: the replay of this obligation runs the invariant on the state, "
+        "the admissibility predicate there and the step over the pair, and "
+        "the invariant answers false of the state it leads to; a tool that "
+        "withheld the word there would leave the Owner to find by hand what "
+        "it had already run, and 'proved' would certify an invariant that is "
+        "not inductive. HOW: report the disproof the replay confirms."
     )
-    assert entry.get("counterexample") is None, (
-        f"WHAT: the unsettled obligation carries a counterexample: {entry}. "
-        "WHY: no witness of it was confirmed. HOW: carry none."
+    witness = entry.get("counterexample") or {}
+    assert witness.get("invariant_after_the_step") is False, (
+        f"WHAT: the disproof does not say the invariant is false after the "
+        f"step: {entry}. "
+        "WHY: that is the only thing that makes the pair a counterexample; "
+        "a disproof resting on anything else would name a pair this tool did "
+        "not establish. HOW: run the invariant on the state the step leads "
+        "to and carry what it answered."
     )
-    assert "replay" in (entry.get("reason") or "") or "refus" in (
-        entry.get("reason") or ""
-    ), (
-        f"WHAT: the reason does not say why no witness was confirmed: "
-        f"{entry.get('reason')!r}. "
-        "WHY: the Owner must know the word was withheld because this tool "
-        "confirms no witness here, not because the invariant holds. "
-        "HOW: name the replay gate in the reason."
+    assert "not a reachable" in str(witness), (
+        f"WHAT: the witness does not say it is not a reachable trace: "
+        f"{witness}. "
+        "WHY: SPEC.md lines 307-311 keep the two evidence types apart, and "
+        "nothing here shows a run reaches the state. "
+        "HOW: say so beside the witness."
     )
