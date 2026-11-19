@@ -15,6 +15,7 @@ from prova import (
     evaluator,
     examples,
     formatter,
+    machine,
     manifest,
     obligations,
     provenance,
@@ -50,6 +51,7 @@ AVAILABLE_OPERATIONS = (
     "verify",
     "parse",
     "format",
+    "machine",
 )
 
 # The operations that read a program from the `source` field of the
@@ -62,6 +64,7 @@ SOURCE_READING_OPERATIONS = (
     "verify",
     "parse",
     "format",
+    "machine",
 )
 UNAVAILABLE_OPERATIONS = frozenset({"build"})
 
@@ -174,6 +177,11 @@ def _answer(request: "Request", run: Run) -> dict:
             return _run_parse(source, run)
         if operation == "format":
             return _run_format(source, run)
+        if operation == "machine":
+            descriptor = request.machine_asked()
+            if isinstance(descriptor, MalformedRequest):
+                return descriptor.response_for(operation)
+            return _run_machine(source, descriptor, run)
         asked = request.evaluation_asked()
         if isinstance(asked, MalformedRequest):
             return asked.response_for(operation)
@@ -647,6 +655,21 @@ class Request:
             "one JSON string, writing a line break as \\n",
         )
 
+    def machine_asked(self) -> "machine.Descriptor | MalformedRequest":
+        """The descriptor the request submits, read field by field, or
+        every field of it that could not be read.
+
+        Read here, before the program: a request this tool cannot read
+        is answered about the request, and no rule of core-0 is read over
+        the source for it. The document itself is read by the module
+        that owns its shape; this is where its refusals become the one
+        refusal every unreadable field of a request gets.
+        """
+        read = machine.Descriptor.read(self.submitted.get(manifest.DESCRIPTOR.name))
+        if isinstance(read, machine.DescriptorDefects):
+            return MalformedRequest(read.defects)
+        return read
+
     def evaluation_asked(self) -> "EvaluationAsked | MalformedRequest":
         """Which function the request asks to call and with which
         argument texts, or every field of the two that could not be read.
@@ -685,6 +708,7 @@ def _run_discover() -> dict:
                 CONTRACT_REPORT_OPERATIONS
             ),
             "tree_schema": tree.SCHEMA.published(),
+            "machine_descriptor_schema": machine.published_schema(),
             "solver": provenance.the_solver_it_requires(),
             "encoding": {
                 "version": encoding.VERSION,
@@ -1443,6 +1467,46 @@ def _run_format(source: SubmittedText, run: Run) -> dict:
                 program, read_source(source.characters).comments
             )
         },
+    }
+
+
+def _run_machine(
+    source: SubmittedText, descriptor: machine.Descriptor, run: Run
+) -> dict:
+    """What the eight roles of `descriptor` resolve to in the program
+    `source` declares.
+
+    Reads the source through the rule every operation that reads one
+    shares, so a source refused here is refused exactly as a check
+    refuses it, and an answer that refuses carries no result at all: a
+    result beside a refusal would read as a machine this tool confirmed.
+
+    Reads nothing but the two fields of the request, writes nothing and
+    keeps nothing: asking twice changes neither the answer nor anything
+    else. The answer says that the roles resolve in this revision of this
+    program and settles no claim about the machine over its runs.
+    """
+    checked = _checked_program(source, run)
+    if isinstance(checked, Refusal):
+        return checked.response_for("machine")
+    program = checked
+
+    run.stop_if_exhausted()
+    resolved = descriptor.resolved_against(program)
+    revision = SourceRevision.of(source)
+    if isinstance(resolved, machine.UnresolvedRoles):
+        return Refusal(
+            "invalid_input", resolved.refusals, revision
+        ).response_for("machine")
+
+    return {
+        "operation": "machine",
+        "status": "completed",
+        "claim": {"kind": "machine_roles_resolved", "scope": "this input"},
+        "source_digest": _source_digest(source),
+        "stands_on": _stands_on(),
+        "diagnostics": [],
+        "result": resolved.published(),
     }
 
 

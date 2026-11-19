@@ -329,6 +329,34 @@ class AboutTwoCounts:
         return {"symbol": "name", "expected": "count", "actual": "count"}
 
 
+# The two refusals a machine descriptor can carry. Named here, beside
+# the table that declares what each of them carries, and read from
+# prova.machine, which builds them: a category and its published shape
+# are declared in one place.
+UNRESOLVED_ROLE = "unresolved_role"
+ROLE_PRECONDITION_RESTRICTED = "role_precondition_restricted"
+
+
+@dataclass(frozen=True)
+class AboutARole:
+    """What a refusal about one role of a machine descriptor is about:
+    the role of the descriptor, and the name that descriptor gave it.
+
+    Both, because an Owner repairs the document: the role says which
+    part of it to look at, and the name says what is written there now.
+    """
+
+    role: str
+    named: str
+
+    def fields(self) -> dict:
+        return {"role": self.role, "named": self.named}
+
+    @classmethod
+    def kinds(cls) -> dict:
+        return {"role": "machine_role", "named": "name"}
+
+
 @dataclass(frozen=True)
 class AboutAConstruct:
     """What a refusal at the boundary of the profile is about: the
@@ -477,6 +505,12 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
     ),
     "postcondition_violation": DiagnosticKind(
         AboutASymbol, granularity=("declaration",)
+    ),
+    UNRESOLVED_ROLE: DiagnosticKind(
+        AboutARole, placed=WHEN_KNOWN, granularity=("declaration",)
+    ),
+    ROLE_PRECONDITION_RESTRICTED: DiagnosticKind(
+        AboutARole, granularity=("declaration",)
     ),
     "operation_unavailable": DiagnosticKind(
         AboutNothingNamed, placed=NEVER, points_into=(), granularity=(), revision=NEVER

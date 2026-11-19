@@ -104,6 +104,14 @@ FUNCTION = Field.must_be_sent(
     "text",
     "the name the submitted program declares for the function to call",
 )
+DESCRIPTOR = Field.must_be_sent(
+    "descriptor",
+    "object",
+    "the machine descriptor this request is about, as one JSON object: a "
+    "separate versioned document naming the three types and the five role "
+    "functions of a machine and the assumptions its runtime makes. Its "
+    "shape is published under 'machine_descriptor_schema'",
+)
 ARGUMENTS = Field.may_be_sent(
     "arguments",
     "list of texts",
@@ -504,6 +512,42 @@ THE_OPERATIONS = Catalogue(
                         "the value the function answered, written the way a "
                         "program writes it; a completed answer carrying a "
                         "refusal of a contract instead has none",
+                    ),
+                ),
+            ),
+        ),
+        Operation(
+            "machine",
+            BeyondTheProfile(
+                "SPEC.md lines 467-468 name seven operation categories and "
+                "this operation is in none of them: it reads a machine "
+                "descriptor, a separate versioned document, against the "
+                "program the same request submits. It is an extension of "
+                "this tool, and answering it is no conformance to the "
+                "profile."
+            ),
+            answering(
+                (SOURCE, DESCRIPTOR),
+                AN_ANSWER_OF_THE_PROFILE
+                + (
+                    Field.when_completed(
+                        "result",
+                        "object",
+                        "what each of the eight roles of the descriptor "
+                        "resolved to in the submitted program -- under "
+                        "'roles', one entry per role with the name the "
+                        "descriptor gave it and the shape that name has -- "
+                        "beside the descriptor version it was read in, under "
+                        "'schema', and the assumptions the descriptor states, "
+                        "under 'assumptions_stated'. Those assumptions are "
+                        "read and checked by nothing. The answer says that "
+                        "the roles resolve to declared types and checked "
+                        "functions of the right shapes in this revision of "
+                        "this program, and settles no claim about the machine "
+                        "over its runs; 'what_this_says' in the result says "
+                        "the same. The shape of a descriptor, and of every "
+                        "role in it, is published under "
+                        "'machine_descriptor_schema'",
                     ),
                 ),
             ),

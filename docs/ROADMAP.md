@@ -1186,6 +1186,12 @@ there.
   on the port itself. (14-15 November 2026.)
 - **Unify the builtin type names.** `syntax.BUILTIN_TYPE_NAMES` duplicates
   `checker.BUILTIN_TYPES`. Raised during F6.
+- **Put a role's precondition to the solver.** F25 accepts a machine role that must
+  hold for every input of its declared types only where its `requires` clause is
+  left out or written as `true`, and refuses any other clause with that reason: it
+  reads the clause and does not prove it. A clause valid for every input but written
+  otherwise is therefore refused. The obligation machinery behind `verify` could
+  settle it instead. Raised during F25.
 - **Locate `recursive_type` and `unbound_type` diagnostics.** Done by F10: they now
   point at the declaration they are about (a stated limit: the parsed tree keeps no
   position for a type inside a signature or a record field). Only refusals about the
