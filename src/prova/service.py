@@ -1335,8 +1335,11 @@ def _run_discover() -> dict:
                     "What an answer stands on, and when it stops standing on "
                     "it. A completed answer carries 'source_digest', the "
                     "SHA-256 of the exact characters the request sent, and "
-                    "'stands_on.dependency_digest', the digest of this tool "
-                    "and of the language it reads. The answer is about that "
+                    "'stands_on.dependency_digest', the digest of the "
+                    "source of this tool and of the language it reads, which "
+                    "moves when any module of this tool changes, so a tool "
+                    "whose code differs never publishes the digest of the one "
+                    "you kept an answer from. The answer is about that "
                     "revision of that source, read by that tool, and about "
                     "nothing else: before using an answer you kept, compute "
                     "the SHA-256 of the source you hold now and read this "
@@ -1623,8 +1626,8 @@ def _source_digest(source: SubmittedText) -> str:
 
 
 def _stands_on(standing: provenance.SolverStanding | None = None) -> dict:
-    """What a completed answer stands on: the digest of this tool and of
-    the language it reads, and the versions behind both.
+    """What a completed answer stands on: the digest of the source of
+    this tool and of the language it reads, and the versions behind both.
 
     The one place an answer learns it, and the same place the manifest
     publishes it from, so the digest a client keeps beside an answer and

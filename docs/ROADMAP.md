@@ -1167,6 +1167,11 @@ there.
 
 ### Follow-ups raised during delivery
 
+- **Read every value of a `step` request before any of them is typed.** The
+  `evaluate` path now reads the constructors of all arguments before typing any,
+  which is what a built artefact does; the state and the events of a `step`
+  request are still read and typed one at a time. Raised while repairing the
+  review's finding 9.
 - **A build killed between writing its temporary file and naming it leaves that
   temporary file behind** (`.prova-build-*.py` in the destination directory),
   never a half-written or replaced artefact. The premise cannot be timed from

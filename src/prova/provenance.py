@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import pathlib
 import platform
 from dataclasses import dataclass
 
@@ -221,8 +222,8 @@ class Versions:
 
 @dataclass(frozen=True)
 class Provenance:
-    """What a completed answer stands on: the digest of this tool and of
-    the language it reads, and the versions behind both.
+    """What a completed answer stands on: the digest of the source of
+    this tool and of the language it reads, and the versions behind both.
 
     A client keeps an answer and compares the two digests later: the
     revision of its own source against the one the answer names, and
@@ -246,11 +247,12 @@ class Provenance:
         """What one answer stands on.
 
         The digest is taken over the tool itself -- the profile, the
-        language and the components this tool is built of -- and not over
-        what this one answer used, so every answer of one installation
-        carries the same digest and a client can compare a kept answer
-        with the manifest it reads later. Which of those components this
-        answer really asked is said beside it, under `versions`.
+        language and the components this tool is built of, the source of
+        its own modules among them -- and not over what this one answer
+        used, so every answer of one installation carries the same digest
+        and a client can compare a kept answer with the manifest it reads
+        later. Which of those components this answer really asked is said
+        beside it, under `versions`.
         """
         described = json.dumps(
             {
@@ -270,10 +272,51 @@ class Provenance:
         }
 
 
+def _this_implementation() -> str:
+    """The digest of the source of this tool itself: every module of the
+    package, hashed in the order of their names, each under its own
+    name.
+
+    Read once, when this module is first imported, and not per answer: a
+    run answers one request and the files it was read from do not change
+    under it, so reading them again for every answer would buy nothing
+    and cost the reading.
+
+    The version this tool declares stands beside the components, and a
+    version is a promise a person writes: two trees whose operations
+    differed answered the same version and so published the same digest,
+    and a client comparing a kept answer with the tool it holds now was
+    told nothing had changed. What the tool is made of says it instead.
+
+    A module this tool cannot read is said so in as many words. The
+    digest then no longer identifies the code, and an answer that
+    pretended it did would be worse than one that says what happened.
+    """
+    here = pathlib.Path(__file__).resolve().parent
+    hashed = hashlib.sha256()
+    try:
+        for module in sorted(here.glob("*.py"), key=lambda one: one.name):
+            hashed.update(module.name.encode("utf-8"))
+            hashed.update(b"\0")
+            hashed.update(module.read_bytes())
+            hashed.update(b"\0")
+    except OSError as failure:
+        return (
+            "not readable: the source of this tool could not be read "
+            f"({failure.strerror or failure}), so this digest does not "
+            "identify the code behind this answer"
+        )
+    return hashed.hexdigest()
+
+
+# The identity of the code this answer was given by, read once at import.
+THIS_IMPLEMENTATION = _this_implementation()
+
+
 def the_components() -> dict:
     """What this installation of the tool is built of, whichever answer
-    is being built: the tool, the translation, the solver it is pinned to
-    and the runtime.
+    is being built: the tool and the source it is written in, the
+    translation, the solver it is pinned to and the runtime.
 
     The solver is read from the installed package's metadata rather than
     by loading the solver itself, so naming it costs no answer the time
@@ -281,6 +324,7 @@ def the_components() -> dict:
     """
     return {
         "compiler": f"prova {_this_tools_version()}",
+        "implementation": THIS_IMPLEMENTATION,
         "encoding": f"core-0-to-smt {encoding.VERSION}",
         "solver": _the_solver_it_is_pinned_to(),
         "runtime": (

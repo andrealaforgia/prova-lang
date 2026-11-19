@@ -242,7 +242,8 @@ STANDS_ON = Field.when_completed(
     "stands_on",
     "object",
     "what this answer stands on: under 'dependency_digest' the digest of "
-    "this tool and of the language it reads, and under 'versions' the "
+    "the source of this tool and of the language it reads, which moves "
+    "when any module of this tool changes, and under 'versions' the "
     "compiler, the encoding, the solver and the runtime behind it, each "
     "either a version or a sentence beginning 'not applicable:' with the "
     "reason there is none. An answer stands on that digest and on the "
