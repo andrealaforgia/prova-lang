@@ -1505,7 +1505,7 @@ def _run_machine(
     checked = _checked_program(source, run)
     if isinstance(checked, Refusal):
         return checked.response_for("machine")
-    program = checked
+    program = checked.program
 
     run.stop_if_exhausted()
     resolved = descriptor.resolved_against(program)
