@@ -89,6 +89,22 @@ class ValidatedWitness:
     arguments: tuple[str, ...]
     refused_with: str
 
+    def because(self) -> str:
+        """The reason the obligation carries beside the word
+        'disproved'.
+
+        Said by the witness and not by the finding, because what makes a
+        disproof believable differs with the evidence: an input the
+        program refuses is one thing, and a transition whose invariant
+        fails afterwards is another. One sentence per kind of evidence,
+        beside the kind that earned it.
+        """
+        return (
+            "the solver found an input of the declared types that breaks "
+            "this obligation, and running the program over that input "
+            "refuses it for the same reason"
+        )
+
     def published(self) -> dict:
         """The input, and the budget the run that confirmed it stood
         inside.
@@ -129,7 +145,7 @@ class Finding:
     reason: str | None = None
     discharged_by: str | None = None
     rule: str | None = None
-    witness: ValidatedWitness | None = None
+    witness: object = None
 
     @classmethod
     def proved_by_the_solver(cls) -> "Finding":
@@ -145,17 +161,17 @@ class Finding:
         )
 
     @classmethod
-    def disproved_with(cls, witness: ValidatedWitness) -> "Finding":
-        return cls(
-            DISPROVED,
-            "completed",
-            reason=(
-                "the solver found an input of the declared types that breaks "
-                "this obligation, and running the program over that input "
-                "refuses it for the same reason"
-            ),
-            witness=witness,
-        )
+    def disproved_with(cls, witness) -> "Finding":
+        """The word 'disproved' with the witness that earned it and the
+        reason that witness gives.
+
+        Any confirmed witness may stand here: the two owners that build
+        one have each run the reference semantics, and each says in its
+        own words what it ran. The finding keeps no sentence of its own,
+        so a kind of evidence cannot be reported under another kind's
+        reason.
+        """
+        return cls(DISPROVED, "completed", reason=witness.because(), witness=witness)
 
     @classmethod
     def unknown_because(cls, reason: str, execution_status: str) -> "Finding":
@@ -307,12 +323,16 @@ class Discharge:
             "completed",
         )
 
-    def _validated(self, obligation, claim, refuted) -> ValidatedWitness | None:
+    def _validated(self, obligation, claim, refuted):
         function = self._program.functions[obligation.function]
         supplied = self._arguments(obligation, claim, refuted, function)
         if supplied is None:
             return None
         texts, args = supplied
+        if obligation.confirmed_by == obligations.BY_THE_INVARIANT_AFTER_THE_STEP:
+            return obligation.confirmed_by_replaying(
+                self._program, claim, texts, args
+            )
         try:
             for argument, parameter in zip(args, function.signature.params):
                 evaluator.check_value_type(

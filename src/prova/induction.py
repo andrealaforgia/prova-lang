@@ -24,7 +24,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prova import encoding, machine, obligations, syntax
+from prova import encoding, machine, obligations, provenance, replay, syntax
+from prova.values import render
 
 # Where the obligations of a machine stand. A site is a structural path,
 # never a line number, so these three identities are the same for any
@@ -33,6 +34,11 @@ MACHINE = "machine"
 INITIALISATION = "initialisation"
 STEP_ENABLEDNESS = "step-enabledness"
 PRESERVATION = "preservation"
+
+# Where the two things an answer says about a machine beside its roles
+# stand. Named here because this module composes that answer.
+CONTRACTS_THE_PROOFS_REST_ON = "contracts_the_proofs_rest_on"
+REACHABLE_COUNTEREXAMPLE = "reachable_counterexample"
 
 
 def _over_every_typed_event(event_type: str) -> str:
@@ -50,22 +56,42 @@ def _over_every_typed_event(event_type: str) -> str:
     )
 
 
-# What the replay gate of this tool can and cannot confirm for an
-# obligation of a machine, said beside the two it cannot. The gate
-# confirms a solution the solver found by running the role function over
-# it and seeing the reference semantics refuse it; a state that leaves
-# the invariant after the step is no refusal of the step, so a solution
-# for the denial of these two leaves them unsettled with their reason
-# rather than reported as broken, and nothing weaker is put in their
-# place.
-NO_REFUSAL_CONFIRMS_A_WITNESS = (
-    "a solution the solver finds for the denial of this obligation is "
-    "reported as unsettled and not as a counterexample: this tool confirms "
-    "a witness by running the role function over it and seeing the "
-    "reference semantics refuse it, and neither the initialiser answering "
-    "a state outside the invariant nor a step leaving it is such a "
-    "refusal. The obligation is then left unsettled with that reason, and "
-    "no weaker condition is put in the invariant's place"
+# What a solution the solver finds can and cannot become, said beside
+# the obligation it was found for. Two obligations of a machine answer
+# this differently, so each says its own sentence rather than sharing one
+# that has to hedge.
+#
+# The initialisation obligation is about no variable at all: the
+# initialiser takes nothing, so there is no solution to read and nothing
+# to replay, whatever this obligation declared.
+NOTHING_IS_THERE_TO_REPLAY = (
+    "no solution the solver finds for the denial of this obligation can be "
+    "replayed: the claim is about no variable at all, because the "
+    "initialiser takes nothing, so there is no input to run the program "
+    "over. An obligation the solver refutes here is reported as unsettled "
+    "with that reason and not as a counterexample, and no weaker condition "
+    "is put in the invariant's place"
+)
+
+# The preservation obligation is about an admitted transition, and the
+# whole of that transition can be run. A pair the solver finds refuses
+# nothing by itself -- the step answers a state, and the state is simply
+# outside the invariant -- so the obligation runs the three roles its
+# claim composes and reads what each answered.
+THE_REPLAY_THAT_CONFIRMS_A_STEP_WITNESS = (
+    "a pair the solver finds for the denial of this obligation is confirmed "
+    "by replaying the whole transition: the invariant is run on the state, "
+    "the admissibility predicate is run on the state and the event, the "
+    "body of the step is run over the pair and the invariant is run again "
+    "on the state the projection reads from what it answered. Only the "
+    "first two answering true and the last answering false confirm the "
+    "pair, and then it is reported as the counterexample it is, named an "
+    "induction-step witness and never a reachable trace. Any other outcome "
+    "-- a run the budget stopped, a value of the wrong type, a call the "
+    "program refuses, or an invariant that holds after all -- confirms "
+    "nothing, and the obligation is left unsettled with that reason rather "
+    "than reported as broken; no weaker condition is put in the "
+    "invariant\'s place (SPEC.md lines 307-309, 403-406)"
 )
 
 
@@ -263,7 +289,7 @@ class Initialisation(obligations.Obligation):
     def detail(self) -> dict:
         return {
             "machine_roles": self.roles.published(machine.INIT, machine.INVARIANT),
-            "witness_replay": NO_REFUSAL_CONFIRMS_A_WITNESS,
+            "witness_replay": NOTHING_IS_THERE_TO_REPLAY,
         }
 
     def _claim(self, program: syntax.Program):
@@ -316,18 +342,27 @@ class Preservation(obligations.Obligation):
     """The invariant holds again of the state the step leads to
     (SPEC.md line 400).
 
-    An invariant that is not inductive on its own is refuted here. The
-    replay gate confirms no witness of it -- a step that answers a state
-    outside the invariant refuses nothing -- so a solution the solver
-    finds leaves this obligation unsettled with that reason rather than
-    reported as broken, and nothing weaker than the invariant the
-    descriptor names is ever shown in its place (SPEC.md lines 403-406).
+    An invariant that is not inductive on its own is refuted here, and
+    this is the obligation whose witness nothing refuses: a step that
+    answers a state outside the invariant breaks no contract of its own.
+    So the pair is confirmed by replaying the whole transition instead --
+    the invariant of the state, the event admissible there, the step over
+    the pair and the invariant of the state it leads to -- and a pair the
+    reference semantics confirms that way is reported as the
+    counterexample it is. A pair it does not confirm leaves the
+    obligation unsettled with that reason, and nothing weaker than the
+    invariant the descriptor names is ever shown in its place (SPEC.md
+    lines 307-309, 403-406).
+
+    Its witness is an induction-step witness and says so: one step out of
+    the invariant is what it shows, and nothing here says a run of the
+    machine reaches the state it names.
     """
 
     roles: TheRolesOfAMachine
 
     kind = "machine_preservation"
-    confirmed_by = obligations.BY_NOTHING
+    confirmed_by = obligations.BY_THE_INVARIANT_AFTER_THE_STEP
 
     def to_show(self) -> str:
         return (
@@ -347,7 +382,7 @@ class Preservation(obligations.Obligation):
                 machine.ADMISSIBLE,
             ),
             "shown_over": _over_every_typed_event(self.roles.event_type),
-            "witness_replay": NO_REFUSAL_CONFIRMS_A_WITNESS,
+            "witness_replay": THE_REPLAY_THAT_CONFIRMS_A_STEP_WITNESS,
         }
 
     def _claim(self, program: syntax.Program):
@@ -357,6 +392,27 @@ class Preservation(obligations.Obligation):
 
     def nothing_satisfies_it_in(self, program: syntax.Program):
         return _nothing_admits_a_transition_in(self.roles, program)
+
+    def confirmed_by_replaying(self, program: syntax.Program, claim, texts, args):
+        """The witness the machine's own functions confirm for the
+        solution the solver found, or `None` when they confirm none.
+
+        The claim's variables are the parameters the step declares, so
+        which of them is the state and which the event is read from the
+        step itself rather than from the order a solution happened to
+        arrive in.
+        """
+        step = program.functions.get(self.roles.step)
+        if step is None or len(step.signature.params) != 2:
+            return None
+        named = {name: value for (name, _), value in zip(claim.variables, args)}
+        written = {name: text for (name, _), text in zip(claim.variables, texts)}
+        state, event = (parameter.name for parameter in step.signature.params)
+        if state not in named or event not in named:
+            return None
+        return replay.TheTransition(self.roles, program).confirmed_witness(
+            (written[state], written[event]), (named[state], named[event])
+        )
 
 
 def the_obligations_of(
@@ -375,6 +431,137 @@ def the_obligations_of(
         StepEnabledness(roles.step, _site(STEP_ENABLEDNESS), roles),
         Preservation(roles.step, _site(PRESERVATION), roles),
     )
+
+
+# What a reader of a machine answer is told about the contracts its
+# proofs rest on, and what SPEC.md lines 313-318 refuse to call an
+# implementation repair. Published beside the digest and in the manifest,
+# from this one place.
+THE_REQUIREMENT_INTEGRITY_RULE = (
+    "Every proof above is a proof over the contracts these functions state "
+    "now: their signatures, their preconditions, their guarantees and their "
+    "declared examples. A proof over a changed contract certifies the "
+    "changed contract and nothing else. SPEC.md lines 313-316: weakening a "
+    "guarantee, strengthening a precondition or deleting an example cannot "
+    "count as an implementation repair under the unchanged claim version, so "
+    "a run whose digest below differs from an earlier run's has changed what "
+    "is required of this machine and must be read as a requirement change "
+    "and not as a repair. The digest covers no body: two runs over the same "
+    "contracts carry the same digest however their bodies differ, which is "
+    "what makes a moved digest mean something. This tool compares nothing "
+    "for you and keeps no earlier run: it states what this one rests on."
+)
+
+
+@dataclass(frozen=True)
+class TheContractsTheProofsRestOn:
+    """The requirement surface the obligations of one machine were
+    settled over, as one digest.
+
+    The signature, the preconditions, the guarantees and the declared
+    examples of the five functions the descriptor's roles name -- and no
+    body, so that the digest moves when and only when what is required
+    of the machine moves. An Owner comparing two runs then reads one
+    thing: the same digest means the same requirements, and a different
+    digest means a requirement change, whatever the answer says about the
+    bodies.
+
+    The hashing itself belongs to `provenance.Digest`, which this asks,
+    so a client recomputing it reads the one algorithm this tool
+    publishes.
+    """
+
+    roles: TheRolesOfAMachine
+    program: syntax.Program
+
+    def published(self) -> dict:
+        return {
+            "digest": provenance.Digest.of(self._written()).rendered(),
+            "covers": self.roles.published(
+                machine.INIT,
+                machine.STEP,
+                machine.STATE_OF,
+                machine.ADMISSIBLE,
+                machine.INVARIANT,
+            ),
+            "what_is_covered": (
+                "the signature, the preconditions, the guarantees and the "
+                "declared examples of each function named above, in the "
+                "order the roles are named, and no body"
+            ),
+            "what_this_says": THE_REQUIREMENT_INTEGRITY_RULE,
+        }
+
+    def _written(self) -> str:
+        """The requirement surface as one text, written the way the
+        program writes it.
+
+        Built from the parsed program rather than from the characters
+        submitted, so that reformatting a contract, renaming nothing and
+        moving a clause's whitespace leave the digest where it is, while
+        deleting a clause or an example moves it.
+        """
+        return "\n".join(
+            self._contract_of(role, named)
+            for role, named in sorted(self._named().items())
+        )
+
+    def _named(self) -> dict:
+        return self.roles.published(
+            machine.INIT,
+            machine.STEP,
+            machine.STATE_OF,
+            machine.ADMISSIBLE,
+            machine.INVARIANT,
+        )
+
+    def _contract_of(self, role: str, named: str) -> str:
+        function = self.program.functions.get(named)
+        if function is None:
+            return f"{role}={named}:absent"
+        parameters = " ".join(
+            f"({parameter.name} {parameter.type_name})"
+            for parameter in function.signature.params
+        )
+        parts = [
+            f"{role}={named}",
+            f"sig=({parameters}) -> {function.signature.return_type}",
+            "requires="
+            + ";".join(obligations.text_of(clause) for clause in function.requires),
+            "ensures="
+            + ";".join(obligations.text_of(clause) for clause in function.ensures),
+            "examples="
+            + ";".join(
+                "(" + " ".join(render(argument) for argument in declared.args) + ")=>"
+                + render(declared.expected)
+                for declared in function.examples
+            ),
+        ]
+        return "|".join(parts)
+
+
+def the_machine_answer(resolved: machine.ResolvedMachine, program: syntax.Program) -> dict:
+    """What an answer says about the machine whose obligations it
+    settled.
+
+    The roles and the assumptions the descriptor states, which the
+    witness of the descriptor owns; the contracts the proofs rest on,
+    which this module owns because the proofs are the obligations it
+    builds; and the trace the machine's own declared transitions reach
+    from its initial state, where there is one. The last is absent rather
+    than present and empty: an answer that carried a reachable
+    counterexample saying none was found would read as a claim about
+    every run, and this tool searched nothing.
+    """
+    roles = TheRolesOfAMachine.of(resolved)
+    said = dict(resolved.published_beside_its_obligations())
+    said[CONTRACTS_THE_PROOFS_REST_ON] = TheContractsTheProofsRestOn(
+        roles, program
+    ).published()
+    trace = replay.ATraceFromTheInitialState(roles, program).built()
+    if trace is not None:
+        said[REACHABLE_COUNTEREXAMPLE] = trace.published()
+    return said
 
 
 def _nothing_admits_a_transition_in(

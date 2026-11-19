@@ -26,6 +26,7 @@ from prova import (
     syntax,
     tree,
     verdict,
+    witnesses,
 )
 from prova.budgets import (
     LOWERED_WITH,
@@ -946,6 +947,14 @@ def _run_discover() -> dict:
             ),
             "tree_schema": tree.SCHEMA.published(),
             "machine_descriptor_schema": machine.published_schema(),
+            "witness_kinds": witnesses.published_kinds(),
+            "requirement_integrity": {
+                "statement": induction.THE_REQUIREMENT_INTEGRITY_RULE,
+                "carried_in": (
+                    "the 'contracts_the_proofs_rest_on' of the machine block "
+                    "of a verify answer that sent a descriptor"
+                ),
+            },
             "solver": provenance.the_solver_it_requires(),
             "encoding": {
                 "version": encoding.VERSION,
@@ -972,6 +981,7 @@ def _run_discover() -> dict:
                 for category in DIAGNOSTIC_CATEGORIES
             },
             "documentation": {
+                "witness_kinds": witnesses.WHAT_A_WITNESS_WITHOUT_A_KIND_IS,
                 "evaluate": (
                     "A completed evaluate response means the function's postconditions "
                     "were checked and held for the supplied input; it is not a proof "
@@ -1733,7 +1743,9 @@ def _what_was_shown(
     ran = examples.run_declared(checked.program, run)
     reported = {"inventory": settled.inventory_of(owed)}
     if of_a_machine is not None:
-        reported["machine"] = of_a_machine.published_beside_its_obligations()
+        reported["machine"] = induction.the_machine_answer(
+            of_a_machine, checked.program
+        )
     return WhatWasShown(
         reported,
         settled.standing,

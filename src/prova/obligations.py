@@ -32,14 +32,21 @@ from prova import encoding, syntax
 # supported an attempt and every entry carries both constants.
 NOT_ATTEMPTED = "not_attempted"
 
-# Which refusal of the reference semantics confirms a candidate
-# counterexample to an obligation. Each kind names one of these, and the
-# unit that replays a candidate reads the same four words, so neither of
-# them spells a word the other does not know.
+# What confirms a candidate counterexample to an obligation. Each kind
+# names one of these, and the unit that replays a candidate reads the
+# same words, so neither of them spells a word the other does not know.
+# The first three are refusals of the reference semantics; the fourth
+# means no input can refute the kind at all.
 BY_A_PRECONDITION = "precondition"
 BY_A_POSTCONDITION = "postcondition"
 BY_THE_EXAMPLE_ITSELF = "example"
 BY_NOTHING = "nothing"
+
+# The one that is not a refusal: the conclusion of the obligation is a
+# condition about the value another function answers, so there is nothing
+# for a call to refuse. The obligation replays the composition itself and
+# says whether the reference semantics refuted it.
+BY_THE_INVARIANT_AFTER_THE_STEP = "invariant_after_step"
 
 # The two rules of core-0 that settle an obligation with no solver, each
 # named once here and written out once in an answer that used it. An
@@ -213,6 +220,18 @@ class Obligation:
     # of the profile settles are never disproved, so nothing is ever
     # replayed for them.
     confirmed_by = BY_NOTHING
+
+    def confirmed_by_replaying(self, program, claim, texts: tuple, args: tuple):
+        """The witness a replay of this obligation's own composition
+        confirms for `args`, or `None` when it confirms none.
+
+        Answered only by the kinds whose conclusion no single call can
+        refuse: such a kind runs the functions its claim composes and
+        reads what they answered. Every other kind answers nothing here
+        and is confirmed by a refusal instead, so there is one place per
+        kind where a candidate becomes a counterexample.
+        """
+        return None
 
     def to_show(self) -> str:
         raise NotImplementedError("each kind of obligation says what it owes")
