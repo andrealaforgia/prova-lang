@@ -26,8 +26,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "acceptance
 
 from _f22_fixtures import (  # noqa: E402
     ANSWERED,
-    ASSURANCE_FAILURE,
-    REFUSED_THE_INPUT,
+    MALFORMED,
+    PRECONDITION_UNMET,
     answered,
     artefact_of,
     build,
@@ -204,14 +204,17 @@ def test_the_artefact_answers_as_the_evaluator_does(
             "HOW: translate the match the way the evaluator runs it."
         )
     else:
-        assert ran.returncode == ASSURANCE_FAILURE, (
+        assert ran.returncode == PRECONDITION_UNMET, (
             f"WHAT: the compiler refuses step of {written} and the artefact "
             f"exited {ran.returncode}: stdout={ran.stdout[-200:]!r} "
             f"stderr={ran.stderr[-300:]!r}. "
             "WHY: a contract the compiler refuses must be refused by what it "
             "built; answering it would be the artefact promising more than "
-            "the program. "
-            "HOW: check the precondition in the artefact and refuse by name."
+            "the program. An hour outside the dial is a well-formed value "
+            "the entry's precondition refuses, so it carries the status of "
+            "that kind and not the one that says a contract of a verified "
+            "program did not hold. "
+            "HOW: check the precondition at the boundary and refuse by name."
         )
         assert "Traceback" not in ran.stderr, ran.stderr[-400:]
 
@@ -387,7 +390,7 @@ def test_the_artefact_reads_an_argument_as_the_compiler_reads_one(
             f"HOW: read the artefact's reader: {ran.stderr[-300:]!r}"
         )
         return
-    assert ran.returncode == REFUSED_THE_INPUT, (
+    assert ran.returncode == MALFORMED, (
         f"WHAT: the compiler refuses {written!r} "
         f"({by_the_compiler.get('status')!r}) and the artefact exited "
         f"{ran.returncode} answering {ran.stdout.strip()!r}. "

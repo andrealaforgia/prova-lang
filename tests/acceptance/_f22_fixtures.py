@@ -38,10 +38,6 @@ ILL_TYPED = 5
 PRECONDITION_UNMET = 6
 RESOURCE_EXHAUSTED = 7
 
-# The name the tests of F22 read 2 by, kept while they are moved to the
-# kind each of their cases is about.
-REFUSED_THE_INPUT = MALFORMED
-
 
 def hour_clock() -> str:
     """The hour clock this repository ships: every obligation of it is

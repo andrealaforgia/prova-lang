@@ -18,8 +18,8 @@ import pathlib
 import tempfile
 
 from _f22_fixtures import (
+    MALFORMED,
     PRECONDITION_UNMET,
-    REFUSED_THE_INPUT,
     answered,
     artefact_of,
     build,
@@ -221,12 +221,12 @@ def test_c2_the_artefact_refuses_what_it_cannot_answer_without_a_traceback():
         build(hour_clock(), "step", target)
 
         cases = [
-            ("too few arguments", [], REFUSED_THE_INPUT, "2"),
-            ("text that is not a value", ["(Clock", "(Tick)"], REFUSED_THE_INPUT, ""),
+            ("too few arguments", [], MALFORMED, "2"),
+            ("text that is not a value", ["(Clock", "(Tick)"], MALFORMED, ""),
             (
                 "a constructor the program does not declare",
                 ["(Pocket 5)", "(Tick)"],
-                REFUSED_THE_INPUT,
+                MALFORMED,
                 "Pocket",
             ),
             (
