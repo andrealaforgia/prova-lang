@@ -84,7 +84,7 @@ def test_a_refusal_is_delivered_even_when_it_is_larger_than_the_budget():
 
 def test_an_answer_that_fits_is_given_whole():
     """Given nothing lowered, when a caller asks for the manifest, then
-    it reads the whole manifest, with its 8 operations and its profile.
+    it reads the whole manifest, with its 9 operations and its profile.
     """
     manifest = discover()
 
@@ -93,9 +93,9 @@ def test_an_answer_that_fits_is_given_whole():
         f"lowered: {str(manifest)[:400]}. It is far inside the declared 1 MiB "
         "answer budget, so a refusal here means the budget is counted wrongly."
     )
-    assert len(manifest["result"]["operations"]) == 8, (
+    assert len(manifest["result"]["operations"]) == 9, (
         f"the manifest lists {len(manifest['result']['operations'])} "
-        "operations, expected the 8 this tool names: "
+        "operations, expected the 9 this tool names: "
         f"{manifest['result']['operations']}. The answer budget work must "
         "leave the manifest exactly as it was."
     )
