@@ -111,6 +111,38 @@ class TheRolesOfAMachine:
         return {role: named[role] for role in roles}
 
 
+class TheStateAMachineStartsIn:
+    """The state the initialiser answers: the one state the
+    initialisation obligation is stated over.
+
+    It is a state and not a transition, so it stands beside the pair
+    below rather than inside it: the initialiser takes nothing, so the
+    claim it builds is about no variable at all and assumes nothing. Both
+    of these own how a claim about one machine is built, and the three
+    obligations only say what has to be shown.
+    """
+
+    def __init__(self, roles: TheRolesOfAMachine, program: syntax.Program) -> None:
+        self._roles = roles
+        self._program = program
+        self._translation = encoding.Translation(program)
+
+    def the_invariant_holds_of_it(self) -> encoding.Claim:
+        """The claim that the state the initialiser answers satisfies the
+        invariant (SPEC.md line 398)."""
+        return encoding.Claim(
+            encoding.Shapes.of(self._program),
+            (),
+            (),
+            self._translation.term_of(
+                _applied(
+                    self._roles.invariant, (_applied(self._roles.init, ()),)
+                ),
+                {},
+            ),
+        )
+
+
 class AnAdmittedTransition:
     """A state the invariant admits together with an event the machine
     admits there: the one pair both obligations about events are stated
@@ -214,18 +246,9 @@ class Initialisation(obligations.Obligation):
         }
 
     def _claim(self, program: syntax.Program):
-        translation = encoding.Translation(program)
-        return encoding.Claim(
-            encoding.Shapes.of(program),
-            (),
-            (),
-            translation.term_of(
-                _applied(
-                    self.roles.invariant, (_applied(self.roles.init, ()),)
-                ),
-                {},
-            ),
-        )
+        return TheStateAMachineStartsIn(
+            self.roles, program
+        ).the_invariant_holds_of_it()
 
 
 @dataclass(frozen=True)
