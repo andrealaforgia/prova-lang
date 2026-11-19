@@ -266,18 +266,30 @@ class Discharge:
         if asked is None:
             return Finding.proved_by_the_solver()
         if isinstance(asked, encoding.OutsideTheFragment):
-            return Finding.unknown_because(
-                f"{COULD_NOT_TELL_WHETHER_IT_RANGES_OVER_ANYTHING} {asked.reason}",
-                "unsupported",
-            )
+            return self._could_not_tell(asked.reason, "unsupported")
         answer = self._solver.asked(asked, self._run.milliseconds_left())
         if isinstance(answer, solving.Refuted):
             return Finding.proved_by_the_solver()
         if isinstance(answer, solving.Unrefutable):
             return Finding.unknown_because(NOTHING_TO_RANGE_OVER, COMPLETED)
+        return self._could_not_tell(
+            answer.reason, getattr(answer, "execution_status", COMPLETED)
+        )
+
+    @staticmethod
+    def _could_not_tell(reason: str, execution_status: str) -> Finding:
+        """The obligation left unsettled because whether it ranges over
+        anything was not settled, whatever stopped that question.
+
+        One place composes that reason, so the two ways the question can
+        go unanswered -- a construct the translation does not cover and a
+        solver that could not tell -- say the same thing about the word
+        being withheld and differ only in what they report of the
+        attempt.
+        """
         return Finding.unknown_because(
-            f"{COULD_NOT_TELL_WHETHER_IT_RANGES_OVER_ANYTHING} {answer.reason}",
-            getattr(answer, "execution_status", COMPLETED),
+            f"{COULD_NOT_TELL_WHETHER_IT_RANGES_OVER_ANYTHING} {reason}",
+            execution_status,
         )
 
     def _candidate(self, obligation, claim, refuted: solving.Refuted) -> Finding:
