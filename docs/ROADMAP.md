@@ -1176,10 +1176,6 @@ there.
   temporary file behind** (`.prova-build-*.py` in the destination directory),
   never a half-written or replaced artefact. The premise cannot be timed from
   outside, so it is an unproven limit rather than a tested one. Raised during F22.
-- **Extract the shared parse-and-check preamble in `src/prova/service.py`.** The
-  handlers for `check`, `examples`, `evaluate` and (with F16) `verify` each repeat
-  about 15 lines. Do it as one behaviour-preserving commit with no test changes,
-  when no other delivery is editing `service.py`. (Owner, 14 November 2026.)
 - **Remove or reconsider the record-over-union-variant branch of
   `syntax.resolve_constructor`.** After F3 (constructor names must be unique) no
   accepted program can reach it. Raised during F3.
@@ -1201,27 +1197,12 @@ there.
   reads the clause and does not prove it. A clause valid for every input but written
   otherwise is therefore refused. The obligation machinery behind `verify` could
   settle it instead. Raised during F25.
-- **Locate `recursive_type` and `unbound_type` diagnostics.** Done by F10: they now
-  point at the declaration they are about (a stated limit: the parsed tree keeps no
-  position for a type inside a signature or a record field). Only refusals about the
-  request itself carry no place by design. `docs/spec-trace.md` row 8.6 may be
-  brought up to date when the trace is next revised.
-- **Forms accepted with text dropped.** `(deftype T (record (x Int)) extra)`,
-  `(requires)`, `(ensures)` and `(if true 1 2 3)` are accepted and the extra text is
-  silently ignored. Same on the pre-F6 base. Raised by the F6 and F9 reviews.
-- **The `source` field of a request must be a string.** `{"source": 7}` ends the
-  command with a traceback. Pre-existing; raised by the F9 review.
+- **Forms accepted with text dropped.** `(requires)` and `(ensures)` with no
+  expression are accepted and read as empty, although the grammar asks for one or more
+  (`(deftype T (record (x Int)) extra)` and `(if true 1 2 3)` are now refused). Raised
+  by the F6 and F9 reviews.
 - **Independent review owed for F2, F3 and F16.** They were merged on the author's
   checks and a green suite, not an independent review.
-- **Tool never ends in a traceback (robustness delivery).** Known crashes found by
-  the F6 to F10 reviews, all older than the features that found them: an
-  `IndexError` in `src/prova/evaluator.py` for `examples` on `examples/hour-clock.prova`
-  with character 550 or 1191 deleted; `evaluate` with `"function": ["f"]`
-  (`TypeError: unhashable`) and with `"arguments": 7` (`TypeError: not iterable`);
-  an expression nested about 700 deep (`RecursionError` in `syntax.parse_expr`;
-  450 deep is answered) and 1000 or more in `reader._read_form`. Each should be
-  answered with a located refusal (an explicit nesting limit for the last two),
-  never a traceback. (Raised by the F9, F10 and F2/F3 reviews.)
 - **F10 review notes.** `symbol`, `expected` and `actual` mean different things inside
   one category (`malformed_value`; symmetric disagreements such as `=` operands);
   publish the symbol's role per kind or give symmetric disagreements their own
@@ -1234,12 +1215,6 @@ there.
 - **nwstep baseline after a rebase.** Re-initialising the workspace baseline after
   rebasing a delivery would let `record craft` run again; today craft stays at the
   pre-rebase revision. Tool gap, not a Prova defect.
-- **Request text that cannot be encoded.** `{"operation":"check","source":"\udccc"}`
-  (a lone surrogate escape) ends in `UnicodeEncodeError` in `SourceDigest.of`
-  (`src/prova/service.py`), on every source-reading operation. Refuse a source that
-  cannot be encoded as UTF-8 with `invalid_input` naming the field, at the request
-  reader that already refuses a wrong-kind `source`. Pre-existing; raised by the F11
-  review.
 - **`format` attaches a comment to the following syntax node (SPEC.md line 63).**
   F15 attaches a comment to the following declaration, as its acceptance criterion 2
   says, and hoists a comment written inside a function body up to the next declaration.
@@ -1248,24 +1223,9 @@ there.
   needed for a comment that precedes a part inside a form written on one line), then
   recompute the hand-written `conformance/format/` pairs. The Owner chose to ship the
   criterion first. (15 November 2026.)
-- **Integer literals longer than Python's digit limit.** A source holding an integer
-  literal of more than 4300 digits ends in `ValueError: Exceeds the limit (4300 digits)`
-  from `reader.py:106` (`int(self.text)`) on `check`, and on every operation that
-  reads source. Refuse the literal with a located diagnostic (`syntax` or a limit
-  category), never a traceback. Pre-existing; raised by the F15 review. Deliver it
-  together with the lone-surrogate source crash above as one small robustness
-  delivery (R2).
-- **Three more inputs that end in a traceback (robustness delivery R3).** Found by the
-  R2 review and executor, all older than R2: (1) an integer the evaluator computes that
-  is too large to write (for example four nested multiplications of 1000-digit
-  literals) ends in `ValueError` from `values.render`; (2) a budget environment
-  variable set to a 5000-digit number ends in `ValueError` at `budgets.py:176`; (3) a
-  request whose JSON nests about 20000 arrays deep ends in `RecursionError` inside
-  the JSON reader. Also decide whether `operation` holding a surrogate is echoed back
-  unchanged (it is today). Each should answer one JSON response.
 - **The independent EXAMINE (source-blind) step was skipped for F22 and F26.**
-- **F18 and F24 had no Codex review**: the outside service's content filter blocked
-  the prompts. F18 can be retried with neutral wording.
+- **F24 had no Codex review**: the outside service's content filter blocked the
+  prompt. It can be retried with neutral wording.
 - **Mutation samples are small** and were not re-run after the repairs for F22, F26,
   F27 and F28.
 - **nwstep records a command under a 300 s cap but the suite takes about 350 s**, so
@@ -1274,6 +1234,9 @@ there.
 - **Review after repair is thin.** F22 was reviewed once more only by the coordinator
   after its last repair; the F23 repair commit and the F26 repair had no independent
   review after repair.
+- **The repairs after the Codex whole-repo review (ca967e6) and the F18 repair (8e5f4f8) had no independent review afterwards.**
+- **The manifest reports the `core-0` profile coverage as `partial` and nothing says what is missing.** `THE_PROFILE` in `src/prova/service.py` sets it; no code, test or document defines what it leaves out (unexplained). SPEC.md line 12 asks a compiler to report its profile accurately.
+- **`src/prova/service.py` is about 2,800 lines and `_run_evaluate` repeats one refusal shape nine times** (simplifications listed by the whole-repo review).
 
 ## 9. Delivered so far
 
