@@ -125,9 +125,6 @@ class ExamplesRun:
             for entry in entries
         )
 
-    def every_one_passed(self) -> bool:
-        return self.stopped_with is None and not self._that_did_not_pass()
-
     def what_happened(self) -> str:
         return self.stopped_with or COMPLETED
 
@@ -135,7 +132,6 @@ class ExamplesRun:
         """What to tell a reader about the examples, or nothing when
         they say nothing against the word."""
         failed = self._that_did_not_pass()
-        not_run = self.declared - len(self.outcomes)
         said = []
         if failed:
             said.append(
@@ -146,7 +142,7 @@ class ExamplesRun:
         if self.stopped_with is not None:
             said.append(
                 f"the run of the declared examples was stopped with "
-                f"{not_run} of {self.declared} never run: "
+                f"{self._never_run()} of {self.declared} never run: "
                 f"{self.stopped_because}"
             )
         return "; ".join(said) or None
@@ -159,11 +155,20 @@ class ExamplesRun:
             "failed": [
                 {"function": name, "ordinal": ordinal} for name, ordinal in failed
             ],
-            "not_run": self.declared - len(self.outcomes),
+            "not_run": self._never_run(),
         }
         if self.stopped_because is not None:
             entry["stopped_because"] = self.stopped_because
         return entry
+
+    def _never_run(self) -> int:
+        """How many declared examples this run never reached.
+
+        One place states the number: the count an answer publishes and
+        the sentence that explains it are read from here, so they cannot
+        say two different things.
+        """
+        return self.declared - len(self.outcomes)
 
     def _that_did_not_pass(self) -> tuple:
         return tuple(
@@ -203,9 +208,6 @@ class Obligations:
                 "HOW: no constructor of prova.discharge.Finding builds that "
                 "pair; fix the caller that built it by hand."
             )
-
-    def every_one_discharged(self) -> bool:
-        return bool(self.findings) and not self.undischarged()
 
     def undischarged(self) -> list:
         return [
