@@ -1,0 +1,64 @@
+(deftype Reservation (record (reserved Int)))
+(deftype Event (union (Reserve) (Release)))
+(deftype Outcome (record (state Reservation) (accepted Bool)))
+
+(defn valid-state
+  (sig ((current Reservation)) -> Bool ! pure)
+  (examples
+    (example (valid-state (Reservation 0)) => true)
+    (example (valid-state (Reservation 3)) => false))
+  (and (>= (.reserved current) 0) (<= (.reserved current) 2)))
+
+(defn initial
+  (sig () -> Reservation ! pure)
+  (ensures (= result (Reservation 0)))
+  (examples (example (initial) => (Reservation 0)))
+  (Reservation 0))
+
+(defn step
+  (sig ((current Reservation) (event Event)) -> Outcome ! pure)
+  (requires (valid-state current))
+  (ensures
+    (valid-state (.state result))
+    (= (.accepted result)
+       (match event
+         ((Reserve) (< (.reserved current) 2))
+         ((Release) (> (.reserved current) 0))))
+    (= (.reserved (.state result))
+       (+ (.reserved current)
+          (if (.accepted result)
+              (match event ((Reserve) 1) ((Release) -1))
+              0))))
+  (examples
+    (example (step (Reservation 0) (Reserve)) => (Outcome (Reservation 1) true))
+    (example (step (Reservation 2) (Reserve)) => (Outcome (Reservation 2) false))
+    (example (step (Reservation 1) (Release)) => (Outcome (Reservation 0) true))
+    (example (step (Reservation 0) (Release)) => (Outcome (Reservation 0) false)))
+  (match event
+    ((Reserve)
+      (if (< (.reserved current) 2)
+          (Outcome (Reservation (+ (.reserved current) 1)) true)
+          (Outcome current false)))
+    ((Release)
+      (if (> (.reserved current) 0)
+          (Outcome (Reservation (- (.reserved current) 1)) true)
+          (Outcome current false)))))
+
+; SPEC.md lines 570-572: a machine-0 descriptor additionally needs checked
+; projection and admissibility helpers. The projection selects .state, and
+; every typed event is admissible in an invariant state; the step's own
+; precondition still needs proof.
+
+(defn state-of
+  (sig ((produced Outcome)) -> Reservation ! pure)
+  (examples
+    (example (state-of (Outcome (Reservation 1) true)) => (Reservation 1))
+    (example (state-of (Outcome (Reservation 0) false)) => (Reservation 0)))
+  (.state produced))
+
+(defn admissible
+  (sig ((current Reservation) (event Event)) -> Bool ! pure)
+  (examples
+    (example (admissible (Reservation 0) (Reserve)) => true)
+    (example (admissible (Reservation 2) (Release)) => true))
+  true)

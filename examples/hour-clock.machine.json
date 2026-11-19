@@ -1,0 +1,20 @@
+{
+  "schema": "machine-descriptor/1",
+  "types": {
+    "state": "Clock",
+    "event": "Event",
+    "outcome": "Outcome"
+  },
+  "roles": {
+    "init": "initial",
+    "step": "step",
+    "state-of": "state-of",
+    "admissible": "admissible",
+    "invariant": "valid-state"
+  },
+  "assumptions": [
+    "The runtime applies one tick at a time over one authoritative clock state.",
+    "No writer outside this machine changes the clock between the admissibility check and the publication of the outcome.",
+    "Every tick is delivered as a typed event of Event; nothing else reaches the step."
+  ]
+}
