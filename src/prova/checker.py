@@ -31,7 +31,7 @@ from dataclasses import dataclass, fields, is_dataclass
 from typing import ClassVar
 
 from prova import budgets, syntax
-from prova.values import ConstructorValue
+from prova.values import ConstructorValue, Unit
 
 @dataclass(frozen=True)
 class BuiltinType:
@@ -1305,6 +1305,25 @@ def check_program(program: syntax.Program) -> list[Diagnostic]:
             for arg in example.args:
                 _check_value(arg, program, where, diagnostics, place)
             _check_value(example.expected, program, where, diagnostics, place)
+            for parameter, arg in zip(function.signature.params, example.args):
+                _check_value_type(
+                    arg,
+                    parameter.type_name,
+                    program,
+                    f"{where} supplies {parameter.name!r}",
+                    diagnostics,
+                    place,
+                    within,
+                )
+            _check_value_type(
+                example.expected,
+                return_type,
+                program,
+                f"{where} states a result",
+                diagnostics,
+                place,
+                within,
+            )
 
     diagnostics.extend(
         cycle.diagnostic(function_places.get(cycle.names()[0]))
@@ -1525,6 +1544,90 @@ def _check_value(
         )
     for field_value in value.fields:
         _check_value(field_value, program, where, diagnostics, place)
+
+
+def _type_of_value(value: object, program: syntax.Program) -> str | None:
+    """The declared type a closed value has, or nothing where it has
+    none this program declares.
+
+    Nothing is answered for a value whose constructor no type declares:
+    that is already refused where the value is read for its shape, and
+    saying it again under another name would send a reader to two
+    places for one fault.
+    """
+    if isinstance(value, bool):
+        return "Bool"
+    if isinstance(value, int):
+        return "Int"
+    if isinstance(value, Unit):
+        return "Unit"
+    if isinstance(value, ConstructorValue):
+        declared = syntax.DeclaredConstructor.of(value.constructor, program)
+        return None if declared is None else declared.owner
+    return None
+
+
+def _check_value_type(
+    value: object,
+    type_name: str,
+    program: syntax.Program,
+    where: str,
+    diagnostics: list[Diagnostic],
+    place: tuple[int, int],
+    within: str,
+) -> None:
+    """Refuse a closed value written where a value of `type_name` must
+    stand, down through the fields of every record and union variant.
+
+    An example is written in the program and its types are known when
+    the program is read, so a wrong one is a fault of the source and
+    not of a later run. Left to the run it is worse than late: the
+    obligations are listed about it, the example is counted as one that
+    passed, the program is called verified and a build of it is
+    published, and the first thing to notice is the artefact refusing
+    the value at run time. The checker refuses it here instead, where
+    the declaration stands, so nothing downstream is ever reached.
+
+    This check stands on the type being a type at all: where nothing
+    declares the one written in the signature, the refusal about that
+    is the one the Owner acts on, and a second saying the value
+    disagrees with a type the program does not have would point them at
+    a word that is not there.
+    """
+    if type_name not in BUILTIN_TYPES and type_name not in program.types:
+        return
+    actual = _type_of_value(value, program)
+    if actual is None:
+        return
+    if actual != type_name:
+        diagnostics.append(
+            Diagnostic(
+                "type_mismatch",
+                f"{where} of type {actual}, and {type_name} is declared there: "
+                "an example is a closed value of the type written beside it, "
+                "so one of another type demonstrates nothing about this "
+                "function and could not be run over it; write a value of "
+                f"{type_name}, or declare {actual} in the signature",
+                place,
+                about=AboutTwoTypes(within, type_name, actual),
+            )
+        )
+        return
+    if not isinstance(value, ConstructorValue):
+        return
+    declared = syntax.DeclaredConstructor.of(value.constructor, program)
+    if declared is None or declared.disagrees_with(len(value.fields)):
+        return
+    for (field_name, field_type), field_value in zip(declared.fields, value.fields):
+        _check_value_type(
+            field_value,
+            field_type,
+            program,
+            f"{where}, whose field {field_name!r} is",
+            diagnostics,
+            place,
+            within,
+        )
 
 
 def _declared_fields(type_decl: object) -> tuple[tuple[str, str], ...]:
