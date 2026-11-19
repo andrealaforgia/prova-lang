@@ -382,16 +382,16 @@ class FunctionRole:
 STATE = "state"
 EVENT = "event"
 OUTCOME = "outcome"
-THE_TYPE_ROLES = (
-    TypeRole(STATE, "the type of the values the machine keeps as its state"),
-    TypeRole(EVENT, "the type of the values the machine takes as its events"),
-    TypeRole(OUTCOME, "the type the step answers, carrying the new state and the result"),
-)
 INIT = "init"
 STEP = "step"
 STATE_OF = "state-of"
 ADMISSIBLE = "admissible"
 INVARIANT = "invariant"
+THE_TYPE_ROLES = (
+    TypeRole(STATE, "the type of the values the machine keeps as its state"),
+    TypeRole(EVENT, "the type of the values the machine takes as its events"),
+    TypeRole(OUTCOME, "the type the step answers, carrying the new state and the result"),
+)
 THE_FUNCTION_ROLES = (
     FunctionRole(INIT, RoleShape((), STATE), True),
     FunctionRole(STEP, RoleShape((STATE, EVENT), OUTCOME), False),

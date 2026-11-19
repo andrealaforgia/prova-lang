@@ -350,6 +350,13 @@ class AboutTwoCounts:
 UNRESOLVED_ROLE = "unresolved_role"
 ROLE_PRECONDITION_RESTRICTED = "role_precondition_restricted"
 
+# What driving a machine refuses with when the state it was sent stands
+# outside the invariant the descriptor names. Named here too, beside the
+# table that declares what it carries: a machine is defined from the
+# states its invariant holds at, so this is a state the machine says
+# nothing about rather than a value the tool could not read.
+STATE_OUTSIDE_INVARIANT = "state_outside_invariant"
+
 
 @dataclass(frozen=True)
 class AboutARole:
@@ -460,7 +467,7 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
     ),
     NESTING_LIMIT_EXCEEDED: DiagnosticKind(
         AboutTwoCounts,
-        points_into=("source", "argument"),
+        points_into=("source", "argument", "state", "event"),
         granularity=("token",),
     ),
     EVALUATION_DEPTH_EXCEEDED: DiagnosticKind(AboutTwoCounts),
@@ -503,7 +510,7 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
     "unknown_function": DiagnosticKind(AboutASymbol, placed=NEVER),
     "malformed_value": DiagnosticKind(
         AboutASymbol,
-        points_into=("argument", "source"),
+        points_into=("argument", "source", "state", "event"),
         granularity=("token", "declaration"),
     ),
     "malformed_request": DiagnosticKind(
@@ -524,6 +531,13 @@ DIAGNOSTIC_KINDS: dict[str, DiagnosticKind] = {
         AboutARole, placed=WHEN_KNOWN, granularity=("declaration",)
     ),
     ROLE_PRECONDITION_RESTRICTED: DiagnosticKind(
+        AboutARole, granularity=("declaration",)
+    ),
+    # A state outside the invariant stands at the declaration of the
+    # function the invariant role names: the state itself came in a field
+    # of the request, and the thing to read is the condition that
+    # excluded it.
+    STATE_OUTSIDE_INVARIANT: DiagnosticKind(
         AboutARole, granularity=("declaration",)
     ),
     # What a build refuses with. Each stands at no place in any text --

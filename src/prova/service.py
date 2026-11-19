@@ -21,6 +21,7 @@ from prova import (
     manifest,
     obligations,
     provenance,
+    runtime,
     solving,
     syntax,
     tree,
@@ -54,6 +55,7 @@ AVAILABLE_OPERATIONS = (
     "parse",
     "format",
     "machine",
+    "step",
     "build",
 )
 
@@ -68,6 +70,7 @@ SOURCE_READING_OPERATIONS = (
     "parse",
     "format",
     "machine",
+    "step",
     "build",
 )
 # No operation of this tool is refused for not being answered yet. The
@@ -200,6 +203,11 @@ def _answer(request: "Request", run: Run) -> dict:
             if isinstance(descriptor, MalformedRequest):
                 return descriptor.response_for(operation)
             return _run_machine(source, descriptor, run)
+        if operation == "step":
+            driving = request.step_asked()
+            if isinstance(driving, MalformedRequest):
+                return driving.response_for(operation)
+            return _run_step(source, driving, run)
         if operation == "build":
             asked = request.build_asked()
             if isinstance(asked, MalformedRequest):
@@ -645,6 +653,89 @@ OUTPUT_FILE_ASKED = RequiredText(
 )
 
 
+STATE_ASKED = RequiredText(
+    manifest.STATE,
+    "the text of a value",
+    "this tool drives the machine from the value that text writes, and a "
+    "value of another kind holds no characters to read; send the state as "
+    'one JSON string, writing the value the way a program writes it, as '
+    '"(Clock 12)"',
+)
+
+
+@dataclass(frozen=True)
+class EventTexts:
+    """The texts of the events a request asks a machine to be driven
+    through, in the order they are to be driven.
+
+    Every element is known to be a text that can be written as UTF-8
+    before the first of them is read, and there is at least one: a
+    request carrying none asks for no transition, and a state published
+    beside it would read as a transition that happened.
+    """
+
+    texts: tuple[SubmittedText, ...]
+
+    @classmethod
+    def read(cls, submitted: object) -> "EventTexts | MalformedRequest":
+        if not isinstance(submitted, list):
+            return MalformedRequest.about(
+                manifest.EVENTS.name,
+                f"the {manifest.EVENTS.name!r} field of the request holds "
+                f"{type(submitted).__name__}, not a list of the texts of "
+                "events: this tool drives one event per text, in the order "
+                "the list writes them, and a value of another kind holds no "
+                "list to read; send the events as a JSON list of strings, one "
+                "string per event, each writing a value of the type the "
+                'descriptor names as its event, as "(Tick)"',
+            )
+        if not submitted:
+            return MalformedRequest.about(
+                manifest.EVENTS.name,
+                f"the {manifest.EVENTS.name!r} field of the request holds an "
+                "empty list, and this tool drives a machine one event at a "
+                "time: a request carrying no event asks for no transition, "
+                "and a state answered beside it would read as a transition "
+                "that happened while nothing ran; send at least one event, "
+                'each as one JSON string, as "(Tick)"',
+            )
+        unreadable: list[tuple[str, str]] = []
+        texts: list[SubmittedText] = []
+        for place, written in enumerate(submitted):
+            named = f"{manifest.EVENTS.name}[{place}]"
+            if not isinstance(written, str):
+                unreadable.append(
+                    (
+                        named,
+                        f"the event at place {place} of the request holds "
+                        f"{type(written).__name__}, not the text of a value: "
+                        "this tool reads one event from the characters of each "
+                        "entry, and a value of another kind holds no "
+                        "characters to read; send that event as one JSON "
+                        'string, as "(Tick)"',
+                    )
+                )
+                continue
+            read = SubmittedText.read(named, written)
+            if isinstance(read, MalformedRequest):
+                unreadable.extend(read.defects)
+                continue
+            texts.append(read)
+        if unreadable:
+            return MalformedRequest(tuple(unreadable))
+        return cls(tuple(texts))
+
+
+@dataclass(frozen=True)
+class StepAsked:
+    """What a request asks a run to do: which descriptor to drive, from
+    which state and through which events."""
+
+    descriptor: "machine.Descriptor"
+    state: SubmittedText
+    events: EventTexts
+
+
 @dataclass(frozen=True)
 class BuildAsked:
     """What a request asks a build to do: which function the artefact
@@ -752,6 +843,31 @@ class Request:
         if isinstance(read, machine.DescriptorDefects):
             return MalformedRequest(read.defects)
         return read
+
+    def step_asked(self) -> "StepAsked | MalformedRequest":
+        """Which machine the request asks to drive, from which state and
+        through which events, or every field of the four that could not
+        be read.
+
+        All of them are read in one pass, as an evaluation's two fields
+        are: they are independent, so a client that wrote several wrongly
+        is told about all of them at once rather than repairing one and
+        meeting the next.
+        """
+        defects: MalformedRequest | None = None
+        descriptor = self.machine_asked()
+        if isinstance(descriptor, MalformedRequest):
+            defects = descriptor
+        state = STATE_ASKED.read(self.submitted.get(manifest.STATE.name))
+        if isinstance(state, MalformedRequest):
+            defects = state if defects is None else defects.and_also(state)
+        events = EventTexts.read(self.submitted.get(manifest.EVENTS.name))
+        if isinstance(events, MalformedRequest):
+            defects = events if defects is None else defects.and_also(events)
+        if defects is not None:
+            return defects
+        return StepAsked(descriptor, state, events)
+
     def build_asked(self) -> "BuildAsked | MalformedRequest":
         """Which function the artefact is to invoke and which file to
         write it to, or every field of the two that could not be read.
@@ -860,6 +976,44 @@ def _run_discover() -> dict:
                     "A completed evaluate response means the function's postconditions "
                     "were checked and held for the supplied input; it is not a proof "
                     "for all inputs."
+                ),
+                "step": (
+                    "What driving a machine answers, and what it does not. "
+                    "The run drives one event at a time over one state: the "
+                    f"{machine.INVARIANT!r} role is asked first, because a "
+                    "machine is defined only from the states its invariant is "
+                    "true at, and a state the request sent that it excludes is "
+                    f"refused with '{checker.STATE_OUTSIDE_INVARIANT}' before "
+                    "anything runs. The "
+                    f"{machine.ADMISSIBLE!r} role is asked next: an event it "
+                    f"refuses is published as '{runtime.BOUNDARY_REJECTION}', "
+                    "nothing is run for it and the state stays as it was. An "
+                    "event it admits is run through the "
+                    f"{machine.STEP!r} role and published as "
+                    f"'{runtime.TRANSITION}', with the outcome the step "
+                    "answered beside the state the "
+                    f"{machine.STATE_OF!r} role read off it. The business "
+                    "result of that machine -- an acceptance flag of its own, "
+                    "say -- stands inside that outcome, and no rule of this "
+                    "tool reads it: a rejected request of the machine is a "
+                    f"'{runtime.TRANSITION}' like any other, and it is not a "
+                    f"'{runtime.BOUNDARY_REJECTION}'. A sequence stops at the "
+                    "first event it does not drive, which is either of those "
+                    "two cases -- the second being a state a transition "
+                    "published and the invariant excludes, published as "
+                    f"'{runtime.STATE_OUTSIDE_INVARIANT}' -- and 'stopped_at' "
+                    "then names the position, the reason, the role that "
+                    "decided it and how many events were never attempted. "
+                    "Every event the request carries is read as a value of "
+                    "the declared type before the first of them is driven, so "
+                    "a request carrying one text this tool cannot read drives "
+                    "nothing at all. The answer is about the values the named "
+                    "functions answered for this state and these events, in "
+                    "this revision of this program. It settles nothing about "
+                    "a host that would carry the events, and nothing about "
+                    "the machine over its other runs; 'what_this_says' in the "
+                    "result says the same, and the assumptions the descriptor "
+                    "states are carried as stated and checked by nothing."
                 ),
                 "statuses": (
                     "Every status an answered request carries, and every "
@@ -1847,6 +2001,282 @@ def _run_machine(
         "diagnostics": [],
         "result": resolved.published(),
     }
+
+
+@dataclass(frozen=True)
+class ValueSent:
+    """One text a request to drive a machine carries, read as a value of
+    the type its role needs.
+
+    One object per text, so the state and every event are read the same
+    way and each of them is refused under the name a caller sent it
+    under. It holds what a refusal about that text must say: the field
+    to repair, which text of the request a place stands in, the type the
+    value must have and the words that name it in a sentence.
+    """
+
+    field: str
+    points_into: str
+    text: SubmittedText
+    type_name: str
+    what_it_is: str
+
+    def read(self, program: syntax.Program) -> "object | tuple":
+        """The value this text writes, or the refusals it carries.
+
+        Every refusal is answered before any transition runs: a request
+        carrying one text the runtime cannot use drives nothing at all,
+        so a machine is never left part way through a sequence the
+        caller must now work out.
+        """
+        try:
+            value = _parse_value_text(self.text)
+        except TooDeeplyNested as too_deep:
+            return (_too_deeply_nested_diagnostic(too_deep, self.points_into),)
+        except (ReaderError, syntax.SyntaxError_) as error:
+            return (
+                checker.Diagnostic(
+                    "malformed_value",
+                    f"WHAT: {self.what_it_is} does not write one value this "
+                    f"tool can read: {error.message}. WHY: a machine is "
+                    "driven over values, and a text that writes none, or "
+                    "writes more than one, holds nothing to drive it with. "
+                    "HOW: write it as one value, the way a program writes "
+                    f"one, as \"(Clock 12)\" or \"(Tick)\"; the "
+                    f"{self.type_name!r} type of the submitted program says "
+                    "which values there are, and the 'parse' operation lists "
+                    "them",
+                    (error.line, error.column),
+                    about=checker.AboutASymbol(self.field),
+                    points_into=self.points_into,
+                ),
+            )
+        return self._checked(value, program)
+
+    def _checked(self, value: object, program: syntax.Program) -> "object | tuple":
+        try:
+            evaluator.check_value_type(value, self.type_name, program, self.what_it_is)
+        except evaluator.MalformedValue as error:
+            return (
+                checker.Diagnostic(
+                    "malformed_value",
+                    f"WHAT: {error.reason}. WHY: a value is driven as a value "
+                    "of the type the descriptor names for its role, and a "
+                    "constructor the submitted program does not declare names "
+                    "no value of it. HOW: write the value out of the "
+                    "constructors the program declares for "
+                    f"{self.type_name!r}, which the 'check' and 'parse' "
+                    "operations list for the same source",
+                    self._where_the_type_is(program),
+                    about=checker.AboutASymbol(self.type_name),
+                    points_into="source",
+                ),
+            )
+        except evaluator.IllTypedValue as error:
+            return (
+                checker.Diagnostic(
+                    "ill_typed_value",
+                    f"WHAT: {error.reason}. WHY: the roles of the descriptor "
+                    "are written over the three types it names, so a value of "
+                    "another type is one the role does not take. HOW: send a "
+                    f"value of {self.type_name!r}, the type this descriptor "
+                    "names for that role; the 'machine' operation reports what "
+                    "each role of the descriptor resolved to",
+                    self._where_the_type_is(program),
+                    about=checker.AboutASymbol(self.type_name),
+                ),
+            )
+        return value
+
+    def _where_the_type_is(self, program: syntax.Program) -> tuple[int, int]:
+        """Where the program declares the type this value must have.
+
+        A refusal about a value the request carried stands at the
+        declaration that says which values there are: the text the
+        caller sent has one value in it and no line of its own to send
+        them to.
+        """
+        declared = program.types[self.type_name]
+        return (declared.line, declared.column)
+
+
+def _the_values_driven(
+    driving: "StepAsked",
+    driver: runtime.MachineRuntime,
+    program: syntax.Program,
+    revision: SourceRevision,
+) -> "tuple | Refusal":
+    """The state and the events the request carried, read as values of
+    the types the descriptor names -- or the refusal naming every text
+    that could not be read.
+
+    All of them are read before the first transition: a caller who wrote
+    two of them wrongly is told about both, and a request with one text
+    the runtime cannot use drives nothing.
+    """
+    sent = [
+        ValueSent(
+            manifest.STATE.name,
+            manifest.STATE.name,
+            driving.state,
+            driver.type_of(machine.STATE),
+            f"the {manifest.STATE.name!r} field of the request",
+        )
+    ] + [
+        ValueSent(
+            f"{manifest.EVENTS.name}[{place}]",
+            machine.EVENT,
+            text,
+            driver.type_of(machine.EVENT),
+            f"the event at place {place} of the request",
+        )
+        for place, text in enumerate(driving.events.texts)
+    ]
+    read = [one.read(program) for one in sent]
+    refused = tuple(
+        diagnostic
+        for answer in read
+        if isinstance(answer, tuple)
+        for diagnostic in answer
+    )
+    if refused:
+        return Refusal(_the_status_refusing(refused), refused, revision)
+    return read[0], tuple(read[1:])
+
+
+def _the_status_refusing(refused: tuple) -> str:
+    """Which status a refusal about the texts of a request carries: a
+    limit of this tool is `resource_exhausted`, as every other limit is,
+    and a text this tool cannot use is a field of the request it could
+    not read."""
+    if any(
+        diagnostic.category == checker.NESTING_LIMIT_EXCEEDED
+        for diagnostic in refused
+    ):
+        return RESOURCE_EXHAUSTED
+    return "invalid_input"
+
+
+def _run_step(source: SubmittedText, driving: "StepAsked", run: Run) -> dict:
+    """What driving the machine `driving` names published, event by
+    event, over the state the request carried.
+
+    Reads the source through the rule every operation that reads one
+    shares, and the roles through the one resolution this tool does, so
+    a descriptor refused here is refused exactly as the 'machine'
+    operation refuses it.
+
+    Reads nothing but the four fields of the request, writes nothing and
+    keeps nothing: asking twice drives the same events over the same
+    state and answers the same thing. The answer says what the named
+    functions answered for the state and the events it was sent, and
+    settles nothing about a host that would carry those events.
+    """
+    checked = _checked_program(source, run)
+    if isinstance(checked, Refusal):
+        return checked.response_for("step")
+    program = checked.program
+    revision = SourceRevision.of(source)
+
+    run.stop_if_exhausted()
+    resolved = driving.descriptor.resolved_against(program)
+    if isinstance(resolved, machine.UnresolvedRoles):
+        return Refusal(
+            "invalid_input", resolved.refusals, revision
+        ).response_for("step")
+
+    driver = runtime.MachineRuntime.of(resolved, program)
+    values = _the_values_driven(driving, driver, program, revision)
+    if isinstance(values, Refusal):
+        return values.response_for("step")
+    state, events = values
+
+    run.stop_if_exhausted()
+    try:
+        driven = driver.driven(state, events)
+    except evaluator.EvaluationTooDeep as too_deep:
+        return _too_deep_to_run("step", source, too_deep)
+
+    if isinstance(driven, runtime.StateRefused):
+        return Refusal(
+            "invalid_input", (_state_outside_invariant(driven, program),), revision
+        ).response_for("step")
+
+    answer = {
+        "operation": "step",
+        "status": "completed",
+        "claim": {"kind": "machine_run", "scope": "this input"},
+        "source_digest": revision.rendered(),
+        "stands_on": _stands_on(),
+        "diagnostics": [],
+    }
+    if isinstance(driven, runtime.ContractRefused):
+        answer["diagnostics"] = [
+            _diagnostic_dict(_contract_refused(driven, program), revision)
+        ]
+        return answer
+    try:
+        answer["result"] = driven.published()
+    except TooLargeToWrite as too_large:
+        return _too_large_to_write(
+            "step",
+            source,
+            too_large,
+            _declared_place(program, resolved.named_for(machine.STEP)),
+        )
+    return answer
+
+
+def _state_outside_invariant(
+    refused: runtime.StateRefused, program: syntax.Program
+) -> checker.Diagnostic:
+    """The one refusal a state the invariant role excludes carries.
+
+    It stands at the declaration of the function the role names, which
+    is the condition that excluded the state: the state itself came in a
+    field of the request and has no line to open.
+    """
+    return checker.Diagnostic(
+        checker.STATE_OUTSIDE_INVARIANT,
+        f"WHAT: the {manifest.STATE.name!r} field of the request writes a "
+        f"state the {refused.role!r} role of the descriptor excludes: "
+        f"{refused.named!r} answered false for it, and nothing was driven. "
+        "WHY: a machine is defined from the states its invariant holds at "
+        "(SPEC.md lines 395-400), so a transition from any other state is "
+        "one the machine does not define, and this tool will not answer for "
+        f"it. HOW: send a state {refused.named!r} holds at, or name a role "
+        "that holds at this one; the 'evaluate' operation runs "
+        f"{refused.named!r} over a state and answers what it says",
+        _declared_place(program, refused.named),
+        about=checker.AboutARole(refused.role, refused.named),
+    )
+
+
+def _contract_refused(
+    refused: runtime.ContractRefused, program: syntax.Program
+) -> checker.Diagnostic:
+    """The refusal a run carries when one role's own contract was broken
+    while the run was asking it.
+
+    Answered as the 'evaluate' operation answers the same two refusals,
+    in the same categories and standing at the same place: the run did
+    happen, and what it met is the program's own contract refusing.
+    """
+    return checker.Diagnostic(
+        refused.category,
+        f"WHAT: driving the event at position {refused.position} reached "
+        f"{refused.function_name!r}, whose {refused.category.split('_')[0]} "
+        "the values it was called with do not satisfy. WHY: every call this "
+        "tool makes has the contracts of the function it calls checked, and a "
+        "run that went past a refused contract would publish a state the "
+        "program itself does not stand behind. HOW: read "
+        f"{refused.function_name!r} against the state and the event at that "
+        "position; the 'verify' operation lists the obligations the program "
+        "owes, and the 'evaluate' operation runs the function over those "
+        "values on its own",
+        _declared_place(program, refused.function_name),
+        about=checker.AboutASymbol(refused.function_name),
+    )
 
 
 def _run_examples(source: SubmittedText, run: Run) -> dict:

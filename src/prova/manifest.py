@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from prova import checker
+from prova import checker, runtime
 
 # What a client is told about a field of a request: it must send it, or
 # it may leave it out.
@@ -140,6 +140,24 @@ DESCRIPTOR_WHEN_VERIFYING = Field.may_be_sent(
     "exactly as it was before those obligations existed. A descriptor whose "
     "roles do not resolve in the submitted program refuses the whole "
     "answer: it carries no inventory"
+)
+STATE = Field.must_be_sent(
+    "state",
+    "text",
+    "the state to drive the machine from, as one JSON string writing one "
+    'value the way a program writes it, as "(Clock 12)". It must be a value '
+    "of the type the descriptor names as its state, and the invariant role "
+    "must answer true for it: a machine is defined only from the states its "
+    "invariant is true at, so a state it excludes is refused and nothing is "
+    "driven",
+)
+EVENTS = Field.must_be_sent(
+    "events",
+    "list of texts",
+    "the events to drive, in the order they are to be driven, each as one "
+    'JSON string writing one value of the descriptor event type, as "(Tick)". '
+    "At least one: a request carrying none asks for no transition and is "
+    "refused",
 )
 ARGUMENTS = Field.may_be_sent(
     "arguments",
@@ -616,6 +634,51 @@ THE_OPERATIONS = Catalogue(
                         "result says the same. The shape of a descriptor, and of every "
                         "role in it, is published under "
                         "'machine_descriptor_schema'",
+                    ),
+                ),
+            ),
+        ),
+        Operation(
+            "step",
+            BeyondTheProfile(
+                "SPEC.md lines 467-468 name seven operation categories and "
+                "this operation is in none of them: it drives a machine "
+                "whose descriptor resolves, event by event, over the state "
+                "the request carries. It is an extension of this tool, and "
+                "answering it is no conformance to the profile."
+            ),
+            answering(
+                (SOURCE, DESCRIPTOR, STATE, EVENTS),
+                AN_ANSWER_OF_THE_PROFILE
+                + (
+                    Field.when(
+                        "result",
+                        "object",
+                        "when at least one event was attempted",
+                        "what the run published: under 'state_given' the "
+                        "state the request carried, under 'transitions' one "
+                        "entry per event attempted, in the order they were "
+                        "sent, under 'state_now' the state the last entry "
+                        "left, under 'assumptions_stated' the sentences the "
+                        "descriptor states -- read and checked by nothing -- "
+                        "and under 'what_this_says' what the answer settles "
+                        "and what it does not. Each entry carries its "
+                        "'position', counted from 1, the 'event' as a program "
+                        "writes it, the 'state_before' it was attempted from, "
+                        "the 'state_after' it left, and its 'result', which is "
+                        f"{checker.listed(runtime.THE_RESULTS)}. An entry "
+                        f"{runtime.TRANSITION!r} carries the 'outcome' the "
+                        "step answered, which is where that machine's own "
+                        "business result stands -- an acceptance flag of a "
+                        "rejected request is a transition like any other, and "
+                        "no rule of this tool reads it. The other two carry no "
+                        "outcome, because no step ran for them, and their "
+                        "state after is the state they were attempted from. A "
+                        "run that did not drive every event carries "
+                        "'stopped_at' with the 'position' it stopped at, the "
+                        "'reason', the 'role' of the descriptor that decided "
+                        "it and how many events were 'events_not_run'; a run "
+                        "that drove them all carries none",
                     ),
                 ),
             ),
