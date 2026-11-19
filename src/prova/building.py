@@ -95,7 +95,7 @@ class Destination:
     @classmethod
     def at(cls, written: str) -> "Destination | Unwritable":
         path = pathlib.Path(written)
-        directory = path.parent if str(path.parent) else pathlib.Path(".")
+        directory = path.parent
         if not directory.is_dir():
             return Unwritable(
                 OUTPUT_DIRECTORY_ABSENT,

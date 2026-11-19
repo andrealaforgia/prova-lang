@@ -105,3 +105,56 @@ def test_a_request_without_a_destination_or_an_entry_is_refused_by_name():
             "WHY: the Owner repairs the field the answer sends them to. "
             f"HOW: read the field through the request reader: {answer}"
         )
+
+def test_a_refusal_says_whether_the_directory_is_absent_or_is_a_file():
+    """Given a destination inside a directory that is not there, and one
+    inside a path where a file stands where a directory would be, when a
+    build is asked for each, then each refusal says which of the two it
+    is -- so the Owner knows whether to create a directory or to move a
+    file aside -- and neither says the other.
+
+    still passes if: the refusal had named the path and said nothing
+    about what is at it -- each sentence is required, and the sentence of
+    the other case is required to be absent, so reporting one of them
+    for both fails here.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        destination = pathlib.Path(tmp_dir)
+        (destination / "a-file").write_bytes(b"a file where a directory would be\n")
+        absent = build(hour_clock(), "step", destination / "nowhere" / "clock.py")
+        in_a_file = build(hour_clock(), "step", destination / "a-file" / "clock.py")
+        written = files_under(destination)
+
+    nothing_is_there = "nothing stands at that path"
+    something_else_is = "what stands there is not a directory"
+    for about, answer, said, not_said in (
+        ("a directory that is not there", absent, nothing_is_there, something_else_is),
+        ("a file where a directory would be", in_a_file, something_else_is, nothing_is_there),
+    ):
+        assert answer.get("status") == "invalid_input", (
+            f"WHAT: a build into {about} was answered "
+            f"{answer.get('status')!r}. "
+            "WHY: this slice writes only into a directory that already "
+            "exists, and the request named a place that is not one. "
+            f"HOW: inspect the answer: {answer}"
+        )
+        reasons = " ".join(d.get("reason", "") for d in answer.get("diagnostics") or [])
+        assert said in reasons, (
+            f"WHAT: the refusal of {about} does not say {said!r}: {reasons!r}. "
+            "WHY: the Owner repairs one of two different things, and a "
+            "refusal that does not say which sends them to the wrong one. "
+            "HOW: say what is at the path in the message."
+        )
+        assert not_said not in reasons, (
+            f"WHAT: the refusal of {about} says {not_said!r}, which is the "
+            f"other case: {reasons!r}. "
+            "WHY: one sentence for both cases tells the Owner to repair "
+            "the wrong thing. "
+            "HOW: read what is at the path before writing the message."
+        )
+
+    assert written == {"a-file": b"a file where a directory would be\n"}, (
+        f"WHAT: the two refused builds left {sorted(written)}. "
+        "WHY: a refused build writes nothing and changes nothing. "
+        "HOW: decide the refusal before anything is written."
+    )
